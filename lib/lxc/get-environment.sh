@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Verifies that Forge is running on a Proxmox VE host with pct available and local LXC configuration accessible.
 
 set -u
 
