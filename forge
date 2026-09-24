@@ -207,7 +207,7 @@ print_lxc_target() {
     "$vmid" "$name" "$state" "$template"
 }
 
-resolve_lxc_target() {
+resolve_lxc_vmid() {
   local target="$1" vmid="" config_file=""
   local candidate candidate_name
   local -a matches=()
@@ -242,6 +242,12 @@ resolve_lxc_target() {
     esac
   fi
 
+  printf '%s' "$vmid"
+}
+
+resolve_lxc_target() {
+  local vmid
+  vmid="$(resolve_lxc_vmid "$1")"
   print_lxc_target "$vmid"
 }
 
@@ -282,6 +288,59 @@ list_lxc_targets() {
   done
 }
 
+inspect_lxc_target() {
+  local target="$1" vmid config_file name state custom_script=false
+  local inspection
+
+  vmid="$(resolve_lxc_vmid "$target")"
+  config_file="/etc/pve/lxc/${vmid}.conf"
+  name="$(lxc_name_from_config "$config_file")"
+  state="$(lxc_state "$vmid")"
+
+  lxc_is_template "$config_file" && fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
+  [[ "$state" == running ]] || fail "LXC $vmid ($name) is $state; read-only guest inspection requires a running container"
+
+  if [[ -d "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" ]] &&
+     find "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
+    custom_script=true
+  fi
+
+  inspection="$(pct exec "$vmid" -- sh -c '
+    os_id=unknown
+    os_version=unknown
+    package_manager=unknown
+    application_updater=none
+
+    if [ -r /etc/os-release ]; then
+      . /etc/os-release
+      os_id=${ID:-unknown}
+      os_version=${VERSION_ID:-unknown}
+    fi
+
+    if command -v apt-get >/dev/null 2>&1; then
+      package_manager=apt
+    elif command -v dnf >/dev/null 2>&1; then
+      package_manager=dnf
+    elif command -v yum >/dev/null 2>&1; then
+      package_manager=yum
+    elif command -v apk >/dev/null 2>&1; then
+      package_manager=apk
+    elif command -v pacman >/dev/null 2>&1; then
+      package_manager=pacman
+    fi
+
+    if [ -x /usr/bin/update ]; then
+      application_updater=/usr/bin/update
+    fi
+
+    printf "os_id=%s os_version=%s package_manager=%s application_updater=%s\n" \
+      "$os_id" "$os_version" "$package_manager" "$application_updater"
+  ' </dev/null)" || fail "read-only inspection failed for LXC $vmid ($name)"
+
+  printf 'type=lxc vmid=%s name=%s state=%s template=false %s custom_script=%s\n' \
+    "$vmid" "$name" "$state" "$inspection" "$custom_script"
+}
+
 usage() {
   cat <<'EOF'
 Usage: forge COMMAND [ARGUMENTS]
@@ -290,6 +349,7 @@ Commands:
   validate-config        Load and validate the complete Forge configuration.
   resolve-target TARGET  Resolve one local LXC by exact VMID or exact name.
   list-lxc-targets       List LXC targets enabled by the current Forge scope.
+  inspect-target TARGET  Read OS/updater capabilities from one running LXC.
   help                   Show this help.
 EOF
 }
@@ -312,6 +372,11 @@ main() {
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
       load_and_validate_config
       list_lxc_targets
+      ;;
+    inspect-target)
+      [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
+      load_and_validate_config
+      inspect_lxc_target "$2"
       ;;
     help|-h|--help)
       usage
