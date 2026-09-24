@@ -22,13 +22,13 @@ command -v perl >/dev/null 2>&1 || fail "perl is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
-plan_script="$script_dir/build-plan.sh"
-wait_script="$lib_dir/proxmox-task-wait.sh"
-[[ -r "$plan_script" ]] || fail "backup plan helper is not readable: $plan_script"
+plan_script="$script_dir/prepare.sh"
+wait_script="$lib_dir/tasks/wait.sh"
+[[ -r "$plan_script" ]] || fail "backup prepare helper is not readable: $plan_script"
 [[ -r "$wait_script" ]] || fail "task wait helper is not readable: $wait_script"
 
 plan_json="$(bash "$plan_script" "$vmid" --json)" || \
-  fail "could not build Proxmox backup plan for LXC $vmid"
+  fail "could not prepare Proxmox backup for LXC $vmid"
 
 mapfile -d '' -t fields < <(
   PLAN_JSON="$plan_json" perl -MJSON::PP -e '
