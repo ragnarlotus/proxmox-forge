@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Executes one prepared Proxmox backup request for an LXC, optionally as a dry run, then waits for the authoritative task result.
 
 set -u
 
