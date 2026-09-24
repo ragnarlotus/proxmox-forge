@@ -11,11 +11,11 @@ fail() {
 vmid="$1"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 
-command -v pct >/dev/null 2>&1 || fail "pct is not available"
-[[ -f "/etc/pve/lxc/${vmid}.conf" ]] || fail "LXC $vmid does not exist"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
+state_script="$script_dir/get-state.sh"
+[[ -r "$state_script" ]] || fail "LXC state helper is not readable: $state_script"
 
-state="$(pct status "$vmid")" || fail "could not read state for LXC $vmid"
-state="${state#status: }"
+state="$(bash "$state_script" "$vmid")" || fail "could not read state for LXC $vmid"
 [[ "$state" == running ]] || fail "LXC $vmid is $state; application-updater inspection requires a running container"
 
 application_updater="$(pct exec "$vmid" -- sh -c '
