@@ -54,6 +54,10 @@ fail() {
   exit 1
 }
 
+FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
+LXC_DIR="$FORGE_DIR/lib/lxc"
+HELPERS_DIR="$FORGE_DIR/lib/helpers"
+
 is_known_key() {
   local wanted="$1" key
 
@@ -64,17 +68,12 @@ is_known_key() {
   return 1
 }
 
-trim() {
-  local value="$1"
-
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "$value"
-}
-
 parse_value() {
   local raw
-  raw="$(trim "$1")"
+  local trim_script="$HELPERS_DIR/trim.sh"
+
+  [[ -r "$trim_script" ]] || fail "trim helper is not readable: $trim_script"
+  raw="$(bash "$trim_script" "$1")" || fail "could not trim configuration value"
 
   if [[ "$raw" =~ ^\"([^\"]*)\"$ ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
@@ -95,12 +94,14 @@ parse_value() {
 
 load_config() {
   local line line_number=0 key raw_value value
+  local trim_script="$HELPERS_DIR/trim.sh"
 
   [[ -r "$CONFIG_FILE" ]] || fail "configuration file is not readable: $CONFIG_FILE"
+  [[ -r "$trim_script" ]] || fail "trim helper is not readable: $trim_script"
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     ((line_number += 1))
-    line="$(trim "$line")"
+    line="$(bash "$trim_script" "$line")" || fail "could not trim configuration line $line_number"
 
     [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
 
@@ -158,106 +159,30 @@ load_and_validate_config() {
   validate_config
 }
 
-require_lxc_environment() {
-  command -v pct >/dev/null 2>&1 || \
-    fail "pct is not available; Forge LXC discovery must run on a Proxmox VE host"
-  [[ -d /etc/pve/lxc ]] || \
-    fail "/etc/pve/lxc is not available; Forge cannot discover local LXC containers"
-}
+field_value() {
+  local record="$1" wanted="$2" field
 
-lxc_name_from_config() {
-  local config_file="$1"
-  sed -n 's/^hostname:[[:space:]]*//p' "$config_file" | head -n 1
-}
+  for field in $record; do
+    if [[ "$field" == "$wanted="* ]]; then
+      printf '%s' "${field#*=}"
+      return 0
+    fi
+  done
 
-lxc_is_template() {
-  local config_file="$1"
-  grep -Eq '^template:[[:space:]]*1([[:space:]]|$)' "$config_file"
-}
-
-lxc_state() {
-  local vmid="$1" state
-
-  state="$(pct status "$vmid")" || fail "could not read state for LXC $vmid"
-  state="${state#status: }"
-
-  case "$state" in
-    running|stopped)
-      printf '%s' "$state"
-      ;;
-    *)
-      fail "LXC $vmid returned unsupported state '$state'"
-      ;;
-  esac
-}
-
-print_lxc_target() {
-  local vmid="$1" config_file="/etc/pve/lxc/${vmid}.conf"
-  local name state template=false
-
-  [[ -f "$config_file" ]] || fail "no LXC exists with exact VMID '$vmid'"
-
-  name="$(lxc_name_from_config "$config_file")"
-  [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
-
-  state="$(lxc_state "$vmid")"
-  lxc_is_template "$config_file" && template=true
-
-  printf 'type=lxc vmid=%s name=%s state=%s template=%s\n' \
-    "$vmid" "$name" "$state" "$template"
-}
-
-resolve_lxc_vmid() {
-  local target="$1" vmid="" config_file=""
-  local candidate candidate_name
-  local -a matches=()
-
-  require_lxc_environment
-
-  if [[ "$target" =~ ^[0-9]+$ ]]; then
-    vmid="$target"
-    config_file="/etc/pve/lxc/${vmid}.conf"
-    [[ -f "$config_file" ]] || fail "no LXC exists with exact VMID '$target'"
-  else
-    shopt -s nullglob
-    for candidate in /etc/pve/lxc/*.conf; do
-      candidate_name="$(lxc_name_from_config "$candidate")"
-      [[ "$candidate_name" == "$target" ]] || continue
-      matches+=("${candidate##*/}")
-    done
-    shopt -u nullglob
-
-    case "${#matches[@]}" in
-      0)
-        fail "no LXC exists with exact name '$target'"
-        ;;
-      1)
-        vmid="${matches[0]%.conf}"
-        ;;
-      *)
-        printf -v candidate '%s, ' "${matches[@]%.conf}"
-        candidate="${candidate%, }"
-        fail "LXC name '$target' is ambiguous; exact matches: VMIDs $candidate"
-        ;;
-    esac
-  fi
-
-  printf '%s' "$vmid"
-}
-
-resolve_lxc_target() {
-  local vmid
-  vmid="$(resolve_lxc_vmid "$1")"
-  print_lxc_target "$vmid"
+  return 1
 }
 
 list_lxc_targets() {
-  local config_file vmid name state
+  local config_file vmid target_record name state template
+  local environment_script="$LXC_DIR/get-environment.sh"
+  local target_script="$LXC_DIR/get-target.sh"
   local -a config_files=()
 
-  require_lxc_environment
-
   [[ "${CONFIG[UPDATE_LXC]}" == true ]] || return 0
+  [[ -r "$environment_script" ]] || fail "LXC environment helper is not readable: $environment_script"
+  [[ -r "$target_script" ]] || fail "LXC target helper is not readable: $target_script"
+
+  bash "$environment_script" >/dev/null || fail "LXC environment check failed"
 
   shopt -s nullglob
   config_files=(/etc/pve/lxc/*.conf)
@@ -267,19 +192,22 @@ list_lxc_targets() {
     vmid="${config_file##*/}"
     vmid="${vmid%.conf}"
 
-    name="$(lxc_name_from_config "$config_file")"
-    [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
+    target_record="$(bash "$target_script" "$vmid")" || fail "could not read LXC target $vmid"
+    name="$(field_value "$target_record" name)" || fail "LXC target helper returned no name"
+    state="$(field_value "$target_record" state)" || fail "LXC target helper returned no state"
+    template="$(field_value "$target_record" template)" || fail "LXC target helper returned no template field"
 
-    # Proxmox templates are never update targets.
-    lxc_is_template "$config_file" && continue
+    [[ "$template" == true ]] && continue
 
-    state="$(lxc_state "$vmid")"
     case "$state" in
       running)
         [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || continue
         ;;
       stopped)
         [[ "${CONFIG[UPDATE_STOPPED_LXC]}" == true ]] || continue
+        ;;
+      *)
+        fail "LXC $vmid returned unsupported state '$state'"
         ;;
     esac
 
@@ -289,32 +217,26 @@ list_lxc_targets() {
 }
 
 inspect_lxc_target() {
-  local target="$1" vmid config_file name state running custom_script=false
-  local script_dir lxc_dir running_script so_script package_script updater_script
-  local running_record so_record package_record updater_record
+  local target="$1" target_record vmid name state template custom_script=false
+  local target_script="$LXC_DIR/get-target.sh"
+  local so_script="$LXC_DIR/get-so-info.sh"
+  local package_script="$LXC_DIR/get-package-manager.sh"
+  local updater_script="$LXC_DIR/get-application-updater.sh"
+  local so_record package_record updater_record
   local os_id os_version package_manager application_updater
 
-  vmid="$(resolve_lxc_vmid "$target")"
-  config_file="/etc/pve/lxc/${vmid}.conf"
-  name="$(lxc_name_from_config "$config_file")"
-
-  lxc_is_template "$config_file" && fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
-
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
-  lxc_dir="$script_dir/lib/lxc"
-  running_script="$lxc_dir/get-running.sh"
-  so_script="$lxc_dir/get-so-info.sh"
-  package_script="$lxc_dir/get-package-manager.sh"
-  updater_script="$lxc_dir/get-application-updater.sh"
-
-  for helper in "$running_script" "$so_script" "$package_script" "$updater_script"; do
+  for helper in "$target_script" "$so_script" "$package_script" "$updater_script"; do
     [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
   done
 
-  running_record="$(bash "$running_script" "$vmid")" || fail "could not read running state for LXC $vmid ($name)"
-  running="$(field_value "$running_record" running)" || fail "running-state helper returned no running field"
-  state="$(field_value "$running_record" state)" || fail "running-state helper returned no state field"
-  [[ "$running" == true ]] || fail "LXC $vmid ($name) is $state; read-only guest inspection requires a running container"
+  target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
+  vmid="$(field_value "$target_record" vmid)" || fail "LXC target helper returned no vmid"
+  name="$(field_value "$target_record" name)" || fail "LXC target helper returned no name"
+  state="$(field_value "$target_record" state)" || fail "LXC target helper returned no state"
+  template="$(field_value "$target_record" template)" || fail "LXC target helper returned no template field"
+
+  [[ "$template" == false ]] || fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
+  [[ "$state" == running ]] || fail "LXC $vmid ($name) is $state; read-only guest inspection requires a running container"
 
   so_record="$(bash "$so_script" "$vmid")" || fail "could not read OS information for LXC $vmid ($name)"
   package_record="$(bash "$package_script" "$vmid")" || fail "could not read package-manager information for LXC $vmid ($name)"
@@ -332,19 +254,6 @@ inspect_lxc_target() {
 
   printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s package_manager=%s application_updater=%s custom_script=%s\n' \
     "$vmid" "$name" "$state" "$os_id" "$os_version" "$package_manager" "$application_updater" "$custom_script"
-}
-
-field_value() {
-  local record="$1" wanted="$2" field
-
-  for field in $record; do
-    if [[ "$field" == "$wanted="* ]]; then
-      printf '%s' "${field#*=}"
-      return 0
-    fi
-  done
-
-  return 1
 }
 
 plan_lxc_target() {
@@ -398,18 +307,22 @@ plan_lxc_target() {
 
 protect_lxc_target() {
   local target="$1" dry_run="$2"
-  local vmid config_file name state script_dir preflight_script backup_script
+  local target_record vmid name state template
+  local target_script="$LXC_DIR/get-target.sh"
+  local preflight_script="$LXC_DIR/preflight.sh"
+  local backup_script="$FORGE_DIR/lib/backup/create.sh"
 
   [[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by UPDATE_LXC=false"
+  [[ -r "$target_script" ]] || fail "LXC target helper is not readable: $target_script"
 
-  vmid="$(resolve_lxc_vmid "$target")"
-  config_file="/etc/pve/lxc/${vmid}.conf"
-  name="$(lxc_name_from_config "$config_file")"
-  [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
+  target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
+  vmid="$(field_value "$target_record" vmid)" || fail "LXC target helper returned no vmid"
+  name="$(field_value "$target_record" name)" || fail "LXC target helper returned no name"
+  state="$(field_value "$target_record" state)" || fail "LXC target helper returned no state"
+  template="$(field_value "$target_record" template)" || fail "LXC target helper returned no template field"
 
-  lxc_is_template "$config_file" && fail "LXC $vmid ($name) is a template and cannot be protected as an update target"
+  [[ "$template" == false ]] || fail "LXC $vmid ($name) is a template and cannot be protected as an update target"
 
-  state="$(lxc_state "$vmid")"
   case "$state" in
     running)
       [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || \
@@ -420,10 +333,6 @@ protect_lxc_target() {
         fail "LXC $vmid ($name) is stopped and UPDATE_STOPPED_LXC=false"
       ;;
   esac
-
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
-  preflight_script="$script_dir/lib/lxc/preflight.sh"
-  backup_script="$script_dir/lib/backup/create.sh"
 
   if [[ "${CONFIG[PREFLIGHT]}" == true ]]; then
     [[ -r "$preflight_script" ]] || fail "LXC preflight helper is not readable: $preflight_script"
@@ -476,7 +385,8 @@ main() {
     resolve-target)
       [[ $# -eq 2 ]] || fail "resolve-target requires exactly one VMID or name"
       load_and_validate_config
-      resolve_lxc_target "$2"
+      [[ -r "$LXC_DIR/get-target.sh" ]] || fail "LXC target helper is not readable: $LXC_DIR/get-target.sh"
+      bash "$LXC_DIR/get-target.sh" "$2"
       ;;
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
