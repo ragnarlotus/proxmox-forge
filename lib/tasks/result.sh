@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Reads one Proxmox task UPID and returns pending, success, or failure based on the authoritative task status and exitstatus.
 
 set -u
 
