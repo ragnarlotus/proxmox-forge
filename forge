@@ -151,13 +151,76 @@ validate_config() {
     fail "LOG_KEEP must be a positive integer"
 }
 
+load_and_validate_config() {
+  CONFIG=()
+  SEEN=()
+  load_config
+  validate_config
+}
+
+lxc_name_from_config() {
+  local config_file="$1"
+  sed -n 's/^hostname:[[:space:]]*//p' "$config_file" | head -n 1
+}
+
+resolve_lxc_target() {
+  local target="$1" vmid="" name="" state="" config_file=""
+  local candidate candidate_name
+  local -a matches=()
+
+  command -v pct >/dev/null 2>&1 || fail "pct is not available; Forge target resolution must run on a Proxmox VE host"
+  [[ -d /etc/pve/lxc ]] || fail "/etc/pve/lxc is not available; Forge cannot discover local LXC containers"
+
+  if [[ "$target" =~ ^[0-9]+$ ]]; then
+    vmid="$target"
+    config_file="/etc/pve/lxc/${vmid}.conf"
+    [[ -f "$config_file" ]] || fail "no LXC exists with exact VMID '$target'"
+  else
+    shopt -s nullglob
+    for candidate in /etc/pve/lxc/*.conf; do
+      candidate_name="$(lxc_name_from_config "$candidate")"
+      [[ "$candidate_name" == "$target" ]] || continue
+      matches+=("${candidate##*/}")
+    done
+    shopt -u nullglob
+
+    case "${#matches[@]}" in
+      0)
+        fail "no LXC exists with exact name '$target'"
+        ;;
+      1)
+        vmid="${matches[0]%.conf}"
+        config_file="/etc/pve/lxc/${vmid}.conf"
+        ;;
+      *)
+        printf -v candidate '%s, ' "${matches[@]%.conf}"
+        candidate="${candidate%, }"
+        fail "LXC name '$target' is ambiguous; exact matches: VMIDs $candidate"
+        ;;
+    esac
+  fi
+
+  name="$(lxc_name_from_config "$config_file")"
+  [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
+
+  state="$(pct status "$vmid")" || fail "could not read state for LXC $vmid"
+  state="${state#status: }"
+
+  if grep -Eq '^template:[[:space:]]*1([[:space:]]|$)' "$config_file"; then
+    printf 'type=lxc vmid=%s name=%s state=%s template=true\n' "$vmid" "$name" "$state"
+  else
+    printf 'type=lxc vmid=%s name=%s state=%s template=false\n' "$vmid" "$name" "$state"
+  fi
+}
+
 usage() {
   cat <<'EOF'
-Usage: forge COMMAND
+Usage: forge COMMAND [ARGUMENTS]
 
 Commands:
-  validate-config   Load and validate the complete Forge configuration.
-  help              Show this help.
+  validate-config        Load and validate the complete Forge configuration.
+  resolve-target TARGET  Resolve one local LXC by exact VMID or exact name.
+  help                   Show this help.
 EOF
 }
 
@@ -167,9 +230,13 @@ main() {
   case "$command" in
     validate-config)
       [[ $# -eq 1 ]] || fail "validate-config does not accept additional arguments"
-      load_config
-      validate_config
+      load_and_validate_config
       printf 'Forge configuration OK: %s\n' "$CONFIG_FILE"
+      ;;
+    resolve-target)
+      [[ $# -eq 2 ]] || fail "resolve-target requires exactly one VMID or name"
+      load_and_validate_config
+      resolve_lxc_target "$2"
       ;;
     help|-h|--help)
       usage
