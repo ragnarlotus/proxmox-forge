@@ -7,9 +7,15 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: proxmox-backup-plan.sh VMID"
+[[ $# -ge 1 && $# -le 2 ]] || fail "usage: proxmox-backup-plan.sh VMID [--json]"
 vmid="$1"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
+
+output_mode=human
+if [[ $# -eq 2 ]]; then
+  [[ "$2" == --json ]] || fail "unknown option '$2'"
+  output_mode=json
+fi
 
 command -v pvesh >/dev/null 2>&1 || fail "pvesh is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
@@ -42,13 +48,14 @@ jobs_json="$(printf '%s\n' "$policy_output" | sed '1d')"
 
 usage_text="$(pvesh usage "/nodes/$node/vzdump" -v)" || fail "could not read vzdump endpoint schema from Proxmox"
 
-VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
+VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" perl -MJSON::PP -e '
   use strict;
   use warnings;
 
   my $vmid = $ENV{VMID};
   my $node = $ENV{NODE};
   my $usage = $ENV{USAGE_TEXT};
+  my $output_mode = $ENV{OUTPUT_MODE};
   my $jobs = decode_json(do { local $/; <STDIN> });
 
   die "policy data is not an array\n" unless ref($jobs) eq "ARRAY";
@@ -98,10 +105,10 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
   }
 
   my @params;
-  push @params, ["vmid", $vmid, "target"];
+  push @params, { name => "vmid", value => "$vmid", source => "target" };
 
   if (defined $job->{id} && $accepted{"job-id"}) {
-    push @params, ["job-id", "$job->{id}", "job"];
+    push @params, { name => "job-id", value => "$job->{id}", source => "job" };
   }
 
   for my $key (sort keys %$job) {
@@ -113,7 +120,20 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
 
     my $value = cli_value($key, $job->{$key});
     next unless defined $value;
-    push @params, [$key, $value, "job"];
+    push @params, { name => $key, value => $value, source => "job" };
+  }
+
+  if ($output_mode eq "json") {
+    my $plan = {
+      vmid => "$vmid",
+      node => "$node",
+      job_id => defined($job->{id}) ? "$job->{id}" : "unknown",
+      endpoint => "/nodes/$node/vzdump",
+      parameters => \@params,
+    };
+
+    print JSON::PP->new->canonical(1)->pretty(1)->encode($plan);
+    exit 0;
   }
 
   print "vmid=$vmid\n";
@@ -122,7 +142,9 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
   print "endpoint=/nodes/$node/vzdump\n";
 
   for my $param (@params) {
-    my ($key, $value, $source) = @$param;
+    my $key = $param->{name};
+    my $value = $param->{value};
+    my $source = $param->{source};
     $value =~ s/\\/\\\\/g;
     $value =~ s/\n/\\n/g;
     print "parameter=$key source=$source value=$value\n";
