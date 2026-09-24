@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Reads live Proxmox backup jobs and returns every enabled job whose scope currently applies to one LXC VMID on the local node.
 
 set -u
 
