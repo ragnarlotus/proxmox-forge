@@ -17,7 +17,7 @@ CONFIG_GET_SCRIPT="$CONFIG_DIR/get.sh"
 
 [[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
 # shellcheck source=/dev/null
-source "$CONFIG_GET_SCRIPT"
+source "$CONFIG_GET_SCRIPT" || fail "could not load config helpers"
 
 field_value() {
   local record="$1" wanted="$2" field
