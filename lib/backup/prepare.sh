@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Converts the single applicable Proxmox backup job into a validated one-target vzdump execution plan for an LXC.
 
 set -u
 
