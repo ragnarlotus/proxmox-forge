@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Converts the current LXC state into a simple running=true/false record for callers that only need availability state.
 
 set -u
 
