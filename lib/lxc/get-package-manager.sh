@@ -1,0 +1,59 @@
+#!/bin/bash
+
+set -u
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || fail "usage: get-package-manager.sh VMID"
+vmid="$1"
+[[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
+
+command -v pct >/dev/null 2>&1 || fail "pct is not available"
+[[ -f "/etc/pve/lxc/${vmid}.conf" ]] || fail "LXC $vmid does not exist"
+
+state="$(pct status "$vmid")" || fail "could not read state for LXC $vmid"
+state="${state#status: }"
+[[ "$state" == running ]] || fail "LXC $vmid is $state; package-manager inspection requires a running container"
+
+result="$(pct exec "$vmid" -- sh -c '
+  set -u
+
+  package_manager=unknown
+  dpkg_audit=not_applicable
+  package_process=none
+
+  if command -v apt-get >/dev/null 2>&1; then
+    package_manager=apt
+  elif command -v dnf >/dev/null 2>&1; then
+    package_manager=dnf
+  elif command -v yum >/dev/null 2>&1; then
+    package_manager=yum
+  elif command -v apk >/dev/null 2>&1; then
+    package_manager=apk
+  elif command -v pacman >/dev/null 2>&1; then
+    package_manager=pacman
+  fi
+
+  if [ "$package_manager" = apt ]; then
+    if audit=$(dpkg --audit 2>&1); then
+      if [ -n "$audit" ]; then
+        dpkg_audit=issues
+      else
+        dpkg_audit=clean
+      fi
+    else
+      dpkg_audit=error
+    fi
+
+    package_process=$(ps -eo comm= 2>/dev/null | awk "\$1 ~ /^(apt|apt-get|dpkg|unattended-upgr)$/ {print \$1; exit}")
+    [ -n "$package_process" ] || package_process=none
+  fi
+
+  printf "package_manager=%s dpkg_audit=%s package_process=%s\n" \
+    "$package_manager" "$dpkg_audit" "$package_process"
+' </dev/null)" || fail "package-manager inspection failed for LXC $vmid"
+
+printf 'vmid=%s %s\n' "$vmid" "$result"
