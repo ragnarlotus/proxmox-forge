@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Reports whether one local LXC is marked as a Proxmox template in its current configuration.
 
 set -u
 
