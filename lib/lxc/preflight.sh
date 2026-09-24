@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Orchestrates read-only LXC readiness checks and blocks the update flow when required preflight conditions are not satisfied.
 
 set -u
 
