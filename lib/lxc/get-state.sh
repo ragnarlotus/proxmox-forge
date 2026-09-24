@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Returns the current Proxmox runtime state of one local LXC after validating the environment and VMID.
 
 set -u
 
