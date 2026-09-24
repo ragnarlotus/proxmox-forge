@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Reads operating-system identity, version, root filesystem free space, and available memory from one running LXC.
 
 set -u
 
