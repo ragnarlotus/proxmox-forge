@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Detects the supported package manager in one running LXC and reports package-manager health checks relevant to safe updates.
 
 set -u
 
