@@ -1,39 +1,33 @@
 #!/bin/bash
-# Description: Main Forge CLI orchestrator. Validates configuration and dispatches commands to specialized scripts without implementing domain logic.
+# Description: Main Forge CLI orchestrator. Loads shared orchestration helpers and dispatches commands without implementing domain logic.
 
 set -u
 
 CONFIG_FILE="/etc/proxmox-forge/forge.conf"
 
-fail() {
-  printf 'ERROR: %s\n' "$*" >&2
+FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
+  printf 'ERROR: could not determine Forge directory\n' >&2
   exit 1
 }
 
-FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
+FAIL_SCRIPT="$FORGE_DIR/lib/helpers/fail.sh"
+HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
 LXC_TARGET_SCRIPT="$FORGE_DIR/lib/lxc/get-target.sh"
 LXC_LIST_TARGETS_SCRIPT="$FORGE_DIR/lib/lxc/list-targets.sh"
 LXC_GET_INFO_SCRIPT="$FORGE_DIR/lib/lxc/get-info.sh"
 CHECK_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/workflows/check-requirements.sh"
 
+[[ -r "$FAIL_SCRIPT" ]] || {
+  printf 'ERROR: failure helper is not readable: %s\n' "$FAIL_SCRIPT" >&2
+  exit 1
+}
+# shellcheck source=/dev/null
+source "$FAIL_SCRIPT"
+
 [[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
 # shellcheck source=/dev/null
 source "$CONFIG_GET_SCRIPT" || fail "could not load config helpers"
-
-usage() {
-  cat <<'EOF'
-Usage: forge COMMAND [ARGUMENTS]
-
-Commands:
-  validate-config             Load and validate the complete Forge configuration.
-  resolve-target TARGET       Resolve one local LXC by exact VMID or exact name.
-  list-lxc-targets            List LXC targets enabled by the current Forge scope.
-  inspect-target TARGET       Read the complete available information for one running LXC.
-  check-requirements TARGET   Check whether one LXC satisfies current update requirements.
-  help                        Show this help.
-EOF
-}
 
 main() {
   local command="${1:-}"
@@ -72,10 +66,12 @@ main() {
       bash "$CHECK_REQUIREMENTS_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
       ;;
     help|-h|--help)
-      usage
+      [[ -r "$HELP_SCRIPT" ]] || fail "CLI help script is not readable: $HELP_SCRIPT"
+      bash "$HELP_SCRIPT"
       ;;
     '')
-      usage
+      [[ -r "$HELP_SCRIPT" ]] || fail "CLI help script is not readable: $HELP_SCRIPT"
+      bash "$HELP_SCRIPT"
       exit 1
       ;;
     *)
