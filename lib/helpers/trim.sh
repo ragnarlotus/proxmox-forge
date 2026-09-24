@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -u
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || fail "usage: trim.sh VALUE"
+
+value="$1"
+value="${value#"${value%%[![:space:]]*}"}"
+value="${value%"${value##*[![:space:]]}"}"
+
+printf '%s' "$value"
