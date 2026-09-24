@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Removes leading and trailing whitespace from one input value without altering its internal content.
 
 set -u
 
