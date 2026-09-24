@@ -77,10 +77,10 @@ config_validate_boolean() {
 config_validate() {
   local key
 
-  [[ -n "${CONFIG+x}" && -n "${SEEN+x}" ]] || {
+  if ! declare -p CONFIG >/dev/null 2>&1 || ! declare -p SEEN >/dev/null 2>&1; then
     config_validate_fail "configuration has not been loaded"
     return 1
-  }
+  fi
 
   for key in "${!SEEN[@]}"; do
     config_is_known_key "$key" || {
