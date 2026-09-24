@@ -9,6 +9,17 @@ This is a catalogue, not a commitment to implement every item. Items stay here e
 - [ ] Not implemented
 - [x] Implemented
 
+## Initial scope constraints
+
+These are agreed behavioural requirements for the initial implementation. They do not remove broader capabilities from the catalogue below.
+
+- [ ] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
+- [ ] **Stopped LXC scope** — while `UPDATE_STOPPED_LXC=false`, stopped containers are skipped and left completely untouched; Forge does not start them or track/restore their state.
+- [ ] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
+- [ ] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
+- [ ] **Validate before mutation** — load and validate the complete configuration and resolve the selected targets before the first mutating operation.
+- [ ] **Initial invocation model** — no scheduler, background job, daemon or Web UI. Every initial-scope run starts from an explicit user invocation.
+
 ---
 
 ## A. Discovery and inventory
@@ -122,6 +133,8 @@ This is a catalogue, not a commitment to implement every item. Items stay here e
 - [ ] **F086** Configurable automatic rollback after failure.
 - [ ] **F087** Retention/cleanup policy for snapshots created by Forge.
 - [ ] **F088** Never remove the recovery artifact before the final result is known.
+
+> Guest rollback capabilities do not apply to the Proxmox host itself.
 
 ## I. Guest lifecycle
 
