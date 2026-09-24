@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Resolves an exact LXC VMID or hostname and returns its canonical target record with name, state, and template flag.
 
 set -u
 
