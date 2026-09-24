@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Polls one Proxmox task UPID until it succeeds, fails, or exceeds the configured timeout.
 
 set -u
 
