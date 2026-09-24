@@ -287,6 +287,12 @@ This is a catalogue, not a commitment to implement every item. Items stay here e
 
 ---
 
+# Migration / replacement requirement
+
+- [ ] **Ultimate Updater replacement** — when Forge is ready to replace the currently installed updater, remove Ultimate Updater completely: its installed files, services/timers/jobs, configuration, generated state/log artifacts and any other components installed specifically for Ultimate Updater. The cleanup must first distinguish Ultimate Updater-owned files from user-owned custom scripts/configuration that need to be migrated or preserved by Forge.
+
+---
+
 # Product capability model
 
 Forge is organised conceptually around six major capabilities:
