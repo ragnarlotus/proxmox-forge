@@ -289,56 +289,49 @@ list_lxc_targets() {
 }
 
 inspect_lxc_target() {
-  local target="$1" vmid config_file name state custom_script=false
-  local inspection
+  local target="$1" vmid config_file name state running custom_script=false
+  local script_dir lxc_dir running_script so_script package_script updater_script
+  local running_record so_record package_record updater_record
+  local os_id os_version package_manager application_updater
 
   vmid="$(resolve_lxc_vmid "$target")"
   config_file="/etc/pve/lxc/${vmid}.conf"
   name="$(lxc_name_from_config "$config_file")"
-  state="$(lxc_state "$vmid")"
 
   lxc_is_template "$config_file" && fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
-  [[ "$state" == running ]] || fail "LXC $vmid ($name) is $state; read-only guest inspection requires a running container"
+
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
+  lxc_dir="$script_dir/lib/lxc"
+  running_script="$lxc_dir/get-running.sh"
+  so_script="$lxc_dir/get-so-info.sh"
+  package_script="$lxc_dir/get-package-manager.sh"
+  updater_script="$lxc_dir/get-application-updater.sh"
+
+  for helper in "$running_script" "$so_script" "$package_script" "$updater_script"; do
+    [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
+  done
+
+  running_record="$(bash "$running_script" "$vmid")" || fail "could not read running state for LXC $vmid ($name)"
+  running="$(field_value "$running_record" running)" || fail "running-state helper returned no running field"
+  state="$(field_value "$running_record" state)" || fail "running-state helper returned no state field"
+  [[ "$running" == true ]] || fail "LXC $vmid ($name) is $state; read-only guest inspection requires a running container"
+
+  so_record="$(bash "$so_script" "$vmid")" || fail "could not read OS information for LXC $vmid ($name)"
+  package_record="$(bash "$package_script" "$vmid")" || fail "could not read package-manager information for LXC $vmid ($name)"
+  updater_record="$(bash "$updater_script" "$vmid")" || fail "could not read application-updater information for LXC $vmid ($name)"
+
+  os_id="$(field_value "$so_record" os_id)" || fail "OS helper returned no os_id"
+  os_version="$(field_value "$so_record" os_version)" || fail "OS helper returned no os_version"
+  package_manager="$(field_value "$package_record" package_manager)" || fail "package-manager helper returned no package_manager"
+  application_updater="$(field_value "$updater_record" application_updater)" || fail "application-updater helper returned no application_updater"
 
   if [[ -d "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" ]] &&
      find "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
     custom_script=true
   fi
 
-  inspection="$(pct exec "$vmid" -- sh -c '
-    os_id=unknown
-    os_version=unknown
-    package_manager=unknown
-    application_updater=none
-
-    if [ -r /etc/os-release ]; then
-      . /etc/os-release
-      os_id=${ID:-unknown}
-      os_version=${VERSION_ID:-unknown}
-    fi
-
-    if command -v apt-get >/dev/null 2>&1; then
-      package_manager=apt
-    elif command -v dnf >/dev/null 2>&1; then
-      package_manager=dnf
-    elif command -v yum >/dev/null 2>&1; then
-      package_manager=yum
-    elif command -v apk >/dev/null 2>&1; then
-      package_manager=apk
-    elif command -v pacman >/dev/null 2>&1; then
-      package_manager=pacman
-    fi
-
-    if [ -x /usr/bin/update ]; then
-      application_updater=/usr/bin/update
-    fi
-
-    printf "os_id=%s os_version=%s package_manager=%s application_updater=%s\n" \
-      "$os_id" "$os_version" "$package_manager" "$application_updater"
-  ' </dev/null)" || fail "read-only inspection failed for LXC $vmid ($name)"
-
-  printf 'type=lxc vmid=%s name=%s state=%s template=false %s custom_script=%s\n' \
-    "$vmid" "$name" "$state" "$inspection" "$custom_script"
+  printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s package_manager=%s application_updater=%s custom_script=%s\n' \
+    "$vmid" "$name" "$state" "$os_id" "$os_version" "$package_manager" "$application_updater" "$custom_script"
 }
 
 field_value() {
