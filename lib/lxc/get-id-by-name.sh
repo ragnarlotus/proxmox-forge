@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Resolves one exact LXC hostname to its VMID, failing when no exact match exists or when the name is ambiguous.
 
 set -u
 
