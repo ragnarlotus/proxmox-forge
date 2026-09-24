@@ -396,6 +396,58 @@ plan_lxc_target() {
   printf 'rollback_on_failure=%s\n' "${CONFIG[ROLLBACK_ON_FAILURE]}"
 }
 
+protect_lxc_target() {
+  local target="$1" dry_run="$2"
+  local vmid config_file name state script_dir preflight_script backup_script
+
+  [[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by UPDATE_LXC=false"
+
+  vmid="$(resolve_lxc_vmid "$target")"
+  config_file="/etc/pve/lxc/${vmid}.conf"
+  name="$(lxc_name_from_config "$config_file")"
+  [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
+
+  lxc_is_template "$config_file" && fail "LXC $vmid ($name) is a template and cannot be protected as an update target"
+
+  state="$(lxc_state "$vmid")"
+  case "$state" in
+    running)
+      [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || \
+        fail "LXC $vmid ($name) is running but UPDATE_RUNNING_LXC=false"
+      ;;
+    stopped)
+      [[ "${CONFIG[UPDATE_STOPPED_LXC]}" == true ]] || \
+        fail "LXC $vmid ($name) is stopped and UPDATE_STOPPED_LXC=false"
+      ;;
+  esac
+
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
+  preflight_script="$script_dir/lib/lxc/preflight.sh"
+  backup_script="$script_dir/lib/backup/create.sh"
+
+  if [[ "${CONFIG[PREFLIGHT]}" == true ]]; then
+    [[ -r "$preflight_script" ]] || fail "LXC preflight helper is not readable: $preflight_script"
+    printf 'stage=preflight vmid=%s\n' "$vmid"
+    bash "$preflight_script" "$vmid" || fail "preflight failed for LXC $vmid ($name)"
+  else
+    printf 'stage=preflight skipped vmid=%s\n' "$vmid"
+  fi
+
+  if [[ "${CONFIG[PROTECTION]}" == true ]]; then
+    [[ -r "$backup_script" ]] || fail "backup create helper is not readable: $backup_script"
+    printf 'stage=protection vmid=%s dry_run=%s\n' "$vmid" "$dry_run"
+    if [[ "$dry_run" == true ]]; then
+      bash "$backup_script" "$vmid" --dry-run || fail "backup protection dry-run failed for LXC $vmid ($name)"
+    else
+      bash "$backup_script" "$vmid" || fail "backup protection failed for LXC $vmid ($name)"
+    fi
+  else
+    printf 'stage=protection skipped vmid=%s\n' "$vmid"
+  fi
+
+  printf 'protect-target=ok vmid=%s dry_run=%s\n' "$vmid" "$dry_run"
+}
+
 usage() {
   cat <<'EOF'
 Usage: forge COMMAND [ARGUMENTS]
@@ -406,6 +458,8 @@ Commands:
   list-lxc-targets       List LXC targets enabled by the current Forge scope.
   inspect-target TARGET  Read OS/updater capabilities from one running LXC.
   plan-target TARGET     Build the read-only update plan for one running LXC.
+  protect-target TARGET [--dry-run]
+                         Run preflight and Proxmox backup protection for one LXC.
   help                   Show this help.
 EOF
 }
@@ -438,6 +492,16 @@ main() {
       [[ $# -eq 2 ]] || fail "plan-target requires exactly one VMID or name"
       load_and_validate_config
       plan_lxc_target "$2"
+      ;;
+    protect-target)
+      [[ $# -ge 2 && $# -le 3 ]] || fail "protect-target requires TARGET and optional --dry-run"
+      dry_run=false
+      if [[ $# -eq 3 ]]; then
+        [[ "$3" == --dry-run ]] || fail "unknown protect-target option '$3'"
+        dry_run=true
+      fi
+      load_and_validate_config
+      protect_lxc_target "$2" "$dry_run"
       ;;
     help|-h|--help)
       usage
