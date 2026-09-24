@@ -1,53 +1,9 @@
 #!/bin/bash
+# Description: Main Forge CLI orchestrator. Dispatches commands and coordinates specialized scripts while keeping domain logic out of the entry point.
 
 set -u
 
 CONFIG_FILE="/etc/proxmox-forge/forge.conf"
-
-readonly -a REQUIRED_KEYS=(
-  UPDATE_HOST
-  UPDATE_LXC
-  UPDATE_VM
-  UPDATE_EXTERNAL
-  UPDATE_RUNNING_LXC
-  UPDATE_STOPPED_LXC
-  CONTINUE_AFTER_TARGET_FAILURE
-  UPDATE_LXC_OS
-  UPDATE_LXC_APPLICATION
-  RUN_CUSTOM_SCRIPTS
-  CUSTOM_SCRIPTS_DIR
-  PREFLIGHT
-  PROTECTION
-  ROLLBACK_ON_FAILURE
-  HEALTH_CHECK
-  LOG_DIR
-  LOG_KEEP
-)
-
-readonly -a OPTIONAL_KEYS=(
-  UPDATE_ONLY
-  UPDATE_EXCLUDE
-)
-
-readonly -a BOOLEAN_KEYS=(
-  UPDATE_HOST
-  UPDATE_LXC
-  UPDATE_VM
-  UPDATE_EXTERNAL
-  UPDATE_RUNNING_LXC
-  UPDATE_STOPPED_LXC
-  CONTINUE_AFTER_TARGET_FAILURE
-  UPDATE_LXC_OS
-  UPDATE_LXC_APPLICATION
-  RUN_CUSTOM_SCRIPTS
-  PREFLIGHT
-  PROTECTION
-  ROLLBACK_ON_FAILURE
-  HEALTH_CHECK
-)
-
-declare -A CONFIG=()
-declare -A SEEN=()
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -56,108 +12,12 @@ fail() {
 
 FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine Forge directory"
 LXC_DIR="$FORGE_DIR/lib/lxc"
-HELPERS_DIR="$FORGE_DIR/lib/helpers"
+CONFIG_DIR="$FORGE_DIR/lib/config"
+CONFIG_GET_SCRIPT="$CONFIG_DIR/get.sh"
 
-is_known_key() {
-  local wanted="$1" key
-
-  for key in "${REQUIRED_KEYS[@]}" "${OPTIONAL_KEYS[@]}"; do
-    [[ "$key" == "$wanted" ]] && return 0
-  done
-
-  return 1
-}
-
-parse_value() {
-  local raw
-  local trim_script="$HELPERS_DIR/trim.sh"
-
-  [[ -r "$trim_script" ]] || fail "trim helper is not readable: $trim_script"
-  raw="$(bash "$trim_script" "$1")" || fail "could not trim configuration value"
-
-  if [[ "$raw" =~ ^\"([^\"]*)\"$ ]]; then
-    printf '%s' "${BASH_REMATCH[1]}"
-    return 0
-  fi
-
-  if [[ "$raw" =~ ^\'([^\']*)\'$ ]]; then
-    printf '%s' "${BASH_REMATCH[1]}"
-    return 0
-  fi
-
-  if [[ "$raw" =~ [[:space:]] ]]; then
-    return 1
-  fi
-
-  printf '%s' "$raw"
-}
-
-load_config() {
-  local line line_number=0 key raw_value value
-  local trim_script="$HELPERS_DIR/trim.sh"
-
-  [[ -r "$CONFIG_FILE" ]] || fail "configuration file is not readable: $CONFIG_FILE"
-  [[ -r "$trim_script" ]] || fail "trim helper is not readable: $trim_script"
-
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    ((line_number += 1))
-    line="$(bash "$trim_script" "$line")" || fail "could not trim configuration line $line_number"
-
-    [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
-
-    if [[ ! "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]]; then
-      fail "invalid configuration syntax at $CONFIG_FILE:$line_number"
-    fi
-
-    key="${BASH_REMATCH[1]}"
-    raw_value="${BASH_REMATCH[2]}"
-
-    is_known_key "$key" || fail "unknown configuration key '$key' at $CONFIG_FILE:$line_number"
-    [[ -z "${SEEN[$key]+x}" ]] || fail "duplicate configuration key '$key' at $CONFIG_FILE:$line_number"
-
-    value="$(parse_value "$raw_value")" || fail "invalid value for '$key' at $CONFIG_FILE:$line_number"
-
-    CONFIG["$key"]="$value"
-    SEEN["$key"]=1
-  done < "$CONFIG_FILE"
-}
-
-validate_boolean() {
-  local key="$1" value="${CONFIG[$1]}"
-
-  case "$value" in
-    true|false) ;;
-    *) fail "$key must be true or false (got '$value')" ;;
-  esac
-}
-
-validate_config() {
-  local key
-
-  for key in "${REQUIRED_KEYS[@]}"; do
-    [[ -n "${SEEN[$key]+x}" ]] || fail "missing required configuration key '$key'"
-  done
-
-  for key in "${BOOLEAN_KEYS[@]}"; do
-    validate_boolean "$key"
-  done
-
-  [[ "${CONFIG[CUSTOM_SCRIPTS_DIR]}" == /* ]] || \
-    fail "CUSTOM_SCRIPTS_DIR must be an absolute path"
-
-  [[ "${CONFIG[LOG_DIR]}" == /* ]] || \
-    fail "LOG_DIR must be an absolute path"
-
-  [[ "${CONFIG[LOG_KEEP]}" =~ ^[1-9][0-9]*$ ]] || \
-    fail "LOG_KEEP must be a positive integer"
-}
-
-load_and_validate_config() {
-  CONFIG=()
-  SEEN=()
-  load_config
-  validate_config
-}
+[[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
+# shellcheck source=/dev/null
+source "$CONFIG_GET_SCRIPT"
 
 field_value() {
   local record="$1" wanted="$2" field
@@ -379,28 +239,28 @@ main() {
   case "$command" in
     validate-config)
       [[ $# -eq 1 ]] || fail "validate-config does not accept additional arguments"
-      load_and_validate_config
+      config_get "$CONFIG_FILE" || exit 1
       printf 'Forge configuration OK: %s\n' "$CONFIG_FILE"
       ;;
     resolve-target)
       [[ $# -eq 2 ]] || fail "resolve-target requires exactly one VMID or name"
-      load_and_validate_config
+      config_get "$CONFIG_FILE" || exit 1
       [[ -r "$LXC_DIR/get-target.sh" ]] || fail "LXC target helper is not readable: $LXC_DIR/get-target.sh"
       bash "$LXC_DIR/get-target.sh" "$2"
       ;;
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
-      load_and_validate_config
+      config_get "$CONFIG_FILE" || exit 1
       list_lxc_targets
       ;;
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
-      load_and_validate_config
+      config_get "$CONFIG_FILE" || exit 1
       inspect_lxc_target "$2"
       ;;
     plan-target)
       [[ $# -eq 2 ]] || fail "plan-target requires exactly one VMID or name"
-      load_and_validate_config
+      config_get "$CONFIG_FILE" || exit 1
       plan_lxc_target "$2"
       ;;
     protect-target)
@@ -410,7 +270,7 @@ main() {
         [[ "$3" == --dry-run ]] || fail "unknown protect-target option '$3'"
         dry_run=true
       fi
-      load_and_validate_config
+      config_get "$CONFIG_FILE" || exit 1
       protect_lxc_target "$2" "$dry_run"
       ;;
     help|-h|--help)
