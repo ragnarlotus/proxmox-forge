@@ -1,4 +1,5 @@
 #!/bin/bash
+# Description: Detects whether one running LXC exposes the Community Scripts application updater at /usr/bin/update.
 
 set -u
 
