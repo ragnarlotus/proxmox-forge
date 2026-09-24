@@ -341,6 +341,68 @@ inspect_lxc_target() {
     "$vmid" "$name" "$state" "$inspection" "$custom_script"
 }
 
+field_value() {
+  local record="$1" wanted="$2" field
+
+  for field in $record; do
+    if [[ "$field" == "$wanted="* ]]; then
+      printf '%s' "${field#*=}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+plan_lxc_target() {
+  local target="$1" inspection vmid name state package_manager application_updater custom_script
+
+  [[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by UPDATE_LXC=false"
+
+  inspection="$(inspect_lxc_target "$target")"
+  vmid="$(field_value "$inspection" vmid)" || fail "inspection did not return vmid"
+  name="$(field_value "$inspection" name)" || fail "inspection did not return name"
+  state="$(field_value "$inspection" state)" || fail "inspection did not return state"
+  package_manager="$(field_value "$inspection" package_manager)" || fail "inspection did not return package_manager"
+  application_updater="$(field_value "$inspection" application_updater)" || fail "inspection did not return application_updater"
+  custom_script="$(field_value "$inspection" custom_script)" || fail "inspection did not return custom_script"
+
+  case "$state" in
+    running)
+      [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || \
+        fail "LXC $vmid ($name) is running but UPDATE_RUNNING_LXC=false"
+      ;;
+    stopped)
+      [[ "${CONFIG[UPDATE_STOPPED_LXC]}" == true ]] || \
+        fail "LXC $vmid ($name) is stopped and UPDATE_STOPPED_LXC=false"
+      ;;
+  esac
+
+  if [[ "${CONFIG[UPDATE_LXC_OS]}" == true && "$package_manager" == unknown ]]; then
+    fail "LXC $vmid ($name) has no supported package manager for the requested OS update"
+  fi
+
+  printf 'target type=lxc vmid=%s name=%s state=%s\n' "$vmid" "$name" "$state"
+  printf 'stage=preflight enabled=%s\n' "${CONFIG[PREFLIGHT]}"
+  printf 'stage=protection enabled=%s source=proxmox-policy\n' "${CONFIG[PROTECTION]}"
+  printf 'stage=os_update enabled=%s adapter=%s\n' "${CONFIG[UPDATE_LXC_OS]}" "$package_manager"
+
+  if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true && "$application_updater" != none ]]; then
+    printf 'stage=application_update enabled=true updater=%s\n' "$application_updater"
+  else
+    printf 'stage=application_update enabled=false updater=%s\n' "$application_updater"
+  fi
+
+  if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true && "$custom_script" == true ]]; then
+    printf 'stage=custom_scripts enabled=true path=%s/%s\n' "${CONFIG[CUSTOM_SCRIPTS_DIR]}" "$vmid"
+  else
+    printf 'stage=custom_scripts enabled=false path=%s/%s\n' "${CONFIG[CUSTOM_SCRIPTS_DIR]}" "$vmid"
+  fi
+
+  printf 'stage=health_check enabled=%s\n' "${CONFIG[HEALTH_CHECK]}"
+  printf 'rollback_on_failure=%s\n' "${CONFIG[ROLLBACK_ON_FAILURE]}"
+}
+
 usage() {
   cat <<'EOF'
 Usage: forge COMMAND [ARGUMENTS]
@@ -350,6 +412,7 @@ Commands:
   resolve-target TARGET  Resolve one local LXC by exact VMID or exact name.
   list-lxc-targets       List LXC targets enabled by the current Forge scope.
   inspect-target TARGET  Read OS/updater capabilities from one running LXC.
+  plan-target TARGET     Build the read-only update plan for one running LXC.
   help                   Show this help.
 EOF
 }
@@ -377,6 +440,11 @@ main() {
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
       load_and_validate_config
       inspect_lxc_target "$2"
+      ;;
+    plan-target)
+      [[ $# -eq 2 ]] || fail "plan-target requires exactly one VMID or name"
+      load_and_validate_config
+      plan_lxc_target "$2"
       ;;
     help|-h|--help)
       usage
