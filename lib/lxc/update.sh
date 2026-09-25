@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Orchestrates one LXC update, owns its single per-attempt log, and delegates update stages without implementing their domain logic.
+# Description: Orchestrates one protected LXC update, owns its single per-attempt log, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
 
 set -u
 
@@ -18,7 +18,14 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 config_get_script="$lib_dir/config/get.sh"
 target_script="$script_dir/get-target.sh"
 field_script="$script_dir/get-field.sh"
+state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
+backup_create_script="$lib_dir/backup/create.sh"
+backup_restore_script="$lib_dir/backup/restore.sh"
+os_update_script="$script_dir/update/os.sh"
+application_update_script="$script_dir/update/application.sh"
+custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
+health_script="$script_dir/health.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
@@ -27,12 +34,23 @@ for helper in \
   "$config_get_script" \
   "$target_script" \
   "$field_script" \
+  "$state_script" \
   "$requirements_script" \
+  "$backup_create_script" \
+  "$backup_restore_script" \
+  "$os_update_script" \
+  "$application_update_script" \
+  "$custom_scripts_update_script" \
+  "$health_script" \
   "$log_init_script" \
   "$log_capture_script" \
   "$log_write_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
+
+command -v pct >/dev/null 2>&1 || fail "pct is not available"
+command -v mktemp >/dev/null 2>&1 || fail "mktemp is not available"
+command -v tee >/dev/null 2>&1 || fail "tee is not available"
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
@@ -54,6 +72,7 @@ case "$state" in
     ;;
   stopped)
     [[ "${CONFIG[UPDATE_STOPPED_LXC]}" == true ]] || fail "stopped LXCs are disabled by configuration"
+    fail "updating stopped LXCs is not implemented yet"
     ;;
   *)
     fail "unsupported LXC state '$state' for VMID $vmid"
@@ -74,6 +93,151 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
   "state=$state" || fail "could not record update start for LXC $vmid"
 
 started_at="$(date +%s)" || fail "could not create update start timestamp"
+backup_volume=""
+
+record_skipped_stage() {
+  local stage_name="$1"
+  local reason="$2"
+
+  bash "$log_write_script" "$log_file" INFO stage_skipped \
+    "stage=$stage_name" \
+    "reason=$reason" || fail "could not record skipped $stage_name stage"
+}
+
+finish_failed() {
+  local failed_stage="$1"
+  local primary_result="$2"
+  local finished_at
+  local duration_seconds
+
+  finished_at="$(date +%s)" || finished_at="$started_at"
+  duration_seconds=$((finished_at - started_at))
+
+  bash "$log_write_script" "$log_file" ERROR target_update_end \
+    "vmid=$vmid" \
+    "status=failed" \
+    "stage=$failed_stage" \
+    "exit_code=$primary_result" \
+    "duration_seconds=$duration_seconds" || \
+    printf 'ERROR: could not record failed update result in %s\n' "$log_file" >&2
+
+  printf 'update=failed vmid=%s stage=%s exit_code=%s log=%s\n' \
+    "$vmid" "$failed_stage" "$primary_result" "$log_file"
+  exit "$primary_result"
+}
+
+attempt_recovery() {
+  local failed_stage="$1"
+  local primary_result="$2"
+  local current_state
+  local recovery_result
+
+  if [[ "${CONFIG[ROLLBACK_ON_FAILURE]}" != true ]]; then
+    bash "$log_write_script" "$log_file" WARN recovery_skipped \
+      "vmid=$vmid" \
+      "failed_stage=$failed_stage" \
+      "primary_exit_code=$primary_result" \
+      "reason=disabled" || \
+      printf 'ERROR: could not record skipped recovery in %s\n' "$log_file" >&2
+    return 0
+  fi
+
+  if [[ -z "$backup_volume" ]]; then
+    bash "$log_write_script" "$log_file" WARN recovery_skipped \
+      "vmid=$vmid" \
+      "failed_stage=$failed_stage" \
+      "primary_exit_code=$primary_result" \
+      "reason=no_recovery_artifact" || \
+      printf 'ERROR: could not record unavailable recovery in %s\n' "$log_file" >&2
+    return 0
+  fi
+
+  bash "$log_write_script" "$log_file" WARN recovery_start \
+    "vmid=$vmid" \
+    "failed_stage=$failed_stage" \
+    "primary_exit_code=$primary_result" \
+    "backup=$backup_volume" || \
+    printf 'ERROR: could not record recovery start in %s\n' "$log_file" >&2
+
+  current_state="$(bash "$state_script" "$vmid")"
+  recovery_result=$?
+  if (( recovery_result != 0 )); then
+    bash "$log_write_script" "$log_file" ERROR recovery_end \
+      "vmid=$vmid" \
+      "status=failed" \
+      "step=read_state" \
+      "exit_code=$recovery_result" \
+      "backup=$backup_volume" || true
+    return "$recovery_result"
+  fi
+
+  case "$current_state" in
+    running)
+      bash "$log_capture_script" "$log_file" recovery_stop -- pct stop "$vmid"
+      recovery_result=$?
+      if (( recovery_result != 0 )); then
+        bash "$log_write_script" "$log_file" ERROR recovery_end \
+          "vmid=$vmid" \
+          "status=failed" \
+          "step=stop" \
+          "exit_code=$recovery_result" \
+          "backup=$backup_volume" || true
+        return "$recovery_result"
+      fi
+      ;;
+    stopped)
+      bash "$log_write_script" "$log_file" INFO stage_skipped \
+        "stage=recovery_stop" \
+        "reason=already_stopped" || true
+      ;;
+    *)
+      printf 'ERROR: unsupported LXC state during recovery: %s\n' "$current_state" >&2
+      bash "$log_write_script" "$log_file" ERROR recovery_end \
+        "vmid=$vmid" \
+        "status=failed" \
+        "step=stop" \
+        "reason=unsupported_state" \
+        "state=$current_state" \
+        "backup=$backup_volume" || true
+      return 1
+      ;;
+  esac
+
+  bash "$log_capture_script" "$log_file" recovery_restore -- \
+    bash "$backup_restore_script" "$vmid" "$backup_volume"
+  recovery_result=$?
+  if (( recovery_result != 0 )); then
+    bash "$log_write_script" "$log_file" ERROR recovery_end \
+      "vmid=$vmid" \
+      "status=failed" \
+      "step=restore" \
+      "exit_code=$recovery_result" \
+      "backup=$backup_volume" || true
+    return "$recovery_result"
+  fi
+
+  # The initial mutating workflow only supports originally-running LXCs, so a
+  # successful recovery returns the guest to that state.
+  bash "$log_capture_script" "$log_file" recovery_start_guest -- pct start "$vmid"
+  recovery_result=$?
+  if (( recovery_result != 0 )); then
+    bash "$log_write_script" "$log_file" ERROR recovery_end \
+      "vmid=$vmid" \
+      "status=failed" \
+      "step=start" \
+      "exit_code=$recovery_result" \
+      "backup=$backup_volume" || true
+    return "$recovery_result"
+  fi
+
+  bash "$log_write_script" "$log_file" INFO recovery_end \
+    "vmid=$vmid" \
+    "status=success" \
+    "backup=$backup_volume" || \
+    printf 'ERROR: could not record successful recovery in %s\n' "$log_file" >&2
+
+  return 0
+}
 
 if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   bash "$log_capture_script" "$log_file" requirements -- \
@@ -81,34 +245,115 @@ if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    finished_at="$(date +%s)" || finished_at="$started_at"
-    duration_seconds=$((finished_at - started_at))
-
-    bash "$log_write_script" "$log_file" ERROR target_update_end \
-      "vmid=$vmid" \
-      "status=failed" \
-      "stage=requirements" \
-      "exit_code=$stage_result" \
-      "duration_seconds=$duration_seconds" || \
-      printf 'ERROR: could not record failed update result in %s\n' "$log_file" >&2
-
-    printf 'update=failed vmid=%s log=%s\n' "$vmid" "$log_file"
-    exit "$stage_result"
+    finish_failed requirements "$stage_result"
   fi
 else
-  bash "$log_write_script" "$log_file" INFO stage_skipped \
-    "stage=requirements" \
-    "reason=disabled" || fail "could not record skipped requirements stage"
+  record_skipped_stage requirements disabled
 fi
 
-# Mutating stages are intentionally not connected yet. The orchestration
-# foundation stops here until backup, OS, application, custom-script, health
-# and recovery stages are implemented and delegated from this script.
+mutation_planned=false
+if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]] \
+  || [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]] \
+  || [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]]; then
+  mutation_planned=true
+fi
+
+if [[ "$mutation_planned" == true ]]; then
+  if [[ "${CONFIG[CREATE_BACKUP_BEFORE_LXC_UPDATE]}" == true ]]; then
+    backup_output_file="$(mktemp)" || finish_failed backup 1
+
+    bash "$log_capture_script" "$log_file" backup -- \
+      bash -o pipefail -c 'bash "$1" "$2" | tee "$3"' \
+        _ "$backup_create_script" "$vmid" "$backup_output_file"
+    stage_result=$?
+
+    if (( stage_result != 0 )); then
+      rm -f "$backup_output_file"
+      finish_failed backup "$stage_result"
+    fi
+
+    backup_record="$(grep '^backup=success ' "$backup_output_file" | tail -n 1)"
+    rm -f "$backup_output_file"
+
+    backup_volume="$(bash "$field_script" "$backup_record" volume)" || {
+      bash "$log_write_script" "$log_file" ERROR backup_artifact_error \
+        "vmid=$vmid" \
+        "reason=missing_volume" || true
+      finish_failed backup 1
+    }
+
+    [[ -n "$backup_volume" ]] || finish_failed backup 1
+
+    bash "$log_write_script" "$log_file" INFO recovery_artifact \
+      "vmid=$vmid" \
+      "backup=$backup_volume" || finish_failed backup 1
+  else
+    record_skipped_stage backup disabled
+  fi
+else
+  record_skipped_stage backup no_mutating_stages
+fi
+
+if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
+  bash "$log_capture_script" "$log_file" os_update -- \
+    bash "$os_update_script" "$vmid"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    attempt_recovery os_update "$stage_result" || true
+    finish_failed os_update "$stage_result"
+  fi
+else
+  record_skipped_stage os_update disabled
+fi
+
+if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
+  bash "$log_capture_script" "$log_file" application_update -- \
+    bash "$application_update_script" "$vmid"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    attempt_recovery application_update "$stage_result" || true
+    finish_failed application_update "$stage_result"
+  fi
+else
+  record_skipped_stage application_update disabled
+fi
+
+if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]]; then
+  bash "$log_capture_script" "$log_file" custom_scripts -- \
+    bash "$custom_scripts_update_script" "$vmid" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    attempt_recovery custom_scripts "$stage_result" || true
+    finish_failed custom_scripts "$stage_result"
+  fi
+else
+  record_skipped_stage custom_scripts disabled
+fi
+
+if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
+  bash "$log_capture_script" "$log_file" health -- \
+    bash "$health_script" "$vmid"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    attempt_recovery health "$stage_result" || true
+    finish_failed health "$stage_result"
+  fi
+elif [[ "${CONFIG[HEALTH_CHECK]}" != true ]]; then
+  record_skipped_stage health disabled
+else
+  record_skipped_stage health no_mutating_stages
+fi
+
 finished_at="$(date +%s)" || finished_at="$started_at"
 duration_seconds=$((finished_at - started_at))
 
-bash "$log_write_script" "$log_file" INFO orchestration_ready \
+bash "$log_write_script" "$log_file" INFO target_update_end \
   "vmid=$vmid" \
-  "duration_seconds=$duration_seconds" || fail "could not record orchestration readiness"
+  "status=success" \
+  "duration_seconds=$duration_seconds" || fail "could not record successful update result"
 
-printf 'update=ready vmid=%s log=%s\n' "$vmid" "$log_file"
+printf 'update=success vmid=%s log=%s\n' "$vmid" "$log_file"
