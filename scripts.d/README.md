@@ -9,3 +9,5 @@ scripts.d/<VMID>/
 Forge executes the files for one VMID after that LXC's normal OS/application update when `RUN_CUSTOM_SCRIPTS=true`.
 
 These scripts are target-specific extensions; they are not part of Forge's internal `lib/lxc/update/` implementation.
+
+The actual target-specific scripts are local data and are intentionally ignored by Git. Only this README is versioned.

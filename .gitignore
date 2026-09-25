@@ -1,0 +1,3 @@
+# Target-specific local custom scripts are intentionally not versioned.
+scripts.d/*
+!scripts.d/README.md
