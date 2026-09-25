@@ -35,8 +35,14 @@ case "$application_updater" in
     ;;
   /usr/bin/update)
     pct exec "$vmid" -- \
-      env PHS_SILENT=1 /usr/bin/update </dev/null || \
-      fail "application updater failed for LXC $vmid"
+      env PHS_SILENT=1 /usr/bin/update </dev/null
+    result=$?
+
+    if (( result != 0 )); then
+      printf 'ERROR: application updater failed for LXC %s (exit code: %s)\n' \
+        "$vmid" "$result" >&2
+      exit "$result"
+    fi
     ;;
   *)
     fail "LXC $vmid returned unsupported application updater '$application_updater'"
