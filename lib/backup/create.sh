@@ -131,7 +131,7 @@ done <<<"$before_backups"
 new_backups=()
 while IFS= read -r volume; do
   [[ -n "$volume" ]] || continue
-  [[ -v 'existing[$volume]' ]] || new_backups+=("$volume")
+  [[ -n "${existing[$volume]+x}" ]] || new_backups+=("$volume")
 done <<<"$after_backups"
 
 if (( ${#new_backups[@]} != 1 )); then
