@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Executes one LXC's local Forge custom scripts inside that container in lexical order; it does not perform logging or orchestration.
+# Description: Executes one LXC's local Forge .sh custom scripts inside that container in lexical order; it does not perform logging or orchestration.
 
 set -u
 
@@ -24,7 +24,7 @@ if [[ ! -d "$target_dir" ]]; then
 fi
 
 mapfile -d '' -t scripts < <(
-  find "$target_dir" -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
+  find "$target_dir" -maxdepth 1 -type f -name '*.sh' -print0 | LC_ALL=C sort -z
 )
 
 if (( ${#scripts[@]} == 0 )); then
