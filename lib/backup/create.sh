@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Executes one prepared Proxmox backup request for an LXC, optionally as a dry run, then waits for the authoritative task result.
+# Description: Executes one prepared Proxmox backup request for an LXC, waits for the authoritative task result, and returns the exact created recovery volume.
 
 set -u
 
@@ -24,12 +24,37 @@ command -v perl >/dev/null 2>&1 || fail "perl is not available"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 plan_script="$script_dir/prepare.sh"
+list_script="$script_dir/list-volumes.sh"
 wait_script="$lib_dir/tasks/wait.sh"
-[[ -r "$plan_script" ]] || fail "backup prepare helper is not readable: $plan_script"
-[[ -r "$wait_script" ]] || fail "task wait helper is not readable: $wait_script"
+
+for helper in "$plan_script" "$list_script" "$wait_script"; do
+  [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
+done
 
 plan_json="$(bash "$plan_script" "$vmid" --json)" || \
   fail "could not prepare Proxmox backup for LXC $vmid"
+
+storage="$(
+  PLAN_JSON="$plan_json" perl -MJSON::PP -e '
+    use strict;
+    use warnings;
+
+    my $plan = decode_json($ENV{PLAN_JSON});
+    die "backup plan is not an object\n" unless ref($plan) eq "HASH";
+    die "backup plan parameters are not an array\n" unless ref($plan->{parameters}) eq "ARRAY";
+
+    my @storage = grep {
+      ref($_) eq "HASH" &&
+      defined($_->{name}) &&
+      $_->{name} eq "storage"
+    } @{$plan->{parameters}};
+
+    die "backup plan must contain exactly one storage parameter\n" unless @storage == 1;
+    die "backup storage value is missing\n" unless defined($storage[0]->{value}) && !ref($storage[0]->{value}) && length($storage[0]->{value});
+
+    print $storage[0]->{value};
+  '
+)" || fail "could not determine backup storage for LXC $vmid"
 
 mapfile -d '' -t fields < <(
   PLAN_JSON="$plan_json" perl -MJSON::PP -e '
@@ -65,12 +90,15 @@ for ((i = 1; i < ${#fields[@]}; i += 2)); do
 done
 
 if [[ "$dry_run" == true ]]; then
-  printf 'execution=planned vmid=%s\n' "$vmid"
+  printf 'execution=planned vmid=%s storage=%s\n' "$vmid" "$storage"
   printf 'command='
   printf '%q ' "${command[@]}"
   printf '\n'
   exit 0
 fi
+
+before_backups="$(bash "$list_script" "$storage" "$vmid")" || \
+  fail "could not list existing backups for LXC $vmid on storage $storage"
 
 output="$("${command[@]}" 2>&1)"
 create_result=$?
@@ -80,10 +108,36 @@ upid="$(printf '%s\n' "$output" | sed -n 's/^\(UPID:[^[:space:]]*\)$/\1/p' | tai
 
 if [[ -z "$upid" ]]; then
   if (( create_result != 0 )); then
-    fail "Proxmox backup request failed before returning a task UPID"
+    printf 'ERROR: Proxmox backup request failed before returning a task UPID (exit code: %s)\n' "$create_result" >&2
+    exit "$create_result"
   fi
+
   fail "Proxmox backup request returned no task UPID"
 fi
 
 # The UPID is not success by itself. The task result is authoritative.
 bash "$wait_script" "$upid"
+wait_result=$?
+(( wait_result == 0 )) || exit "$wait_result"
+
+after_backups="$(bash "$list_script" "$storage" "$vmid")" || \
+  fail "backup succeeded but available backups could not be listed afterwards"
+
+declare -A existing=()
+while IFS= read -r volume; do
+  [[ -n "$volume" ]] && existing["$volume"]=1
+done <<<"$before_backups"
+
+new_backups=()
+while IFS= read -r volume; do
+  [[ -n "$volume" ]] || continue
+  [[ -v 'existing[$volume]' ]] || new_backups+=("$volume")
+done <<<"$after_backups"
+
+if (( ${#new_backups[@]} != 1 )); then
+  fail "backup task succeeded but the exact created recovery volume could not be identified (new volumes: ${#new_backups[@]})"
+fi
+
+backup_volume="${new_backups[0]}"
+printf 'backup=success vmid=%s storage=%s volume=%s upid=%s\n' \
+  "$vmid" "$storage" "$backup_volume" "$upid"
