@@ -46,14 +46,14 @@ if (( command_status != 0 )); then
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=failed" "exit_code=$command_status" "duration_seconds=$duration_seconds" || \
     printf 'ERROR: could not record failed stage result in %s\n' "$log_file" >&2
-  return "$command_status" 2>/dev/null || exit "$command_status"
+  exit "$command_status"
 fi
 
 if (( tee_status != 0 )); then
   printf 'ERROR: logging output failed for stage %s (tee exit code %s)\n' "$stage" "$tee_status" >&2
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=logging_failed" "exit_code=$tee_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
-  return "$tee_status" 2>/dev/null || exit "$tee_status"
+  exit "$tee_status"
 fi
 
 bash "$write_script" "$log_file" INFO stage_end \
