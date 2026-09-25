@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Restores one exact LXC backup volume using the storage topology recorded in the backup, failing closed when a safe simple restore cannot preserve that topology.
+# Description: Restores one exact LXC backup volume with Proxmox advanced restore semantics, preserving excluded storage-backed mount points without restoring their data.
 
 set -u
 
@@ -27,7 +27,11 @@ done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine backup script directory"
 list_script="$script_dir/list-volumes.sh"
-[[ -r "$list_script" ]] || fail "backup volume helper is not readable: $list_script"
+prepare_script="$script_dir/prepare-restore.sh"
+
+for helper in "$list_script" "$prepare_script"; do
+  [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
+done
 
 backup_storage="${backup_volume%%:*}"
 [[ -n "$backup_storage" ]] || fail "could not determine backup storage from volume ID"
@@ -37,96 +41,234 @@ available_backups="$(bash "$list_script" "$backup_storage" "$vmid")" || \
 printf '%s\n' "$available_backups" | grep -Fqx -- "$backup_volume" || \
   fail "backup volume does not exist for LXC $vmid: $backup_volume"
 
-backup_config="$(pvesm extractconfig "$backup_volume" 2>&1)"
-extract_result=$?
-if (( extract_result != 0 )); then
-  printf '%s\n' "$backup_config" >&2
-  exit "$extract_result"
-fi
+plan_json="$(bash "$prepare_script" "$vmid" "$backup_volume")" || \
+  fail "could not prepare safe restore for LXC $vmid"
 
-root_storage="$(
-  BACKUP_CONFIG="$backup_config" perl -e '
+mapfile -d '' -t fields < <(
+  PLAN_JSON="$plan_json" perl -MJSON::PP -e '
     use strict;
     use warnings;
 
-    my $config = $ENV{BACKUP_CONFIG};
-    my ($rootfs) = $config =~ /^rootfs:\s*(.+)$/m;
-    die "backup configuration has no rootfs entry\n" unless defined $rootfs;
+    my $plan = decode_json($ENV{PLAN_JSON});
+    die "restore plan is not an object\n" unless ref($plan) eq "HASH";
+    die "restore plan has no rootfs\n" unless defined($plan->{rootfs}) && !ref($plan->{rootfs});
+    die "restore plan has no current rootfs volume\n"
+      unless defined($plan->{current_rootfs_volume}) && !ref($plan->{current_rootfs_volume});
+    die "restore plan mounts are not an array\n" unless ref($plan->{mounts}) eq "ARRAY";
+    die "restore plan preserve list is not an array\n" unless ref($plan->{preserve}) eq "ARRAY";
+    die "restore plan storages are not an array\n" unless ref($plan->{storages}) eq "ARRAY";
 
-    my ($root_volume) = split /,/, $rootfs, 2;
-    $root_volume =~ s/^volume=//;
-    my ($root_storage) = $root_volume =~ /^([^:]+):/;
-    die "backup rootfs is not storage-backed\n" unless defined $root_storage && length $root_storage;
-
-    while ($config =~ /^mp\d+:\s*(.+)$/mg) {
-      my $value = $1;
-      my @parts = split /,/, $value;
-      my $source = shift @parts;
-      $source =~ s/^volume=//;
-
-      # Bind and device mount points are external to vzdump data. Proxmox
-      # simple restore re-adds their configuration without copying contents.
-      next if $source =~ m{^/};
-
-      my ($storage) = $source =~ /^([^:]+):/;
-      die "unsupported mount-point source in backup configuration: $source\n"
-        unless defined $storage && length $storage;
-
-      my %options;
-      for my $part (@parts) {
-        my ($key, $value) = split /=/, $part, 2;
-        $options{$key} = defined($value) ? $value : "";
-      }
-
-      die "storage-backed mount point is excluded from the backup; automatic restore would not preserve its data: $source\n"
-        unless defined($options{backup}) && $options{backup} eq "1";
-
-      die "storage-backed mount point uses storage $storage while rootfs uses $root_storage; safe simple restore requires one common storage\n"
-        unless $storage eq $root_storage;
+    print "$plan->{rootfs}\0";
+    print "$plan->{current_rootfs_volume}\0";
+    print scalar(@{$plan->{mounts}}) . "\0";
+    for my $mount (@{$plan->{mounts}}) {
+      die "invalid restore mount entry\n" unless ref($mount) eq "HASH";
+      die "restore mount has no key or value\n"
+        unless defined($mount->{key}) && defined($mount->{value});
+      print "$mount->{key}\0$mount->{value}\0";
     }
 
-    print $root_storage;
-  '
-)" || fail "backup topology is not safe for automatic simple restore"
+    print scalar(@{$plan->{preserve}}) . "\0";
+    for my $item (@{$plan->{preserve}}) {
+      die "invalid preserve entry\n" unless ref($item) eq "HASH";
+      die "preserve entry has no key, volume, or value\n"
+        unless defined($item->{key}) && defined($item->{volume}) && defined($item->{value});
+      print "$item->{key}\0$item->{volume}\0$item->{value}\0";
+    }
 
-pvesm status --storage "$root_storage" >/dev/null 2>&1 || \
-  fail "restore storage is not currently available: $root_storage"
+    print scalar(@{$plan->{storages}}) . "\0";
+    for my $storage (@{$plan->{storages}}) {
+      die "invalid restore storage entry\n" if ref($storage) || !length($storage);
+      print "$storage\0";
+    }
+  '
+)
+
+index=0
+(( ${#fields[@]} >= 5 )) || fail "restore plan returned too few fields"
+
+rootfs_arg="${fields[index++]}"
+original_rootfs_volume="${fields[index++]}"
+mount_count="${fields[index++]}"
+[[ "$mount_count" =~ ^[0-9]+$ ]] || fail "restore plan returned invalid mount count"
+
+restore_command=(pct restore "$vmid" "$backup_volume" --rootfs "$rootfs_arg" --force 1)
+
+for ((n = 0; n < mount_count; n++)); do
+  (( index + 1 < ${#fields[@]} )) || fail "restore plan mount list is truncated"
+  key="${fields[index++]}"
+  value="${fields[index++]}"
+  [[ "$key" =~ ^mp[0-9]+$ ]] || fail "restore plan returned invalid mount key: $key"
+  restore_command+=("--$key" "$value")
+done
+
+(( index < ${#fields[@]} )) || fail "restore plan has no preserve count"
+preserve_count="${fields[index++]}"
+[[ "$preserve_count" =~ ^[0-9]+$ ]] || fail "restore plan returned invalid preserve count"
+
+preserve_keys=()
+preserve_volumes=()
+preserve_values=()
+for ((n = 0; n < preserve_count; n++)); do
+  (( index + 2 < ${#fields[@]} )) || fail "restore plan preserve list is truncated"
+  preserve_keys+=("${fields[index++]}")
+  preserve_volumes+=("${fields[index++]}")
+  preserve_values+=("${fields[index++]}")
+done
+
+(( index < ${#fields[@]} )) || fail "restore plan has no storage count"
+storage_count="${fields[index++]}"
+[[ "$storage_count" =~ ^[0-9]+$ ]] || fail "restore plan returned invalid storage count"
+
+restore_storages=()
+for ((n = 0; n < storage_count; n++)); do
+  (( index < ${#fields[@]} )) || fail "restore plan storage list is truncated"
+  restore_storages+=("${fields[index++]}")
+done
+
+(( index == ${#fields[@]} )) || fail "restore plan returned unexpected trailing fields"
+
+for storage in "${restore_storages[@]}"; do
+  pvesm status --storage "$storage" >/dev/null 2>&1 || \
+    fail "restore storage is not currently available: $storage"
+done
+
+for volume in "${preserve_volumes[@]}"; do
+  pvesm path "$volume" >/dev/null 2>&1 || \
+    fail "excluded mount-point volume is not currently available: $volume"
+done
 
 restore_help="$(pct help restore --verbose 2>&1)" || fail "could not read pct restore capabilities"
-printf '%s\n' "$restore_help" | grep -q -- '--storage' || fail "installed pct restore does not expose --storage"
+printf '%s\n' "$restore_help" | grep -q -- '--rootfs' || fail "installed pct restore does not expose --rootfs"
+printf '%s\n' "$restore_help" | grep -q -- '--mp\[n\]' || fail "installed pct restore does not expose --mp[n]"
 printf '%s\n' "$restore_help" | grep -q -- '--force' || fail "installed pct restore does not expose --force"
 
-restore_command=(pct restore "$vmid" "$backup_volume" --storage "$root_storage" --force 1)
-
 if [[ "$dry_run" == true ]]; then
-  printf 'restore=planned vmid=%s backup=%s backup_storage=%s root_storage=%s\n' \
-    "$vmid" "$backup_volume" "$backup_storage" "$root_storage"
+  printf 'restore=planned vmid=%s backup=%s preserved_mounts=%s\n' \
+    "$vmid" "$backup_volume" "$preserve_count"
+  for ((n = 0; n < preserve_count; n++)); do
+    printf 'preserve=%s volume=%s\n' "${preserve_keys[n]}" "${preserve_volumes[n]}"
+  done
   printf 'command='
   printf '%q ' "${restore_command[@]}"
   printf '\n'
   exit 0
 fi
 
-if [[ -f "/etc/pve/lxc/${vmid}.conf" ]]; then
-  state_output="$(pct status "$vmid" 2>&1)"
-  state_result=$?
-  if (( state_result != 0 )); then
-    printf '%s\n' "$state_output" >&2
-    exit "$state_result"
-  fi
+state_output="$(pct status "$vmid" 2>&1)"
+state_result=$?
+if (( state_result != 0 )); then
+  printf '%s\n' "$state_output" >&2
+  exit "$state_result"
+fi
+[[ "$state_output" == 'status: stopped' ]] || fail "LXC $vmid must be stopped before automatic restore"
 
-  [[ "$state_output" == 'status: stopped' ]] || \
-    fail "LXC $vmid must be stopped before automatic restore"
+# pct restore --force destroys every storage-backed volume still referenced by
+# the old active configuration. Temporarily remove only the excluded volumes
+# that must survive; do not move them to unusedN, because unused volumes are
+# also destroyed by Proxmox during overwrite restore.
+if (( preserve_count > 0 )); then
+  VMID="$vmid" PLAN_JSON="$plan_json" perl -MPVE::LXC::Config -MJSON::PP -e '
+    use strict;
+    use warnings;
+
+    my $vmid = $ENV{VMID};
+    my $plan = decode_json($ENV{PLAN_JSON});
+    my $preserve = $plan->{preserve};
+    die "invalid preserve plan\n" unless ref($preserve) eq "ARRAY";
+
+    PVE::LXC::Config->lock_config(
+      $vmid,
+      sub {
+        my $conf = PVE::LXC::Config->load_config($vmid);
+
+        for my $item (@$preserve) {
+          my $key = $item->{key};
+          my $volume = $item->{volume};
+          my $raw = $conf->{$key};
+          die "$key disappeared before restore\n" unless defined($raw);
+
+          my $mp = PVE::LXC::Config->parse_volume($key, $raw);
+          die "$key changed before restore\n"
+            unless $mp->{type} eq "volume" && $mp->{volume} eq $volume;
+
+          for my $other (keys %$conf) {
+            next if $other eq $key;
+            next unless $other eq "rootfs" || $other =~ /^mp\d+$/ || $other =~ /^unused\d+$/;
+            my $other_mp = PVE::LXC::Config->parse_volume($other, $conf->{$other}, 1);
+            next unless $other_mp && $other_mp->{type} eq "volume";
+            die "volume $volume is also referenced by $other; refusing to hide it\n"
+              if $other_mp->{volume} eq $volume;
+          }
+        }
+
+        delete $conf->{$_->{key}} for @$preserve;
+        PVE::LXC::Config->write_config($vmid, $conf);
+      },
+    );
+  '
+  mask_result=$?
+  (( mask_result == 0 )) || exit "$mask_result"
 fi
 
 "${restore_command[@]}"
 restore_result=$?
 
 if (( restore_result != 0 )); then
+  # If Proxmox failed before replacing the old rootfs, restore the temporarily
+  # hidden references so the pre-restore container configuration remains usable.
+  VMID="$vmid" PLAN_JSON="$plan_json" perl -MPVE::LXC::Config -MJSON::PP -e '
+    use strict;
+    use warnings;
+
+    my $vmid = $ENV{VMID};
+    my $plan = decode_json($ENV{PLAN_JSON});
+    my $preserve = $plan->{preserve};
+    exit 0 unless ref($preserve) eq "ARRAY" && @$preserve;
+    exit 0 unless -f "/etc/pve/lxc/$vmid.conf";
+
+    eval {
+      PVE::LXC::Config->lock_config(
+        $vmid,
+        sub {
+          my $conf = PVE::LXC::Config->load_config($vmid);
+          my $root_raw = $conf->{rootfs} // return;
+          my $root = PVE::LXC::Config->parse_volume("rootfs", $root_raw, 1) // return;
+          return unless $root->{type} eq "volume";
+          return unless $root->{volume} eq $plan->{current_rootfs_volume};
+
+          for my $item (@$preserve) {
+            next if defined($conf->{$item->{key}});
+            $conf->{$item->{key}} = $item->{value};
+          }
+          PVE::LXC::Config->write_config($vmid, $conf);
+        },
+      );
+    };
+    warn "WARNING: could not restore hidden mount-point references after failed restore: $@" if $@;
+  '
+
   printf 'ERROR: restore failed for LXC %s from %s (exit code: %s)\n' \
     "$vmid" "$backup_volume" "$restore_result" >&2
   exit "$restore_result"
 fi
 
-printf 'restore=success vmid=%s backup=%s root_storage=%s\n' \
-  "$vmid" "$backup_volume" "$root_storage"
+VMID="$vmid" PLAN_JSON="$plan_json" perl -MPVE::LXC::Config -MJSON::PP -e '
+  use strict;
+  use warnings;
+
+  my $vmid = $ENV{VMID};
+  my $plan = decode_json($ENV{PLAN_JSON});
+  my $conf = PVE::LXC::Config->load_config($vmid);
+
+  for my $item (@{$plan->{preserve}}) {
+    my $raw = $conf->{$item->{key}};
+    die "$item->{key} is missing after restore\n" unless defined($raw);
+    my $mp = PVE::LXC::Config->parse_volume($item->{key}, $raw);
+    die "$item->{key} does not reference preserved volume $item->{volume} after restore\n"
+      unless $mp->{type} eq "volume" && $mp->{volume} eq $item->{volume};
+  }
+' || fail "restore completed but preserved mount-point validation failed"
+
+printf 'restore=success vmid=%s backup=%s preserved_mounts=%s\n' \
+  "$vmid" "$backup_volume" "$preserve_count"
