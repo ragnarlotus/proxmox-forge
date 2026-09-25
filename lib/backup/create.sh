@@ -34,28 +34,6 @@ done
 plan_json="$(bash "$plan_script" "$vmid" --json)" || \
   fail "could not prepare Proxmox backup for LXC $vmid"
 
-storage="$(
-  PLAN_JSON="$plan_json" perl -MJSON::PP -e '
-    use strict;
-    use warnings;
-
-    my $plan = decode_json($ENV{PLAN_JSON});
-    die "backup plan is not an object\n" unless ref($plan) eq "HASH";
-    die "backup plan parameters are not an array\n" unless ref($plan->{parameters}) eq "ARRAY";
-
-    my @storage = grep {
-      ref($_) eq "HASH" &&
-      defined($_->{name}) &&
-      $_->{name} eq "storage"
-    } @{$plan->{parameters}};
-
-    die "backup plan must contain exactly one storage parameter\n" unless @storage == 1;
-    die "backup storage value is missing\n" unless defined($storage[0]->{value}) && !ref($storage[0]->{value}) && length($storage[0]->{value});
-
-    print $storage[0]->{value};
-  '
-)" || fail "could not determine backup storage for LXC $vmid"
-
 mapfile -d '' -t fields < <(
   PLAN_JSON="$plan_json" perl -MJSON::PP -e '
     use strict;
@@ -63,29 +41,40 @@ mapfile -d '' -t fields < <(
 
     my $plan = decode_json($ENV{PLAN_JSON});
     die "backup plan is not an object\n" unless ref($plan) eq "HASH";
-    die "backup plan has no endpoint\n" unless defined $plan->{endpoint};
+    die "backup plan has no endpoint\n" unless defined($plan->{endpoint}) && !ref($plan->{endpoint}) && length($plan->{endpoint});
     die "backup plan parameters are not an array\n" unless ref($plan->{parameters}) eq "ARRAY";
 
-    print "$plan->{endpoint}\0";
+    my @storage;
 
     for my $param (@{$plan->{parameters}}) {
       die "backup plan parameter is not an object\n" unless ref($param) eq "HASH";
       die "backup plan parameter has no name\n" unless defined $param->{name};
       die "backup plan parameter has no value\n" unless defined $param->{value};
       die "invalid backup parameter name\n" unless $param->{name} =~ /^[a-z0-9][a-z0-9-]*$/;
+      die "backup plan parameter value must be scalar\n" if ref($param->{value});
 
+      push @storage, $param->{value} if $param->{name} eq "storage";
+    }
+
+    die "backup plan must contain exactly one storage parameter\n" unless @storage == 1;
+    die "backup storage value is missing\n" unless length($storage[0]);
+
+    print "$plan->{endpoint}\0$storage[0]\0";
+
+    for my $param (@{$plan->{parameters}}) {
       print "--$param->{name}\0$param->{value}\0";
     }
   '
 ) || fail "could not decode Proxmox backup plan"
 
-(( ${#fields[@]} >= 3 )) || fail "backup plan returned no execution parameters"
-(( (${#fields[@]} - 1) % 2 == 0 )) || fail "backup plan returned malformed execution parameters"
+(( ${#fields[@]} >= 4 )) || fail "backup plan returned no execution parameters"
+(( (${#fields[@]} - 2) % 2 == 0 )) || fail "backup plan returned malformed execution parameters"
 
 endpoint="${fields[0]}"
+storage="${fields[1]}"
 command=(pvesh create "$endpoint")
 
-for ((i = 1; i < ${#fields[@]}; i += 2)); do
+for ((i = 2; i < ${#fields[@]}; i += 2)); do
   command+=("${fields[i]}" "${fields[i + 1]}")
 done
 
