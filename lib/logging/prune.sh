@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Removes old Forge log files for one scope/identifier while keeping the configured number of most recent runs.
+# Description: Removes old Forge logs for one target while keeping exactly the configured number of most recent update attempts, regardless of result.
 
 set -u
 

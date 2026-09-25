@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Executes one command exactly once, mirrors combined output to the terminal and Forge log, and preserves the command's real exit code.
+# Description: Captures one update stage for the owning update orchestrator, mirroring combined output to terminal and log while preserving the command's real exit code.
 
 set -u -o pipefail
 
@@ -8,7 +8,7 @@ fail() {
   exit 1
 }
 
-[[ $# -ge 4 ]] || fail "usage: run.sh LOG_FILE STAGE -- COMMAND [ARGUMENT ...]"
+[[ $# -ge 4 ]] || fail "usage: capture.sh LOG_FILE STAGE -- COMMAND [ARGUMENT ...]"
 log_file="$1"
 stage="$2"
 shift 2

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Creates one Forge log for a run or target scope, writes its opening record, and applies configured retention for that scope.
+# Description: Creates the single Forge log owned by one target update, writes its opening record, and applies per-target LOG_KEEP retention.
 
 set -u
 
