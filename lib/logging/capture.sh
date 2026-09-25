@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Captures one update stage for the owning update orchestrator, mirroring combined output to terminal and log while preserving the command's real exit code.
+# Description: Captures one update stage for the owning update orchestrator, mirroring readable combined output to terminal and log while preserving the command's real exit code.
 
 set -u -o pipefail
 
@@ -20,6 +20,7 @@ shift
 [[ -f "$log_file" ]] || fail "log file does not exist: $log_file"
 [[ -w "$log_file" ]] || fail "log file is not writable: $log_file"
 [[ "$stage" =~ ^[a-z][a-z0-9_-]*$ ]] || fail "invalid stage '$stage'"
+command -v perl >/dev/null 2>&1 || fail "perl is not available"
 command -v tee >/dev/null 2>&1 || fail "tee is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
@@ -34,10 +35,19 @@ bash "$write_script" "$log_file" INFO stage_start \
 
 started_at="$(date +%s)" || fail "could not create stage start timestamp"
 
-"$@" 2>&1 | tee -a "$log_file"
+"$@" 2>&1 | \
+  LC_ALL=C perl -pe '
+    s/\e\][^\a]*(?:\a|\e\\)//g;
+    s/\e\[[0-?]*[ -\/]*[@-~]//g;
+    s/\e[@-_]//g;
+    s/\r\n/\n/g;
+    s/\r/\n/g;
+  ' | \
+  tee -a "$log_file"
 pipeline_status=("${PIPESTATUS[@]}")
 command_status="${pipeline_status[0]}"
-tee_status="${pipeline_status[1]}"
+sanitize_status="${pipeline_status[1]}"
+tee_status="${pipeline_status[2]}"
 
 finished_at="$(date +%s)" || finished_at="$started_at"
 duration_seconds=$((finished_at - started_at))
@@ -47,6 +57,14 @@ if (( command_status != 0 )); then
     "stage=$stage" "status=failed" "exit_code=$command_status" "duration_seconds=$duration_seconds" || \
     printf 'ERROR: could not record failed stage result in %s\n' "$log_file" >&2
   exit "$command_status"
+fi
+
+if (( sanitize_status != 0 )); then
+  printf 'ERROR: output sanitization failed for stage %s (perl exit code %s)\n' \
+    "$stage" "$sanitize_status" >&2
+  bash "$write_script" "$log_file" ERROR stage_end \
+    "stage=$stage" "status=logging_failed" "exit_code=$sanitize_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
+  exit "$sanitize_status"
 fi
 
 if (( tee_status != 0 )); then
