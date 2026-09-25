@@ -13,6 +13,7 @@ FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
 FAIL_SCRIPT="$FORGE_DIR/lib/helpers/fail.sh"
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
+HOST_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/host/check-requirements.sh"
 LXC_TARGET_SCRIPT="$FORGE_DIR/lib/lxc/get-target.sh"
 LXC_LIST_TARGETS_SCRIPT="$FORGE_DIR/lib/lxc/list-targets.sh"
 LXC_GET_INFO_SCRIPT="$FORGE_DIR/lib/lxc/get-info.sh"
@@ -39,6 +40,12 @@ main() {
       [[ $# -eq 1 ]] || fail "validate-config does not accept additional arguments"
       config_get "$CONFIG_FILE" || exit 1
       printf 'Forge configuration OK: %s\n' "$CONFIG_FILE"
+      ;;
+    check-host-requirements)
+      [[ $# -eq 1 ]] || fail "check-host-requirements does not accept additional arguments"
+      config_get "$CONFIG_FILE" || exit 1
+      [[ -r "$HOST_REQUIREMENTS_SCRIPT" ]] || fail "host requirements workflow is not readable: $HOST_REQUIREMENTS_SCRIPT"
+      bash "$HOST_REQUIREMENTS_SCRIPT"
       ;;
     resolve-target)
       [[ $# -eq 2 ]] || fail "resolve-target requires exactly one VMID or name"
