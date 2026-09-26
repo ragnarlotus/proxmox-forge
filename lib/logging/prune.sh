@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Removes old Forge logs for one target while keeping exactly the configured number of most recent update attempts, regardless of result.
+# Description: Removes old timestamped Forge LXC logs for one VMID on the local Proxmox host while keeping the configured number of most recent attempts.
 
 set -u
 
@@ -16,10 +16,14 @@ identifier="$4"
 
 [[ "$log_dir" == /* ]] || fail "LOG_DIR must be an absolute path"
 [[ "$log_keep" =~ ^[1-9][0-9]*$ ]] || fail "LOG_KEEP must be a positive integer"
-[[ "$scope" =~ ^[a-z][a-z0-9_-]*$ ]] || fail "invalid log scope '$scope'"
-[[ "$identifier" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid log identifier '$identifier'"
+[[ "$scope" == lxc ]] || fail "log retention currently applies only to LXC logs"
+[[ "$identifier" =~ ^[0-9]+$ ]] || fail "LXC log identifier must be a numeric VMID"
+command -v hostname >/dev/null 2>&1 || fail "hostname is not available"
 
-target_dir="$log_dir/$scope/$identifier"
+pve_fqdn="$(hostname -f 2>/dev/null)" || fail "could not determine Proxmox host FQDN"
+[[ "$pve_fqdn" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid Proxmox host FQDN '$pve_fqdn'"
+
+target_dir="$log_dir/$pve_fqdn/lxc/$identifier"
 [[ -d "$target_dir" ]] || exit 0
 
 mapfile -t logs < <(

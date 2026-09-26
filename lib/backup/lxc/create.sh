@@ -22,7 +22,7 @@ command -v pvesh >/dev/null 2>&1 || fail "pvesh is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
-lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
+lib_dir="$(cd "$script_dir/../.." && pwd)" || fail "could not determine lib directory"
 plan_script="$script_dir/prepare.sh"
 list_script="$script_dir/list-volumes.sh"
 wait_script="$lib_dir/tasks/wait.sh"

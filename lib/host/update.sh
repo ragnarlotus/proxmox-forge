@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Orchestrates one local Proxmox VE host update, owns its host log, preserves the real failure result, and never attempts guest-style rollback.
+# Description: Orchestrates one local Proxmox VE host update, creates a configured recovery backup before mutation, owns host logging, preserves the real failure result, and never attempts guest-style rollback.
 
 set -u
 
@@ -16,6 +16,7 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 
 config_get_script="$lib_dir/config/get.sh"
 requirements_script="$script_dir/check-requirements.sh"
+backup_script="$lib_dir/backup/host/backup.sh"
 os_update_script="$script_dir/update/os.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
@@ -24,6 +25,7 @@ log_write_script="$lib_dir/logging/write.sh"
 for helper in \
   "$config_get_script" \
   "$requirements_script" \
+  "$backup_script" \
   "$os_update_script" \
   "$log_init_script" \
   "$log_capture_script" \
@@ -31,7 +33,9 @@ for helper in \
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
-command -v hostname >/dev/null 2>&1 || fail "hostname is not available"
+for command_name in hostname mktemp tee; do
+  command -v "$command_name" >/dev/null 2>&1 || fail "required command is not available: $command_name"
+done
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
@@ -50,11 +54,25 @@ log_file="$(
     "$hostname_fqdn"
 )" || fail "could not initialize update log for host $hostname_fqdn"
 
+error_log="${CONFIG[LOG_DIR]}/$hostname_fqdn/host/error.log"
+[[ -f "$error_log" && -w "$error_log" ]] || fail "host error log is not available: $error_log"
+export FORGE_ERROR_LOG="$error_log"
+
 bash "$log_write_script" "$log_file" INFO target_update_start \
   "type=host" \
   "hostname=$hostname_fqdn" || fail "could not record host update start"
 
 started_at="$(date +%s)" || fail "could not create host update start timestamp"
+backup_file=""
+
+record_skipped_stage() {
+  local stage_name="$1"
+  local reason="$2"
+
+  bash "$log_write_script" "$log_file" INFO stage_skipped \
+    "stage=$stage_name" \
+    "reason=$reason" || fail "could not record skipped $stage_name stage"
+}
 
 finish_failed() {
   local failed_stage="$1"
@@ -87,6 +105,37 @@ if (( stage_result != 0 )); then
   finish_failed requirements "$stage_result"
 fi
 
+if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then
+  backup_output_file="$(mktemp)" || finish_failed backup 1
+
+  bash "$log_capture_script" "$log_file" backup -- \
+    bash -o pipefail -c 'bash "$1" | tee "$2"' \
+      _ "$backup_script" "$backup_output_file"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    rm -f "$backup_output_file"
+    finish_failed backup "$stage_result"
+  fi
+
+  backup_record="$(grep '^backup=success type=host ' "$backup_output_file" | tail -n 1)"
+  rm -f "$backup_output_file"
+  backup_file="${backup_record##* path=}"
+
+  if [[ -z "$backup_record" || "$backup_file" == "$backup_record" || ! -s "$backup_file" ]]; then
+    bash "$log_write_script" "$log_file" ERROR backup_artifact_error \
+      "type=host" \
+      "reason=missing_or_invalid_path" || true
+    finish_failed backup 1
+  fi
+
+  bash "$log_write_script" "$log_file" INFO backup_artifact \
+    "type=host" \
+    "backup=$backup_file" || finish_failed backup 1
+else
+  record_skipped_stage backup disabled
+fi
+
 bash "$log_capture_script" "$log_file" os_update -- \
   bash "$os_update_script"
 stage_result=$?
@@ -102,9 +151,7 @@ if [[ "${CONFIG[HEALTH_CHECK]}" == true ]]; then
     finish_failed health "$stage_result"
   fi
 else
-  bash "$log_write_script" "$log_file" INFO stage_skipped \
-    "stage=health" \
-    "reason=disabled" || fail "could not record skipped host health stage"
+  record_skipped_stage health disabled
 fi
 
 finished_at="$(date +%s)" || finished_at="$started_at"
@@ -114,6 +161,8 @@ bash "$log_write_script" "$log_file" INFO target_update_end \
   "type=host" \
   "hostname=$hostname_fqdn" \
   "status=success" \
+  "backup=${backup_file:-none}" \
   "duration_seconds=$duration_seconds" || fail "could not record successful host update result"
 
-printf 'update=success type=host hostname=%s log=%s\n' "$hostname_fqdn" "$log_file"
+printf 'update=success type=host hostname=%s backup=%s log=%s\n' \
+  "$hostname_fqdn" "${backup_file:-none}" "$log_file"
