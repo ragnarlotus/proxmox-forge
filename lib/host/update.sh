@@ -16,7 +16,7 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 
 config_get_script="$lib_dir/config/get.sh"
 requirements_script="$script_dir/check-requirements.sh"
-backup_script="$lib_dir/backup/host/backup.sh"
+backup_create_script="$lib_dir/backup/host/create.sh"
 os_update_script="$script_dir/update/os.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
@@ -25,7 +25,7 @@ log_write_script="$lib_dir/logging/write.sh"
 for helper in \
   "$config_get_script" \
   "$requirements_script" \
-  "$backup_script" \
+  "$backup_create_script" \
   "$os_update_script" \
   "$log_init_script" \
   "$log_capture_script" \
@@ -110,7 +110,7 @@ if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then
 
   bash "$log_capture_script" "$log_file" backup -- \
     bash -o pipefail -c 'bash "$1" | tee "$2"' \
-      _ "$backup_script" "$backup_output_file"
+      _ "$backup_create_script" "$backup_output_file"
   stage_result=$?
 
   if (( stage_result != 0 )); then

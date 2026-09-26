@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Performs a manual selective Proxmox host configuration restore from Forge host backups after first creating a fresh safety backup of the current host state.
+# Description: Provides a manual selective Proxmox host recovery utility for restoring important host configuration from a Forge archive, including use from a clean installation.
 
 set -u
 
@@ -9,8 +9,10 @@ fail() {
 }
 
 usage() {
-  printf 'Usage: %s BACKUP_FILE [--single-node]\n' "$0" >&2
-  printf 'Example: %s bv-config-2026-09-26_03-00-02.tar.gz --single-node\n' "$0" >&2
+  printf 'Usage: %s BACKUP_FILE_OR_PATH [--single-node]\n' "$0" >&2
+  printf 'Examples:\n' >&2
+  printf '  %s bv-config-2026-09-26_03-00-02.tar.gz --single-node\n' "$0" >&2
+  printf '  %s /mnt/backup/pve/bv-config-2026-09-26_03-00-02.tar.gz --single-node\n' "$0" >&2
   exit 1
 }
 
@@ -22,30 +24,36 @@ if [[ $# -eq 2 ]]; then
   single_node=true
 fi
 
-[[ "$backup_file_input" == "$(basename -- "$backup_file_input")" ]] || \
-  fail "BACKUP_FILE must be a file name from the configured host backup directory"
-[[ "$backup_file_input" == *.tar.gz ]] || fail "BACKUP_FILE must end in .tar.gz"
+[[ "$backup_file_input" == *.tar.gz ]] || fail "BACKUP_FILE_OR_PATH must end in .tar.gz"
 
-for command_name in tar rsync install mktemp rm systemctl mount; do
+for command_name in tar rsync install mktemp rm systemctl mount dirname; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is not available: $command_name"
 done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine host restore script directory"
 backup_dir_lib="$(cd "$script_dir/.." && pwd)" || fail "could not determine backup library directory"
-backup_script="$script_dir/backup.sh"
+create_script="$script_dir/create.sh"
 read_storage_script="$backup_dir_lib/read-storage.sh"
 storage_path_script="$backup_dir_lib/storage-path.sh"
 
-for helper in "$backup_script" "$read_storage_script" "$storage_path_script"; do
-  [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
-done
+[[ -r "$create_script" ]] || fail "required host backup creator is not readable: $create_script"
 
-storage="$(bash "$read_storage_script")" || fail "could not determine host backup storage"
-storage_path="$(bash "$storage_path_script" "$storage")" || fail "could not determine host backup storage path"
-backup_dir="$storage_path/pve"
-backup_file="$backup_dir/$backup_file_input"
+if [[ "$backup_file_input" == /* ]]; then
+  backup_file="$backup_file_input"
+else
+  [[ "$backup_file_input" != */* ]] || \
+    fail "relative backup paths are not supported; use a file name or an absolute path"
+
+  for helper in "$read_storage_script" "$storage_path_script"; do
+    [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
+  done
+
+  storage="$(bash "$read_storage_script")" || fail "could not determine host backup storage"
+  storage_path="$(bash "$storage_path_script" "$storage")" || fail "could not determine host backup storage path"
+  backup_file="$storage_path/pve/$backup_file_input"
+fi
+
 [[ -f "$backup_file" ]] || fail "host backup file not found: $backup_file"
-
 tar -tzf "$backup_file" >/dev/null || fail "host backup archive is not readable: $backup_file"
 
 if mount | grep -qE '^/dev/fuse on /etc/pve type fuse'; then
@@ -59,7 +67,9 @@ trap 'rm -rf -- "$workspace"' EXIT
 
 tar -xzf "$backup_file" -C "$workspace" || fail "could not extract host backup into restore workspace"
 
-safety_record="$(bash "$backup_script")" || fail "could not create safety backup before host restore"
+safety_dir="/var/backups/proxmox-forge/host-safety"
+safety_record="$(bash "$create_script" --directory "$safety_dir")" || \
+  fail "could not create safety backup before host restore"
 safety_backup="${safety_record##* path=}"
 [[ "$safety_backup" != "$safety_record" && -s "$safety_backup" ]] || \
   fail "host safety backup did not return a valid recovery artifact"
