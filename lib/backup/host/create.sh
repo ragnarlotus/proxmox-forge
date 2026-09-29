@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Creates and validates one Proxmox host configuration backup, using the node backup storage by default and allowing an explicit directory for restore-safety use.
+# Description: Creates and validates one Proxmox host configuration backup in the pve directory of the backup storage selected by the node's enabled Proxmox backup jobs.
 
 set -u -o pipefail
 
@@ -9,31 +9,16 @@ fail() {
 }
 
 usage() {
-  printf 'Usage: %s [--dry-run] [--directory ABSOLUTE_PATH]\n' "$0" >&2
+  printf 'Usage: %s [--dry-run]\n' "$0" >&2
   exit 1
 }
 
 dry_run=false
-explicit_directory=""
-while (( $# > 0 )); do
-  case "$1" in
-    --dry-run)
-      dry_run=true
-      shift
-      ;;
-    --directory)
-      [[ $# -ge 2 ]] || usage
-      explicit_directory="$2"
-      shift 2
-      ;;
-    *)
-      usage
-      ;;
-  esac
-done
-
-if [[ -n "$explicit_directory" && "$explicit_directory" != /* ]]; then
-  fail "--directory must be an absolute path"
+if [[ $# -eq 1 ]]; then
+  [[ "$1" == --dry-run ]] || usage
+  dry_run=true
+elif [[ $# -ne 0 ]]; then
+  usage
 fi
 
 for command_name in hostname tar find install date rm; do
@@ -41,24 +26,17 @@ for command_name in hostname tar find install date rm; do
 done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine host backup script directory"
-backup_dir_lib="$(cd "$script_dir/.." && pwd)" || fail "could not determine backup library directory"
-read_storage_script="$backup_dir_lib/read-storage.sh"
-storage_path_script="$backup_dir_lib/storage-path.sh"
+backup_lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine backup library directory"
+read_storage_script="$backup_lib_dir/read-storage.sh"
+storage_path_script="$backup_lib_dir/storage-path.sh"
 
-storage="manual"
-apply_retention=false
-if [[ -n "$explicit_directory" ]]; then
-  backup_dir="$explicit_directory"
-else
-  for helper in "$read_storage_script" "$storage_path_script"; do
-    [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
-  done
+for helper in "$read_storage_script" "$storage_path_script"; do
+  [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
+done
 
-  storage="$(bash "$read_storage_script")" || fail "could not determine host backup storage"
-  storage_path="$(bash "$storage_path_script" "$storage")" || fail "could not determine host backup storage path"
-  backup_dir="$storage_path/pve"
-  apply_retention=true
-fi
+storage="$(bash "$read_storage_script")" || fail "could not determine host backup storage"
+storage_path="$(bash "$storage_path_script" "$storage")" || fail "could not determine host backup storage path"
+backup_dir="$storage_path/pve"
 
 host="$(hostname -s)" || fail "could not determine local host name"
 [[ -n "$host" ]] || fail "local host name is empty"
@@ -101,10 +79,8 @@ if (( verify_result != 0 )); then
   fail "host configuration backup validation failed (tar exit code: $verify_result)"
 fi
 
-if [[ "$apply_retention" == true ]]; then
-  find "$backup_dir" -maxdepth 1 -type f \
-    -name "${host}-config-*.tar.gz" -mtime "+$retention_days" -delete || \
-    fail "could not apply host backup retention in $backup_dir"
-fi
+find "$backup_dir" -maxdepth 1 -type f \
+  -name "${host}-config-*.tar.gz" -mtime "+$retention_days" -delete || \
+  fail "could not apply host backup retention in $backup_dir"
 
 printf 'backup=success type=host storage=%s path=%s\n' "$storage" "$backup_file"
