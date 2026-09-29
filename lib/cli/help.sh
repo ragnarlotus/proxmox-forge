@@ -15,6 +15,6 @@ Commands:
   inspect-target TARGET       Read the complete available information for one running LXC.
   check-requirements TARGET   Check whether one LXC satisfies current update requirements.
   update TARGET               Update one local LXC through the protected Forge workflow.
-  update-all                  Update all effective local LXC targets serially.
+  update-all                  Update the local Proxmox host first, then all effective LXC targets serially.
   help                        Show this help.
 EOF
