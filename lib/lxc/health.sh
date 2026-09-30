@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Performs the minimal generic post-update health check for one LXC by confirming it remains running and accepts a pct exec command; it does not perform logging or orchestration.
+# Description: Performs the generic post-update health check for one LXC by confirming it remains running, accepts pct exec commands, and has no failed systemd services when systemd is present.
 
 set -u
 
@@ -30,4 +30,48 @@ if (( health_result != 0 )); then
   exit "$health_result"
 fi
 
-printf 'health=ok vmid=%s state=running transport=pct_exec\n' "$vmid"
+init_system="$(
+  pct exec "$vmid" -- sh -c '
+    if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+      printf systemd
+    else
+      printf other
+    fi
+  ' </dev/null
+)"
+init_result=$?
+
+if (( init_result != 0 )); then
+  printf 'ERROR: LXC %s accepted pct exec but init-system detection failed (exit code: %s)\n' \
+    "$vmid" "$init_result" >&2
+  exit "$init_result"
+fi
+
+systemd_services="not_applicable"
+
+if [[ "$init_system" == systemd ]]; then
+  failed_services="$(
+    pct exec "$vmid" -- \
+      systemctl --failed --type=service --no-legend --no-pager --plain \
+      </dev/null 2>&1
+  )"
+  systemctl_result=$?
+
+  if (( systemctl_result != 0 )); then
+    printf 'ERROR: could not query failed systemd services in LXC %s (exit code: %s)\n' \
+      "$vmid" "$systemctl_result" >&2
+    [[ -n "$failed_services" ]] && printf '%s\n' "$failed_services" >&2
+    exit "$systemctl_result"
+  fi
+
+  if [[ -n "$failed_services" ]]; then
+    printf 'ERROR: LXC %s has failed systemd services after update:\n%s\n' \
+      "$vmid" "$failed_services" >&2
+    exit 1
+  fi
+
+  systemd_services="clean"
+fi
+
+printf 'health=ok vmid=%s state=running transport=pct_exec systemd_services=%s\n' \
+  "$vmid" "$systemd_services"
