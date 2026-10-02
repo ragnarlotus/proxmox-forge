@@ -36,4 +36,11 @@ run_update_command "apt-get full-upgrade" \
       -o Dpkg::Options::=--force-confold \
       full-upgrade
 
+run_update_command "apt-get autoremove" \
+  env DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none NEEDRESTART_MODE=a \
+    apt-get -y \
+      -o Dpkg::Options::=--force-confdef \
+      -o Dpkg::Options::=--force-confold \
+      autoremove
+
 printf 'host_os_update=success\n'
