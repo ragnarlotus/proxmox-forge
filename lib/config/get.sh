@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Orchestrates forge.conf loading and validation, exposing the validated CONFIG associative array to callers that source this script.
+# Description: Orchestrates Forge default configuration plus optional local overrides, exposing the validated CONFIG associative array to callers that source this script.
 
 set -u
 
@@ -31,19 +31,20 @@ source "$config_load_script"
 source "$config_validate_script"
 
 config_get() {
-  local config_file="$1"
+  local default_file="$1"
+  local override_file="${2:-$(dirname "$default_file")/forge.conf}"
 
-  config_load "$config_file" || return 1
+  config_load "$default_file" "$override_file" || return 1
   config_validate || return 1
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  [[ $# -eq 1 ]] || {
-    printf 'ERROR: usage: get.sh CONFIG_FILE\n' >&2
+  [[ $# -ge 1 && $# -le 2 ]] || {
+    printf 'ERROR: usage: get.sh DEFAULT_CONFIG_FILE [LOCAL_OVERRIDE_FILE]\n' >&2
     exit 1
   }
 
-  config_get "$1" || exit 1
+  config_get "$@" || exit 1
 
   for key in "${!CONFIG[@]}"; do
     printf '%s=%s\n' "$key" "${CONFIG[$key]}"
