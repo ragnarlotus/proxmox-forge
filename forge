@@ -15,7 +15,6 @@ HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
 HOST_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/host/check-requirements.sh"
 HOST_UPDATE_SCRIPT="$FORGE_DIR/lib/host/update.sh"
-LXC_TARGET_SCRIPT="$FORGE_DIR/lib/lxc/get-target.sh"
 LXC_LIST_TARGETS_SCRIPT="$FORGE_DIR/lib/lxc/list-targets.sh"
 LXC_GET_INFO_SCRIPT="$FORGE_DIR/lib/lxc/get-info.sh"
 LXC_UPDATE_SCRIPT="$FORGE_DIR/lib/lxc/update.sh"
@@ -52,12 +51,6 @@ main() {
       [[ $# -eq 1 ]] || fail "update-host does not accept additional arguments"
       [[ -r "$HOST_UPDATE_SCRIPT" ]] || fail "host update workflow is not readable: $HOST_UPDATE_SCRIPT"
       bash "$HOST_UPDATE_SCRIPT" "$CONFIG_FILE"
-      ;;
-    resolve-target)
-      [[ $# -eq 2 ]] || fail "resolve-target requires exactly one VMID or name"
-      config_get "$CONFIG_FILE" || exit 1
-      [[ -r "$LXC_TARGET_SCRIPT" ]] || fail "LXC target helper is not readable: $LXC_TARGET_SCRIPT"
-      bash "$LXC_TARGET_SCRIPT" "$2"
       ;;
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
