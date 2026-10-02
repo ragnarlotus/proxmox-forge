@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Captures one update stage for the owning update orchestrator, streaming original combined output to the terminal while writing a readable sanitized copy to the log and preserving the command's real exit code.
+# Description: Captures one update stage for the owning update orchestrator, streaming combined output to the terminal while preserving scrollback, writing a readable sanitized copy to the log, and preserving the command's real exit code.
 
 set -u -o pipefail
 
@@ -50,9 +50,7 @@ cleanup_capture() {
 }
 trap cleanup_capture EXIT
 
-# The terminal receives the command output unchanged so carriage-return based
-# progress, ANSI formatting and redraws behave exactly as the producer intended.
-# A separate consumer sanitizes the same byte stream for the persistent log.
+# A separate consumer sanitizes the byte stream for the persistent log.
 # Standalone CR means "rewrite this line", so only the latest visible version is
 # kept in the log instead of turning every progress redraw into a fake new line.
 LC_ALL=C perl -e '
@@ -162,10 +160,71 @@ LC_ALL=C perl -e '
 ' <"$log_pipe" >>"$log_file" &
 sanitize_pid=$!
 
-"$@" 2>&1 | tee "$log_pipe"
+# Preserve the producer terminal stream, including colors, CR redraws and normal
+# screen clears, but suppress CSI 3 J. That sequence clears terminal scrollback;
+# Community Scripts emits it as part of its header repaint, which would otherwise
+# erase earlier Forge stages from an update-all run.
+"$@" 2>&1 | tee "$log_pipe" | LC_ALL=C perl -e '
+  use strict;
+  use warnings;
+
+  binmode STDIN;
+  binmode STDOUT;
+  $| = 1;
+
+  my $pending = "";
+
+  while (read(STDIN, my $chunk, 4096)) {
+    for my $c (split //, $chunk) {
+      while (1) {
+        if ($pending eq "") {
+          if ($c eq "\e") {
+            $pending = $c;
+          } else {
+            print $c;
+          }
+          last;
+        }
+
+        if ($pending eq "\e") {
+          if ($c eq "[") {
+            $pending .= $c;
+            last;
+          }
+          print $pending;
+          $pending = "";
+          next;
+        }
+
+        if ($pending eq "\e[") {
+          if ($c eq "3") {
+            $pending .= $c;
+            last;
+          }
+          print $pending;
+          $pending = "";
+          next;
+        }
+
+        if ($pending eq "\e[3") {
+          if ($c eq "J") {
+            $pending = "";
+            last;
+          }
+          print $pending;
+          $pending = "";
+          next;
+        }
+      }
+    }
+  }
+
+  print $pending if length $pending;
+'
 pipeline_status=("${PIPESTATUS[@]}")
 command_status="${pipeline_status[0]}"
 tee_status="${pipeline_status[1]}"
+terminal_filter_status="${pipeline_status[2]}"
 
 wait "$sanitize_pid"
 sanitize_status=$?
@@ -196,6 +255,14 @@ if (( tee_status != 0 )); then
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=logging_failed" "exit_code=$tee_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
   exit "$tee_status"
+fi
+
+if (( terminal_filter_status != 0 )); then
+  printf 'ERROR: terminal output filtering failed for stage %s (perl exit code %s)\n' \
+    "$stage" "$terminal_filter_status" >&2
+  bash "$write_script" "$log_file" ERROR stage_end \
+    "stage=$stage" "status=terminal_output_failed" "exit_code=$terminal_filter_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
+  exit "$terminal_filter_status"
 fi
 
 bash "$write_script" "$log_file" INFO stage_end \
