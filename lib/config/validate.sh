@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Defines the forge.conf schema and validates loaded configuration keys, required values, booleans, paths, and numeric limits.
+# Description: Defines the Forge configuration schema and validates the final merged default-plus-local configuration keys, required values, booleans, paths, and numeric limits.
 
 set -u
 
