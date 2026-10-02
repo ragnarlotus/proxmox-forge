@@ -1,3 +1,6 @@
+# Local Forge configuration overrides are host-specific and must not be versioned.
+forge.conf
+
 # Target-specific local custom scripts are intentionally not versioned.
 scripts.d/*
 !scripts.d/README.md
