@@ -3,12 +3,13 @@
 
 set -u
 
-CONFIG_FILE="/etc/proxmox-forge/forge.conf"
-
 FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
   printf 'ERROR: could not determine Forge directory\n' >&2
   exit 1
 }
+
+CONFIG_FILE="$FORGE_DIR/forge.conf.default"
+LOCAL_CONFIG_FILE="$FORGE_DIR/forge.conf"
 
 FAIL_SCRIPT="$FORGE_DIR/lib/helpers/fail.sh"
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
@@ -38,12 +39,16 @@ main() {
   case "$command" in
     validate-config)
       [[ $# -eq 1 ]] || fail "validate-config does not accept additional arguments"
-      config_get "$CONFIG_FILE" || exit 1
-      printf 'Forge configuration OK: %s\n' "$CONFIG_FILE"
+      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
+      if [[ -f "$LOCAL_CONFIG_FILE" ]]; then
+        printf 'Forge configuration OK: defaults=%s overrides=%s\n' "$CONFIG_FILE" "$LOCAL_CONFIG_FILE"
+      else
+        printf 'Forge configuration OK: defaults=%s overrides=none\n' "$CONFIG_FILE"
+      fi
       ;;
     check-host-requirements)
       [[ $# -eq 1 ]] || fail "check-host-requirements does not accept additional arguments"
-      config_get "$CONFIG_FILE" || exit 1
+      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$HOST_REQUIREMENTS_SCRIPT" ]] || fail "host requirements workflow is not readable: $HOST_REQUIREMENTS_SCRIPT"
       bash "$HOST_REQUIREMENTS_SCRIPT"
       ;;
@@ -54,7 +59,7 @@ main() {
       ;;
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
-      config_get "$CONFIG_FILE" || exit 1
+      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$LXC_LIST_TARGETS_SCRIPT" ]] || fail "LXC target-list helper is not readable: $LXC_LIST_TARGETS_SCRIPT"
       bash "$LXC_LIST_TARGETS_SCRIPT" \
         "${CONFIG[UPDATE_LXC]}" \
@@ -63,13 +68,13 @@ main() {
       ;;
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
-      config_get "$CONFIG_FILE" || exit 1
+      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$LXC_GET_INFO_SCRIPT" ]] || fail "LXC information helper is not readable: $LXC_GET_INFO_SCRIPT"
       bash "$LXC_GET_INFO_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
       ;;
     check-requirements)
       [[ $# -eq 2 ]] || fail "check-requirements requires exactly one VMID or name"
-      config_get "$CONFIG_FILE" || exit 1
+      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$CHECK_REQUIREMENTS_SCRIPT" ]] || fail "requirements workflow is not readable: $CHECK_REQUIREMENTS_SCRIPT"
       bash "$CHECK_REQUIREMENTS_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
       ;;
