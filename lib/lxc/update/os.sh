@@ -56,6 +56,14 @@ case "$package_manager" in
           -o Dpkg::Options::=--force-confdef \
           -o Dpkg::Options::=--force-confold \
           dist-upgrade </dev/null
+
+    run_update_command "apt-get autoremove" \
+      pct exec "$vmid" -- \
+        env DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none NEEDRESTART_MODE=a \
+        apt-get -y \
+          -o Dpkg::Options::=--force-confdef \
+          -o Dpkg::Options::=--force-confold \
+          autoremove </dev/null
     ;;
   dnf)
     run_update_command "dnf upgrade" \
