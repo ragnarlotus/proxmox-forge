@@ -25,6 +25,7 @@ backup_restore_script="$lib_dir/backup/lxc/restore.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
 custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
+post_update_script="$script_dir/post-update.sh"
 health_script="$script_dir/health.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
@@ -41,6 +42,7 @@ for helper in \
   "$os_update_script" \
   "$application_update_script" \
   "$custom_scripts_update_script" \
+  "$post_update_script" \
   "$health_script" \
   "$log_init_script" \
   "$log_capture_script" \
@@ -346,6 +348,24 @@ elif [[ "${CONFIG[HEALTH_CHECK]}" != true ]]; then
   record_skipped_stage health disabled
 else
   record_skipped_stage health no_mutating_stages
+fi
+
+if [[ "$mutation_planned" == true ]]; then
+  bash "$log_capture_script" "$log_file" fstrim -- \
+    bash "$post_update_script" "$vmid"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    bash "$log_write_script" "$log_file" WARN post_update_failed \
+      "vmid=$vmid" \
+      "stage=fstrim" \
+      "exit_code=$stage_result" || \
+      printf 'ERROR: could not record failed post-update fstrim in %s\n' "$log_file" >&2
+    printf 'WARNING: post-update fstrim failed for LXC %s (exit code: %s)\n' \
+      "$vmid" "$stage_result" >&2
+  fi
+else
+  record_skipped_stage fstrim no_mutating_stages
 fi
 
 finished_at="$(date +%s)" || finished_at="$started_at"
