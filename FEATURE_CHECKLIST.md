@@ -4,6 +4,8 @@ Tracking document for the capabilities identified during the initial requirement
 
 This is a catalogue, not a commitment to implement every item. Items stay here even when they are outside the initial scope so they can be evaluated later.
 
+Implemented means the capability exists in the current `main` branch at the scope described. Partial plumbing, collected-but-unused data, or behaviour that only happens incidentally is not marked as implemented.
+
 ## Status
 
 - [ ] Not implemented
@@ -13,27 +15,27 @@ This is a catalogue, not a commitment to implement every item. Items stay here e
 
 These are agreed behavioural requirements for the initial implementation. They do not remove broader capabilities from the catalogue below.
 
-- [ ] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
-- [ ] **Stopped LXC scope** — while `UPDATE_STOPPED_LXC=false`, stopped containers are skipped and left completely untouched; Forge does not start them or track/restore their state.
-- [ ] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
-- [ ] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
-- [ ] **Validate before mutation** — load and validate the complete configuration and resolve the selected targets before the first mutating operation.
-- [ ] **Initial invocation model** — no scheduler, background job, daemon or Web UI. Every initial-scope run starts from an explicit user invocation.
+- [x] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
+- [x] **Stopped LXC scope** — while `UPDATE_STOPPED_LXC=false`, stopped containers are skipped and left completely untouched; Forge does not start them or track/restore their state.
+- [x] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
+- [x] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
+- [x] **Validate before mutation** — load and validate the complete configuration and resolve the selected targets before the first mutating operation.
+- [x] **Initial invocation model** — no scheduler, background job, daemon or Web UI. Every initial-scope run starts from an explicit user invocation.
 
 ---
 
 ## A. Discovery and inventory
 
-- [ ] **F001** Detect the local Proxmox host automatically.
-- [ ] **F002** Discover all LXC containers.
+- [x] **F001** Detect the local Proxmox host automatically.
+- [x] **F002** Discover all LXC containers.
 - [ ] **F003** Discover all virtual machines.
 - [ ] **F004** Discover Proxmox cluster nodes.
 - [ ] **F005** Manage external hosts over SSH.
-- [ ] **F006** Detect target state: running, stopped, template, etc.
-- [ ] **F007** Detect target OS, distribution and version.
+- [x] **F006** Detect target state: running, stopped, template, etc.
+- [x] **F007** Detect target OS, distribution and version.
 - [ ] **F008** Detect available transport: local, `pct`, QGA, SSH.
 - [ ] **F009** Inventory installed packages.
-- [ ] **F010** Inventory available application/special updater mechanisms.
+- [x] **F010** Inventory available application/special updater mechanisms.
 - [ ] **F011** Support target tags/groups.
 - [ ] **F012** Optional persistent inventory in addition to dynamic discovery.
 
@@ -58,8 +60,8 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F026** `EXCLUDE` selection by ID/name.
 - [ ] **F027** Include/exclude using tags.
 - [ ] **F028** Filter by target type: host/LXC/VM/external.
-- [ ] **F029** Filter targets by running/stopped state.
-- [ ] **F030** Skip templates automatically.
+- [x] **F029** Filter targets by running/stopped state.
+- [x] **F030** Skip templates automatically.
 - [ ] **F031** Separate filters for CHECK and UPDATE.
 - [ ] **F032** Select individual packages.
 - [ ] **F033** Exclude individual packages.
@@ -69,39 +71,39 @@ These are agreed behavioural requirements for the initial implementation. They d
 
 ## D. Execution modes
 
-- [ ] **F037** Interactive/manual execution mode.
+- [x] **F037** Interactive/manual execution mode.
 - [ ] **F038** Persistently configurable automatic/non-interactive mode.
 - [ ] **F039** Native terminal behaviour and real prompts in interactive mode.
-- [ ] **F040** No prompts in automatic mode.
-- [ ] **F041** Execute each mutating operation exactly once.
-- [ ] **F042** Deterministic output capture in automatic mode.
+- [x] **F040** No prompts in automatic mode.
+- [x] **F041** Execute each mutating operation exactly once.
+- [x] **F042** Deterministic output capture in automatic mode.
 - [ ] **F043** Global execution mode configuration.
 - [ ] **F044** Temporary execution-mode override from CLI.
 - [ ] **F045** Allow execution behaviour to vary by operation class where required.
 
 ## E. Operating systems and package managers
 
-- [ ] **F046** Debian/Ubuntu updates through APT.
-- [ ] **F047** Fedora/RHEL/Rocky/Alma updates through DNF/YUM.
-- [ ] **F048** Arch updates through Pacman.
-- [ ] **F049** Alpine updates through APK.
+- [x] **F046** Debian/Ubuntu updates through APT.
+- [x] **F047** Fedora/RHEL/Rocky/Alma updates through DNF/YUM.
+- [x] **F048** Arch updates through Pacman.
+- [x] **F049** Alpine updates through APK.
 - [ ] **F050** Devuan support.
 - [ ] **F051** Mint/Kali/Neon and other Debian derivatives.
 - [ ] **F052** FreeBSD updates through `pkg`.
 - [ ] **F053** Extensible/future Windows Update support.
-- [ ] **F054** Automatically detect the appropriate update strategy.
+- [x] **F054** Automatically detect the appropriate update strategy.
 - [ ] **F055** Configurable package-manager-specific arguments.
 
 ## F. Application updates and custom scripts
 
-- [ ] **F056** Update applications installed through Proxmox Community Scripts.
-- [ ] **F057** Detect `/usr/bin/update` or another known application updater.
+- [x] **F056** Update applications installed through Proxmox Community Scripts.
+- [x] **F057** Detect `/usr/bin/update` or another known application updater.
 - [ ] **F058** Application-specific updater adapters/plugins.
-- [ ] **F059** Per-target custom scripts.
+- [x] **F059** Per-target custom scripts.
 - [ ] **F060** Global custom scripts.
 - [ ] **F061** Pre-update hooks.
 - [ ] **F062** Post-update hooks.
-- [ ] **F063** Every plugin/script returns an authoritative result.
+- [x] **F063** Every plugin/script returns an authoritative result.
 
 ## G. Preflight
 
@@ -112,36 +114,40 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F068** Check real LVM-thin `Data%` / `Meta%` usage.
 - [ ] **F069** Check storage required for snapshots/backups.
 - [ ] **F070** Verify repositories are valid and reachable.
-- [ ] **F071** Detect package-manager locks/conflicting processes.
+- [x] **F071** Detect package-manager locks/conflicting processes.
 - [ ] **F072** Verify required network connectivity.
 - [ ] **F073** Verify QGA/SSH/`pct` transport before mutation.
 - [ ] **F074** Custom preflight hook support.
-- [ ] **F075** A failed mandatory preflight blocks the update.
+- [x] **F075** A failed mandatory preflight blocks the update.
+
+> Forge currently collects root free-space and available-memory values during LXC inspection, but they are not yet policy-enforced preflight checks; therefore F064/F066 remain unchecked.
 
 ## H. Snapshot, backup and rollback
 
 - [ ] **F076** Optional pre-update snapshot.
-- [ ] **F077** Optional pre-update backup.
-- [ ] **F078** Require snapshot/backup according to policy.
-- [ ] **F079** Select backup storage.
-- [ ] **F080** Support applicable backup modes: snapshot/suspend/stop.
+- [x] **F077** Optional pre-update backup.
+- [x] **F078** Require snapshot/backup according to policy.
+- [x] **F079** Select backup storage. Current implementation derives it from the authoritative Proxmox backup configuration instead of maintaining a second Forge storage policy.
+- [x] **F080** Support applicable backup modes: snapshot/suspend/stop. Current LXC backup execution inherits supported options from the applicable Proxmox backup job.
 - [ ] **F081** Fallback from snapshot to backup when snapshot is not viable.
-- [ ] **F082** Verify snapshot/backup actually completed successfully.
-- [ ] **F083** Record the exact recovery artifact identifier.
+- [x] **F082** Verify snapshot/backup actually completed successfully.
+- [x] **F083** Record the exact recovery artifact identifier.
 - [ ] **F084** Verify age/freshness of an existing backup.
 - [ ] **F085** Manual rollback.
-- [ ] **F086** Configurable automatic rollback after failure.
+- [x] **F086** Configurable automatic rollback after failure.
 - [ ] **F087** Retention/cleanup policy for snapshots created by Forge.
-- [ ] **F088** Never remove the recovery artifact before the final result is known.
+- [x] **F088** Never remove the recovery artifact before the final result is known.
 
 > Guest rollback capabilities do not apply to the Proxmox host itself.
+>
+> Forge does not currently create `Update_*` snapshots. LXC recovery uses `vzdump` and Proxmox remains authoritative for the applicable job's storage, mode and retention/prune options.
 
 ## I. Guest lifecycle
 
-- [ ] **F089** Detect original guest state.
+- [x] **F089** Detect original guest state.
 - [ ] **F090** Temporarily start a stopped guest when required.
 - [ ] **F091** Wait for real readiness instead of using a blind fixed sleep.
-- [ ] **F092** Update the guest.
+- [x] **F092** Update the guest.
 - [ ] **F093** Restore the original guest state afterwards.
 - [ ] **F094** Detect reboot-required state.
 - [ ] **F095** Configurable reboot behaviour.
@@ -151,41 +157,41 @@ These are agreed behavioural requirements for the initial implementation. They d
 ## J. Health and recovery
 
 - [ ] **F098** Capture a health baseline before mutation.
-- [ ] **F099** Run health checks after updating.
-- [ ] **F100** Check relevant systemd services.
+- [x] **F099** Run health checks after updating.
+- [x] **F100** Check relevant systemd services.
 - [ ] **F101** Configurable functional health checks.
 - [ ] **F102** Compare pre-update and post-update health.
 - [ ] **F103** Structured health states such as healthy/degraded/unverified/failed.
 - [ ] **F104** Bounded retries when a service needs time to become ready.
 - [ ] **F105** Configurable recovery action.
-- [ ] **F106** Roll back when a mandatory health check does not recover.
+- [x] **F106** Roll back when a mandatory health check does not recover.
 - [ ] **F107** Verify health again after rollback.
 
 ## K. Correct error semantics
 
-- [ ] **F108** Preserve the real exit code of every operation.
-- [ ] **F109** Preserve stdout.
-- [ ] **F110** Preserve stderr.
-- [ ] **F111** Never repeat a mutating operation just to capture its error.
-- [ ] **F112** A failed required step makes the target fail.
-- [ ] **F113** A failed target remains failed even when later targets continue.
-- [ ] **F114** `continue_on_error` means continue processing, never convert failure into success.
-- [ ] **F115** Correctly aggregate the final run result.
-- [ ] **F116** Distinguish primary failure from cleanup failure.
+- [x] **F108** Preserve the real exit code of every operation.
+- [x] **F109** Preserve stdout.
+- [x] **F110** Preserve stderr.
+- [x] **F111** Never repeat a mutating operation just to capture its error.
+- [x] **F112** A failed required step makes the target fail.
+- [x] **F113** A failed target remains failed even when later targets continue.
+- [x] **F114** `continue_on_error` means continue processing, never convert failure into success.
+- [x] **F115** Correctly aggregate the final run result.
+- [x] **F116** Distinguish primary failure from cleanup failure.
 - [ ] **F117** Explicit timeouts.
 - [ ] **F118** Retries only for operations that are safe to repeat.
-- [ ] **F119** Structured result per step, target and run.
+- [x] **F119** Structured result per step, target and run.
 
 ## L. Scheduling and orchestration
 
-- [ ] **F120** Immediate manual execution.
+- [x] **F120** Immediate manual execution.
 - [ ] **F121** Scheduling through systemd timers.
 - [ ] **F122** Daily/weekly/custom schedules.
 - [ ] **F123** Schedule by target/group.
 - [ ] **F124** Maintenance windows.
 - [ ] **F125** Stagger/jitter to avoid updating everything simultaneously.
 - [ ] **F126** Canary/pilot group before production rollout.
-- [ ] **F127** Serial updates.
+- [x] **F127** Serial updates.
 - [ ] **F128** Configurable limited parallelism.
 - [ ] **F129** Global lock for incompatible simultaneous runs.
 - [ ] **F130** Per-target locking.
@@ -206,17 +212,17 @@ These are agreed behavioural requirements for the initial implementation. They d
 ## N. Logging, history and reporting
 
 - [ ] **F141** General log per run.
-- [ ] **F142** Independent log per target.
+- [x] **F142** Independent log per target.
 - [ ] **F143** Independent log per step.
-- [ ] **F144** Precise timestamps.
-- [ ] **F145** Persist exit codes.
+- [x] **F144** Precise timestamps.
+- [x] **F145** Persist exit codes.
 - [ ] **F146** Record duration per step/target/run.
 - [ ] **F147** Human-readable final summary.
 - [ ] **F148** Structured JSON result.
 - [ ] **F149** Queryable execution history.
-- [ ] **F150** Configurable log/history retention.
-- [ ] **F151** Distinguish warnings from errors.
-- [ ] **F152** Audit what was attempted and its result.
+- [x] **F150** Configurable log/history retention. Current `LOG_KEEP` retention applies to timestamped per-LXC logs.
+- [x] **F151** Distinguish warnings from errors.
+- [x] **F152** Audit what was attempted and its result.
 
 ## O. Notifications
 
@@ -243,35 +249,37 @@ These are agreed behavioural requirements for the initial implementation. They d
 
 ## Q. Configuration
 
-- [ ] **F170** One coherent configuration model/schema.
-- [ ] **F171** Explicit defaults.
-- [ ] **F172** Global configuration.
+- [x] **F170** One coherent configuration model/schema.
+- [x] **F171** Explicit defaults.
+- [x] **F172** Global configuration.
 - [ ] **F173** Overrides by group/tag.
 - [ ] **F174** Per-target overrides.
 - [ ] **F175** Temporary CLI overrides.
-- [ ] **F176** Validate the complete configuration before execution.
-- [ ] **F177** Defined policy for unknown/invalid configuration values.
+- [x] **F176** Validate the complete configuration before execution.
+- [x] **F177** Defined policy for unknown/invalid configuration values.
 - [ ] **F178** Configuration migration between versions.
-- [ ] **F179** Preserve custom configuration across upgrades.
+- [x] **F179** Preserve custom configuration across upgrades.
 - [ ] **F180** Print the effective configuration.
-- [ ] **F181** Validate configuration without updating anything.
+- [x] **F181** Validate configuration without updating anything.
 - [ ] **F182** Keep behaviour in configuration rather than scattered hard-coded exceptions.
+
+> Configuration is now layered like a defaults/local model: versioned `forge.conf.default` is always loaded first and optional Git-ignored `forge.conf` is loaded afterwards as host-local overrides. Duplicate keys inside one file and unknown keys are errors.
 
 ## R. Extensibility and architecture
 
 - [ ] **F183** Core/orchestrator independent from transports.
-- [ ] **F184** Local transport.
-- [ ] **F185** `pct` transport.
+- [x] **F184** Local transport.
+- [x] **F185** `pct` transport.
 - [ ] **F186** SSH transport.
 - [ ] **F187** QGA transport.
 - [ ] **F188** Package-manager adapters.
 - [ ] **F189** Application updater adapters.
-- [ ] **F190** Hooks/plugins without modifying the core.
+- [x] **F190** Hooks/plugins without modifying the core. Current implementation is target-local `scripts.d/<VMID>/*.sh` execution.
 - [ ] **F191** Common result model independent of transport/updater.
 - [ ] **F192** Capability detection instead of scattered hard-coded branches.
 - [ ] **F193** Idempotency where applicable.
-- [ ] **F194** Components testable in isolation.
-- [ ] **F195** No dependency on a Web UI.
+- [x] **F194** Components testable in isolation.
+- [x] **F195** No dependency on a Web UI.
 - [ ] **F196** Any future UI consumes the same core/API/CLI instead of redefining execution.
 
 ## S. Forge self-management
@@ -298,6 +306,17 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F213** Integration tests with mocks/fakes.
 - [ ] **F214** End-to-end tests on real Proxmox for critical paths.
 
+> The current critical path has been manually validated on a live Proxmox host, including a complete `update-all`, forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run and real `pct fstrim`. These validations are not yet a repeatable automated test suite, so F204–F214 remain unchecked.
+
+## U. Post-update maintenance and terminal behaviour
+
+These capabilities were added after the original requirements survey and therefore start at F215.
+
+- [x] **F215** Run `apt-get -y autoremove` after successful APT package upgrades on the Proxmox host and APT-based LXCs, preserving the real failure result if autoremove fails.
+- [x] **F216** Run `pct fstrim <VMID>` as explicit post-update maintenance for successfully updated LXCs. A trim failure is reported as a warning and does not trigger destructive rollback of an otherwise successful update.
+- [x] **F217** Preserve native terminal colours, formatting and carriage-return progress while preventing producer `CSI 3 J` sequences from deleting Forge's existing terminal scrollback.
+- [x] **F218** Retain Forge-created Proxmox host configuration backups for 14 days after validating each new archive.
+
 ---
 
 # Migration / replacement requirement
@@ -310,14 +329,14 @@ These are agreed behavioural requirements for the initial implementation. They d
 
 Forge is organised conceptually around six major capabilities:
 
-- [ ] **DISCOVER** — determine which systems exist and what needs updating.
+- [x] **DISCOVER** — determine which systems exist and what needs updating. Current implementation covers the local Proxmox host and LXCs.
 - [ ] **PLAN** — determine exactly what will be done and under which policy.
-- [ ] **PROTECT** — run preflight checks and establish a recovery point/state before mutation.
-- [ ] **EXECUTE** — perform the update exactly once using the correct mechanism.
-- [ ] **VERIFY** — determine the technical and functional result after the change.
-- [ ] **REPORT** — report exactly what happened, including every relevant failure.
+- [x] **PROTECT** — run preflight checks and establish a recovery point/state before mutation.
+- [x] **EXECUTE** — perform the update exactly once using the correct mechanism.
+- [x] **VERIFY** — determine the technical and functional result after the change.
+- [x] **REPORT** — report exactly what happened, including every relevant failure.
 
 Two cross-cutting foundations support all six:
 
-- [ ] **CONFIGURATION** — defines Forge behaviour explicitly.
-- [ ] **RESULT MODEL** — preserves reality across layers so a failure cannot silently become success.
+- [x] **CONFIGURATION** — defines Forge behaviour explicitly.
+- [x] **RESULT MODEL** — preserves reality across layers so a failure cannot silently become success.
