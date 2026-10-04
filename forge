@@ -3,6 +3,11 @@
 
 set -u
 
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
 FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
   printf 'ERROR: could not determine Forge directory\n' >&2
   exit 1
@@ -74,7 +79,6 @@ export FORGE_LOCK_FD="$LOCK_FD"
 export FORGE_RUNTIME_GUARD="$RUNTIME_GUARD_SCRIPT"
 unset FORGE_RUNTIME_CONFIG_READY
 
-FAIL_SCRIPT="$FORGE_DIR/lib/helpers/fail.sh"
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
 HOST_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/host/check-requirements.sh"
@@ -84,13 +88,6 @@ LXC_GET_INFO_SCRIPT="$FORGE_DIR/lib/lxc/get-info.sh"
 LXC_UPDATE_SCRIPT="$FORGE_DIR/lib/lxc/update.sh"
 UPDATE_ALL_SCRIPT="$FORGE_DIR/lib/workflows/update-all.sh"
 CHECK_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/workflows/check-requirements.sh"
-
-[[ -r "$FAIL_SCRIPT" ]] || {
-  printf 'ERROR: failure helper is not readable: %s\n' "$FAIL_SCRIPT" >&2
-  exit 1
-}
-# shellcheck source=/dev/null
-source "$FAIL_SCRIPT"
 
 [[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
 # shellcheck source=/dev/null
