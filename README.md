@@ -24,7 +24,8 @@ Forge currently supports:
 - post-update health checks;
 - APT `autoremove` maintenance;
 - post-update LXC `fstrim`;
-- per-target logging and deterministic terminal capture.
+- per-target logging and deterministic terminal capture;
+- one global execution lock preventing overlapping Forge runs.
 
 Not implemented yet:
 
@@ -46,7 +47,7 @@ Not implemented yet:
 
 ```text
 proxmox-forge/
-├── forge                       # Main CLI dispatcher
+├── forge                       # Public CLI and global runtime lock owner
 ├── forge.conf.default          # Versioned complete defaults
 ├── forge.conf                  # Optional local overrides; ignored by Git
 ├── FEATURE_CHECKLIST.md        # Capability/roadmap tracking
@@ -55,9 +56,11 @@ proxmox-forge/
 │   ├── backup/                 # Host and LXC backup/recovery helpers
 │   ├── cli/                    # CLI help
 │   ├── config/                 # Config loading/parsing/validation
+│   ├── helpers/                # Shared internal helpers
 │   ├── host/                   # Host preflight and update workflow
 │   ├── logging/                # Structured logging and terminal capture
 │   ├── lxc/                    # LXC discovery, update, health and maintenance
+│   ├── runtime/                # Internal runtime-context validation
 │   ├── tasks/                  # Proxmox task result/wait helpers
 │   └── workflows/              # Higher-level orchestration
 └── scripts.d/
@@ -109,6 +112,20 @@ forge help
 
 Partial, prefix and fuzzy matching are deliberately forbidden. An unknown target fails, and an ambiguous exact hostname also fails.
 
+### Single-run execution model
+
+`forge` is the only normal public entry point. Every invocation acquires the same non-blocking global lock before dispatching any command, including read-only commands. While one Forge execution is active, another invocation fails immediately instead of waiting or running concurrently.
+
+All `lib/**/*.sh` files are internal implementation components and require the runtime context inherited from the owning `forge` process. They are deliberately not standalone command-line entry points.
+
+The sole exception is:
+
+```text
+lib/backup/host/restore.sh
+```
+
+That script must remain independently runnable for PVE disaster recovery after a clean reinstall. When invoked directly it acquires the same global lock and creates the same runtime context for any internal helpers it uses, so host restoration still cannot overlap another Forge execution.
+
 ### `validate-config`
 
 Loads `forge.conf.default`, then optional local `forge.conf`, validates the merged result and performs no update.
@@ -158,6 +175,7 @@ Example local override:
 
 ```bash
 UPDATE_HOST=false
+HOST_BACKUP_EXTRA_PATHS="/opt/custom,/srv/config"
 LOG_KEEP=12
 ```
 
@@ -170,6 +188,7 @@ Rules:
 - required keys must exist in the merged configuration;
 - booleans must be exactly `true` or `false`;
 - `CUSTOM_SCRIPTS_DIR` and `LOG_DIR` must be absolute paths;
+- each non-empty `HOST_BACKUP_EXTRA_PATHS` entry must be an absolute path;
 - `LOG_KEEP` must be a positive integer.
 
 Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not replace local overrides. Target-specific contents below `scripts.d/` are also ignored except for `scripts.d/README.md`.
@@ -190,6 +209,7 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 | `CUSTOM_SCRIPTS_DIR` | Absolute directory containing per-target custom scripts. |
 | `CHECK_LXC_REQUIREMENTS` | Run read-only LXC requirements before mutation. |
 | `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Create and validate a host configuration backup before host package changes. |
+| `HOST_BACKUP_EXTRA_PATHS` | Optional comma-separated absolute paths appended to the fixed host-backup path set. |
 | `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Create a Proxmox recovery backup before LXC mutation. |
 | `ROLLBACK_ON_FAILURE` | Attempt same-run guest recovery after eligible update/health failures. |
 | `HEALTH_CHECK` | Verify target health after mutation. |
@@ -227,7 +247,7 @@ The archive is stored under the selected storage's filesystem path:
 <storage-path>/pve/<hostname>-config-YYYY-MM-DD_HH-MM-SS.tar.gz
 ```
 
-The current archive includes:
+The mandatory base archive paths are:
 
 ```text
 /etc/
@@ -235,6 +255,14 @@ The current archive includes:
 /var/lib/pve-cluster
 /usr/local/bin
 ```
+
+`HOST_BACKUP_EXTRA_PATHS` may append host-local files or directories to this set without replacing the mandatory paths. Its value is a comma-separated list of absolute paths, for example:
+
+```bash
+HOST_BACKUP_EXTRA_PATHS="/opt/custom,/srv/config"
+```
+
+Every configured additional path must exist when the backup is created; a missing configured path makes the backup fail rather than being silently omitted.
 
 Forge verifies that the archive exists, is non-empty and can be listed by `tar` before the update proceeds. Forge-created host configuration archives older than 14 days are removed after a new archive has been validated.
 
@@ -249,7 +277,7 @@ cd /opt/proxmox-forge
 bash lib/backup/host/restore.sh
 ```
 
-The restore script then guides the remaining PVE recovery process. This is a manual recovery procedure, not automatic host rollback.
+The restore script then guides the remaining PVE recovery process. This is a manual recovery procedure, not automatic host rollback. It is the only `lib/` script intended to be started directly and it participates in the same global Forge execution lock.
 
 ## LXC update workflow
 
@@ -441,7 +469,7 @@ git pull --ff-only
 
 Because `forge.conf` and target-specific `scripts.d/` contents are ignored by Git, normal fast-forward source updates preserve local host configuration and local target extensions.
 
-Do not pull new code into the checkout while an `update-all` is in progress: later targets in the same run could otherwise execute files from a different revision than earlier targets.
+Do not pull new code into the checkout while any Forge execution is in progress: child stages in the active run must continue using the same source revision from start to finish.
 
 ## Operational checks
 
@@ -461,6 +489,9 @@ For update failures, use the target log path printed by Forge. The primary log i
 
 Current implementation deliberately enforces these rules:
 
+- only one Forge execution may hold the global runtime lock at a time;
+- `forge` is the normal public entry point and internal `lib/**/*.sh` components reject direct execution;
+- the standalone PVE restore utility is the sole internal exception and acquires the same global lock itself;
 - configuration and effective target scope are resolved before mutation;
 - LXC templates are never update targets;
 - stopped LXCs are untouched in the default scope;
