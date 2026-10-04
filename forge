@@ -14,6 +14,8 @@ LOCAL_CONFIG_FILE="$FORGE_DIR/forge.conf"
 FAIL_SCRIPT="$FORGE_DIR/lib/helpers/fail.sh"
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
+LOCKING_SCRIPT="$FORGE_DIR/lib/runtime/locking.sh"
+MUTATION_GUARD_SCRIPT="$FORGE_DIR/lib/runtime/require-mutation-context.sh"
 HOST_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/host/check-requirements.sh"
 HOST_UPDATE_SCRIPT="$FORGE_DIR/lib/host/update.sh"
 LXC_LIST_TARGETS_SCRIPT="$FORGE_DIR/lib/lxc/list-targets.sh"
@@ -32,6 +34,18 @@ source "$FAIL_SCRIPT"
 [[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
 # shellcheck source=/dev/null
 source "$CONFIG_GET_SCRIPT" || fail "could not load config helpers"
+
+[[ -r "$LOCKING_SCRIPT" ]] || fail "runtime locking helper is not readable: $LOCKING_SCRIPT"
+[[ -r "$MUTATION_GUARD_SCRIPT" ]] || fail "mutation context guard is not readable: $MUTATION_GUARD_SCRIPT"
+# shellcheck source=/dev/null
+source "$LOCKING_SCRIPT" || fail "could not load runtime locking helper"
+
+begin_mutation() {
+  local description="$1"
+
+  export FORGE_RUNTIME_GUARD="$MUTATION_GUARD_SCRIPT"
+  forge_acquire_mutation_lock "$description" || exit 1
+}
 
 main() {
   local command="${1:-}"
@@ -54,6 +68,7 @@ main() {
       ;;
     update-host)
       [[ $# -eq 1 ]] || fail "update-host does not accept additional arguments"
+      begin_mutation "update-host"
       [[ -r "$HOST_UPDATE_SCRIPT" ]] || fail "host update workflow is not readable: $HOST_UPDATE_SCRIPT"
       bash "$HOST_UPDATE_SCRIPT" "$CONFIG_FILE"
       ;;
@@ -80,11 +95,13 @@ main() {
       ;;
     update)
       [[ $# -eq 2 ]] || fail "update requires exactly one VMID or name"
+      begin_mutation "update $2"
       [[ -r "$LXC_UPDATE_SCRIPT" ]] || fail "LXC update workflow is not readable: $LXC_UPDATE_SCRIPT"
       bash "$LXC_UPDATE_SCRIPT" "$2" "$CONFIG_FILE"
       ;;
     update-all)
       [[ $# -eq 1 ]] || fail "update-all does not accept additional arguments"
+      begin_mutation "update-all"
       [[ -r "$UPDATE_ALL_SCRIPT" ]] || fail "global update coordinator is not readable: $UPDATE_ALL_SCRIPT"
       bash "$UPDATE_ALL_SCRIPT" "$CONFIG_FILE"
       ;;
