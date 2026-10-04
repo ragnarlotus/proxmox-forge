@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Lists effective local LXC update targets according to the configured LXC scope, always excluding templates.
+# Description: Lists effective local running LXC update targets according to the configured LXC scope, always excluding templates and stopped containers.
 
 set -u
 
@@ -14,19 +14,18 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 3 ]] || fail "usage: list-targets.sh UPDATE_LXC UPDATE_RUNNING_LXC UPDATE_STOPPED_LXC"
+[[ $# -eq 2 ]] || fail "usage: list-targets.sh UPDATE_LXC UPDATE_RUNNING_LXC"
 update_lxc="$1"
 update_running="$2"
-update_stopped="$3"
 
-for value in "$update_lxc" "$update_running" "$update_stopped"; do
+for value in "$update_lxc" "$update_running"; do
   case "$value" in
     true|false) ;;
     *) fail "scope values must be true or false" ;;
   esac
 done
 
-[[ "$update_lxc" == true ]] || exit 0
+[[ "$update_lxc" == true && "$update_running" == true ]] || exit 0
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
@@ -53,18 +52,8 @@ for config_file in "${config_files[@]}"; do
   template="$(bash "$field_script" "$target_record" template)" || fail "LXC target helper returned no template field"
 
   [[ "$template" == true ]] && continue
-
-  case "$state" in
-    running)
-      [[ "$update_running" == true ]] || continue
-      ;;
-    stopped)
-      [[ "$update_stopped" == true ]] || continue
-      ;;
-    *)
-      fail "LXC $vmid returned unsupported state '$state'"
-      ;;
-  esac
+  [[ "$state" == stopped ]] && continue
+  [[ "$state" == running ]] || fail "LXC $vmid returned unsupported state '$state'"
 
   printf 'type=lxc vmid=%s name=%s state=%s template=false\n' "$vmid" "$name" "$state"
 done
