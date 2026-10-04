@@ -18,7 +18,7 @@ config_load_file() {
   local config_file="$1"
   local allow_override="$2"
   local line line_number=0 key raw_value value
-  local script_dir parse_script trim_script
+  local script_dir parse_script
   local -A file_seen=()
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
@@ -26,7 +26,6 @@ config_load_file() {
     return 1
   }
   parse_script="$script_dir/parse-value.sh"
-  trim_script="$script_dir/../helpers/trim.sh"
 
   [[ -r "$config_file" ]] || {
     config_load_fail "configuration file is not readable: $config_file"
@@ -36,17 +35,11 @@ config_load_file() {
     config_load_fail "config value parser is not readable: $parse_script"
     return 1
   }
-  [[ -r "$trim_script" ]] || {
-    config_load_fail "trim helper is not readable: $trim_script"
-    return 1
-  }
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     ((line_number += 1))
-    line="$(bash "$trim_script" "$line")" || {
-      config_load_fail "could not trim configuration line $line_number"
-      return 1
-    }
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
 
     [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
 
