@@ -14,18 +14,12 @@ fail() {
   exit 1
 }
 
-[[ $# -ge 2 && $# -le 3 ]] || fail "usage: restore.sh VMID BACKUP_VOLUME [--dry-run]"
+[[ $# -eq 2 ]] || fail "usage: restore.sh VMID BACKUP_VOLUME"
 vmid="$1"
 backup_volume="$2"
 
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 [[ "$backup_volume" == *:* ]] || fail "BACKUP_VOLUME must be a Proxmox volume ID"
-
-dry_run=false
-if [[ $# -eq 3 ]]; then
-  [[ "$3" == --dry-run ]] || fail "unknown option '$3'"
-  dry_run=true
-fi
 
 for command_name in pct pvesm perl; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is not available"
@@ -148,18 +142,6 @@ restore_help="$(pct help restore --verbose 2>&1)" || fail "could not read pct re
 printf '%s\n' "$restore_help" | grep -q -- '--rootfs' || fail "installed pct restore does not expose --rootfs"
 printf '%s\n' "$restore_help" | grep -q -- '--mp\[n\]' || fail "installed pct restore does not expose --mp[n]"
 printf '%s\n' "$restore_help" | grep -q -- '--force' || fail "installed pct restore does not expose --force"
-
-if [[ "$dry_run" == true ]]; then
-  printf 'restore=planned vmid=%s backup=%s preserved_mounts=%s\n' \
-    "$vmid" "$backup_volume" "$preserve_count"
-  for ((n = 0; n < preserve_count; n++)); do
-    printf 'preserve=%s volume=%s\n' "${preserve_keys[n]}" "${preserve_volumes[n]}"
-  done
-  printf 'command='
-  printf '%q ' "${restore_command[@]}"
-  printf '\n'
-  exit 0
-fi
 
 state_output="$(pct status "$vmid" 2>&1)"
 state_result=$?
