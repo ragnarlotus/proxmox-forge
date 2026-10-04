@@ -14,25 +14,36 @@ config_load_fail() {
   return 1
 }
 
+config_parse_value() {
+  local raw="$1"
+  local output_variable="$2"
+
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+
+  if [[ "$raw" =~ ^\"([^\"]*)\"$ ]]; then
+    printf -v "$output_variable" '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  if [[ "$raw" =~ ^\'([^\']*)\'$ ]]; then
+    printf -v "$output_variable" '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  [[ "$raw" =~ [[:space:]] ]] && return 1
+
+  printf -v "$output_variable" '%s' "$raw"
+}
+
 config_load_file() {
   local config_file="$1"
   local allow_override="$2"
   local line line_number=0 key raw_value value
-  local script_dir parse_script
   local -A file_seen=()
-
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
-    config_load_fail "could not determine config script directory"
-    return 1
-  }
-  parse_script="$script_dir/parse-value.sh"
 
   [[ -r "$config_file" ]] || {
     config_load_fail "configuration file is not readable: $config_file"
-    return 1
-  }
-  [[ -r "$parse_script" ]] || {
-    config_load_fail "config value parser is not readable: $parse_script"
     return 1
   }
 
@@ -61,7 +72,7 @@ config_load_file() {
       return 1
     fi
 
-    value="$(bash "$parse_script" "$raw_value")" || {
+    config_parse_value "$raw_value" value || {
       config_load_fail "invalid value for '$key' at $config_file:$line_number"
       return 1
     }
