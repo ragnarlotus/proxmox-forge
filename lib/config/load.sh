@@ -3,6 +3,12 @@
 
 set -u
 
+[[ -r "${FORGE_RUNTIME_GUARD:-}" ]] || {
+  printf 'ERROR: this Forge component is internal; run it through the forge CLI\n' >&2
+  exit 1
+}
+bash "$FORGE_RUNTIME_GUARD" || exit 1
+
 config_load_fail() {
   printf 'ERROR: %s\n' "$*" >&2
   return 1
