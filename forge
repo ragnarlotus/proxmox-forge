@@ -153,12 +153,12 @@ main() {
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
       [[ -r "$LXC_GET_INFO_SCRIPT" ]] || fail "LXC information helper is not readable: $LXC_GET_INFO_SCRIPT"
-      bash "$LXC_GET_INFO_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
+      bash "$LXC_GET_INFO_SCRIPT" "$2" all
       ;;
     check-requirements)
       [[ $# -eq 2 ]] || fail "check-requirements requires exactly one VMID or name"
       [[ -r "$CHECK_REQUIREMENTS_SCRIPT" ]] || fail "requirements workflow is not readable: $CHECK_REQUIREMENTS_SCRIPT"
-      bash "$CHECK_REQUIREMENTS_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
+      bash "$CHECK_REQUIREMENTS_SCRIPT" "$2"
       ;;
     update)
       [[ $# -eq 2 ]] || fail "update requires exactly one VMID or name"
