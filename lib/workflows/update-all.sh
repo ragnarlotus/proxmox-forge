@@ -43,8 +43,7 @@ config_get "$config_file" || fail "could not load Forge configuration: $config_f
 targets_output="$(
   bash "$lxc_list_targets_script" \
     "${CONFIG[UPDATE_LXC]}" \
-    "${CONFIG[UPDATE_RUNNING_LXC]}" \
-    "${CONFIG[UPDATE_STOPPED_LXC]}"
+    "${CONFIG[UPDATE_RUNNING_LXC]}"
 )" || fail "could not resolve effective LXC target set"
 
 vmids=()
