@@ -195,28 +195,28 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 
 ### Current configuration keys
 
-| Key | Purpose |
-| --- | --- |
-| `UPDATE_HOST` | Enable local Proxmox host updates. |
-| `UPDATE_LXC` | Enable LXC updates. |
-| `UPDATE_VM` | Reserved; VM updates are not implemented. |
-| `UPDATE_EXTERNAL` | Reserved; external-host updates are not implemented. |
-| `UPDATE_RUNNING_LXC` | Include running LXCs. |
-| `UPDATE_STOPPED_LXC` | Planned stopped-LXC scope; actual stopped-LXC updating is not implemented. |
-| `UPDATE_LXC_OS` | Run the LXC OS/package-manager stage. |
-| `UPDATE_LXC_APPLICATION` | Run the detected Community Scripts application updater. |
-| `RUN_CUSTOM_SCRIPTS` | Run local `scripts.d/<VMID>/*.sh` scripts. |
-| `CUSTOM_SCRIPTS_DIR` | Absolute directory containing per-target custom scripts. |
-| `CHECK_LXC_REQUIREMENTS` | Run read-only LXC requirements before mutation. |
-| `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Create and validate a host configuration backup before host package changes. |
-| `HOST_BACKUP_EXTRA_PATHS` | Optional comma-separated absolute paths appended to the fixed host-backup path set. |
-| `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Create a Proxmox recovery backup before LXC mutation. |
-| `ROLLBACK_ON_FAILURE` | Attempt same-run guest recovery after eligible update/health failures. |
-| `HEALTH_CHECK` | Verify target health after mutation. |
-| `LOG_DIR` | Base Forge log directory. |
-| `LOG_KEEP` | Number of timestamped logs retained per LXC. |
-| `UPDATE_ONLY` | Reserved/accepted by schema; target filtering is not implemented yet. |
-| `UPDATE_EXCLUDE` | Reserved/accepted by schema; target filtering is not implemented yet. |
+| Key | Type / accepted value | Purpose |
+| --- | --- | --- |
+| `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
+| `UPDATE_LXC` | Boolean: `true` or `false` | Enable LXC updates. |
+| `UPDATE_VM` | Boolean: `true` or `false` | Reserved; VM updates are not implemented. |
+| `UPDATE_EXTERNAL` | Boolean: `true` or `false` | Reserved; external-host updates are not implemented. |
+| `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include running LXCs. |
+| `UPDATE_STOPPED_LXC` | Boolean: `true` or `false` | Planned stopped-LXC scope; actual stopped-LXC updating is not implemented. |
+| `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
+| `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
+| `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |
+| `CUSTOM_SCRIPTS_DIR` | Absolute path | Absolute directory containing per-target custom scripts. |
+| `CHECK_LXC_REQUIREMENTS` | Boolean: `true` or `false` | Run read-only LXC requirements before mutation. |
+| `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Boolean: `true` or `false` | Create and validate a host configuration backup before host package changes. |
+| `HOST_BACKUP_EXTRA_PATHS` | Empty string or comma-separated absolute paths | Optional paths appended to the fixed host-backup path set. Example: `/opt/custom,/srv/config`. |
+| `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Boolean: `true` or `false` | Create a Proxmox recovery backup before LXC mutation. |
+| `ROLLBACK_ON_FAILURE` | Boolean: `true` or `false` | Attempt same-run guest recovery after eligible update/health failures. |
+| `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation. |
+| `LOG_DIR` | Absolute path | Base Forge log directory. |
+| `LOG_KEEP` | Positive integer (`>= 1`) | Number of timestamped logs retained per LXC. |
+| `UPDATE_ONLY` | String; reserved. Intended format: comma-separated exact VMIDs/names | Reserved/accepted by schema; target filtering is not implemented and this format is not yet semantically validated. |
+| `UPDATE_EXCLUDE` | String; reserved. Intended format: comma-separated exact VMIDs/names | Reserved/accepted by schema; target filtering is not implemented and this format is not yet semantically validated. |
 
 ## Host update workflow
 
