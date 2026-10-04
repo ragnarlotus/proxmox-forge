@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Coordinates the complete local Forge update sequence, validating and resolving LXC scope before mutation, updating the Proxmox host first, and only then running serial LXC updates.
+# Description: Coordinates the complete local Forge update sequence, resolving the full LXC scope once before mutation, updating the Proxmox host first, then processing that exact LXC set serially.
 
 set -u
 
@@ -23,13 +23,15 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 config_get_script="$lib_dir/config/get.sh"
 host_update_script="$lib_dir/host/update.sh"
 lxc_list_targets_script="$lib_dir/lxc/list-targets.sh"
-lxc_update_all_script="$lib_dir/lxc/update-all.sh"
+lxc_field_script="$lib_dir/lxc/get-field.sh"
+lxc_update_script="$lib_dir/lxc/update.sh"
 
 for helper in \
   "$config_get_script" \
   "$host_update_script" \
   "$lxc_list_targets_script" \
-  "$lxc_update_all_script"; do
+  "$lxc_field_script" \
+  "$lxc_update_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -37,7 +39,7 @@ done
 source "$config_get_script" || fail "could not load config helpers"
 config_get "$config_file" || fail "could not load Forge configuration: $config_file"
 
-# Resolve the complete effective LXC scope before the first mutating operation.
+# Resolve and freeze the complete effective LXC scope before the first mutating operation.
 targets_output="$(
   bash "$lxc_list_targets_script" \
     "${CONFIG[UPDATE_LXC]}" \
@@ -45,11 +47,18 @@ targets_output="$(
     "${CONFIG[UPDATE_STOPPED_LXC]}"
 )" || fail "could not resolve effective LXC target set"
 
-lxc_targets=0
+vmids=()
 while IFS= read -r target_record; do
   [[ -n "$target_record" ]] || continue
-  lxc_targets=$((lxc_targets + 1))
+
+  vmid="$(bash "$lxc_field_script" "$target_record" vmid)" || \
+    fail "target record returned no vmid: $target_record"
+  [[ "$vmid" =~ ^[0-9]+$ ]] || fail "target record returned invalid vmid '$vmid'"
+
+  vmids+=("$vmid")
 done <<< "$targets_output"
+
+lxc_targets="${#vmids[@]}"
 
 printf 'update_all=start update_host=%s update_lxc=%s lxc_targets=%s\n' \
   "${CONFIG[UPDATE_HOST]}" "${CONFIG[UPDATE_LXC]}" "$lxc_targets"
@@ -70,16 +79,36 @@ else
 fi
 
 if [[ "${CONFIG[UPDATE_LXC]}" == true ]]; then
-  printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
-  bash "$lxc_update_all_script" "$config_file"
-  lxc_result=$?
+  succeeded=0
+  failed=0
 
-  if (( lxc_result != 0 )); then
-    printf 'update_all=failed stage=lxc exit_code=%s\n' "$lxc_result"
-    exit "$lxc_result"
+  printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
+
+  for vmid in "${vmids[@]}"; do
+    printf 'update_all_target=start vmid=%s\n' "$vmid"
+
+    bash "$lxc_update_script" "$vmid" "$config_file"
+    target_result=$?
+
+    if (( target_result == 0 )); then
+      succeeded=$((succeeded + 1))
+      printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
+    else
+      failed=$((failed + 1))
+      printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
+    fi
+  done
+
+  if (( failed != 0 )); then
+    printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+      "$lxc_targets" "$succeeded" "$failed"
+    printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+      "$lxc_targets" "$succeeded" "$failed"
+    exit 1
   fi
 
-  printf 'update_all_stage=success stage=lxc targets=%s exit_code=0\n' "$lxc_targets"
+  printf 'update_all_stage=success stage=lxc total=%s succeeded=%s failed=0 exit_code=0\n' \
+    "$lxc_targets" "$succeeded"
 else
   printf 'update_all_stage=skipped stage=lxc reason=disabled\n'
 fi
