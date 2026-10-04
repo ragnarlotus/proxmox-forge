@@ -16,6 +16,7 @@ CONFIG_REQUIRED_KEYS=(
   CUSTOM_SCRIPTS_DIR
   CHECK_LXC_REQUIREMENTS
   CREATE_BACKUP_BEFORE_HOST_UPDATE
+  HOST_BACKUP_EXTRA_PATHS
   CREATE_BACKUP_BEFORE_LXC_UPDATE
   ROLLBACK_ON_FAILURE
   HEALTH_CHECK
@@ -74,6 +75,40 @@ config_validate_boolean() {
   esac
 }
 
+config_trim_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+config_validate_host_backup_extra_paths() {
+  local value="${CONFIG[HOST_BACKUP_EXTRA_PATHS]}"
+  local path
+  local -a paths=()
+
+  [[ -z "$value" ]] && return 0
+
+  if [[ "$value" == ,* || "$value" == *, || "$value" == *,,* ]]; then
+    config_validate_fail "HOST_BACKUP_EXTRA_PATHS contains an empty comma-separated entry"
+    return 1
+  fi
+
+  IFS=',' read -r -a paths <<< "$value"
+
+  for path in "${paths[@]}"; do
+    path="$(config_trim_value "$path")"
+    [[ -n "$path" ]] || {
+      config_validate_fail "HOST_BACKUP_EXTRA_PATHS contains an empty entry"
+      return 1
+    }
+    [[ "$path" == /* ]] || {
+      config_validate_fail "HOST_BACKUP_EXTRA_PATHS entries must be absolute paths (got '$path')"
+      return 1
+    }
+  done
+}
+
 config_validate() {
   local key
 
@@ -104,6 +139,8 @@ config_validate() {
     config_validate_fail "CUSTOM_SCRIPTS_DIR must be an absolute path"
     return 1
   }
+
+  config_validate_host_backup_extra_paths || return 1
 
   [[ "${CONFIG[LOG_DIR]}" == /* ]] || {
     config_validate_fail "LOG_DIR must be an absolute path"
