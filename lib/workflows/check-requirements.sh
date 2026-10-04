@@ -14,9 +14,8 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 2 ]] || fail "usage: check-requirements.sh VMID_OR_NAME CUSTOM_SCRIPTS_DIR"
+[[ $# -eq 1 ]] || fail "usage: check-requirements.sh VMID_OR_NAME"
 target="$1"
-custom_scripts_dir="$2"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -27,7 +26,7 @@ for helper in "$info_script" "$field_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
-info="$(bash "$info_script" "$target" "$custom_scripts_dir")" || fail "could not collect LXC information for '$target'"
+info="$(bash "$info_script" "$target")" || fail "could not collect LXC information for '$target'"
 printf '%s\n' "$info"
 
 vmid="$(bash "$field_script" "$info" vmid)" || fail "LXC information returned no vmid"
