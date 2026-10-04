@@ -9,17 +9,39 @@ fail() {
 }
 
 usage() {
-  printf 'Usage: %s [--dry-run]\n' "$0" >&2
+  printf 'Usage: %s [--dry-run] [--extra-paths PATH1,PATH2,...]\n' "$0" >&2
   exit 1
 }
 
+trim_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
 dry_run=false
-if [[ $# -eq 1 ]]; then
-  [[ "$1" == --dry-run ]] || usage
-  dry_run=true
-elif [[ $# -ne 0 ]]; then
-  usage
-fi
+extra_paths_value=""
+extra_paths_seen=false
+
+while (( $# )); do
+  case "$1" in
+    --dry-run)
+      dry_run=true
+      shift
+      ;;
+    --extra-paths)
+      [[ $# -ge 2 ]] || usage
+      [[ "$extra_paths_seen" == false ]] || fail "--extra-paths may only be specified once"
+      extra_paths_value="$2"
+      extra_paths_seen=true
+      shift 2
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
 
 for command_name in hostname tar find install date rm; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is not available: $command_name"
@@ -51,9 +73,35 @@ include=(
   /usr/local/bin
 )
 
+if [[ -n "$extra_paths_value" ]]; then
+  if [[ "$extra_paths_value" == ,* || "$extra_paths_value" == *, || "$extra_paths_value" == *,,* ]]; then
+    fail "extra host backup paths contain an empty comma-separated entry"
+  fi
+
+  IFS=',' read -r -a extra_paths <<< "$extra_paths_value"
+
+  for extra_path in "${extra_paths[@]}"; do
+    extra_path="$(trim_value "$extra_path")"
+    [[ -n "$extra_path" ]] || fail "extra host backup paths contain an empty entry"
+    [[ "$extra_path" == /* ]] || fail "extra host backup path must be absolute: $extra_path"
+    [[ -e "$extra_path" || -L "$extra_path" ]] || fail "configured extra host backup path does not exist: $extra_path"
+
+    duplicate=false
+    for existing_path in "${include[@]}"; do
+      if [[ "${existing_path%/}" == "${extra_path%/}" ]]; then
+        duplicate=true
+        break
+      fi
+    done
+
+    [[ "$duplicate" == true ]] || include+=("$extra_path")
+  done
+fi
+
 if [[ "$dry_run" == true ]]; then
-  printf 'backup=planned type=host storage=%s directory=%s path=%s\n' \
-    "$storage" "$backup_dir" "$backup_file"
+  printf 'backup=planned type=host storage=%s directory=%s path=%s include_count=%s\n' \
+    "$storage" "$backup_dir" "$backup_file" "${#include[@]}"
+  printf 'backup_include=%s\n' "${include[@]}"
   exit 0
 fi
 
