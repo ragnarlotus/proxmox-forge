@@ -193,10 +193,12 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F126** Canary/pilot group before production rollout.
 - [x] **F127** Serial updates.
 - [ ] **F128** Configurable limited parallelism.
-- [ ] **F129** Global lock for incompatible simultaneous runs.
+- [x] **F129** Global lock for incompatible simultaneous runs. Forge currently uses a stricter single-run policy: every `forge` invocation acquires one global non-blocking lock, so a second Forge execution is rejected until the first exits. The standalone PVE restore utility participates in the same lock.
 - [ ] **F130** Per-target locking.
 - [ ] **F131** Jobs survive SSH/session disconnection.
 - [ ] **F132** History of scheduled runs.
+
+> The current concurrency policy deliberately serializes the whole Forge CLI rather than individual targets. All `lib/**/*.sh` components are internal and require the runtime context inherited from `forge`; the only independent exception is `lib/backup/host/restore.sh`, which acquires the same global lock and creates that context itself for disaster recovery. Per-target locks are therefore not required by the current execution model.
 
 ## M. Content lifecycle and version safety
 
@@ -316,6 +318,7 @@ These capabilities were added after the original requirements survey and therefo
 - [x] **F216** Run `pct fstrim <VMID>` as explicit post-update maintenance for successfully updated LXCs. A trim failure is reported as a warning and does not trigger destructive rollback of an otherwise successful update.
 - [x] **F217** Preserve native terminal colours, formatting and carriage-return progress while preventing producer `CSI 3 J` sequences from deleting Forge's existing terminal scrollback.
 - [x] **F218** Retain Forge-created Proxmox host configuration backups for 14 days after validating each new archive.
+- [x] **F219** Allow host-local additional paths to be appended to the fixed Proxmox host configuration backup set through `HOST_BACKUP_EXTRA_PATHS`, without replacing the mandatory base paths.
 
 ---
 
