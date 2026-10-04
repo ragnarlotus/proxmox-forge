@@ -147,8 +147,7 @@ main() {
       [[ -r "$LXC_LIST_TARGETS_SCRIPT" ]] || fail "LXC target-list helper is not readable: $LXC_LIST_TARGETS_SCRIPT"
       bash "$LXC_LIST_TARGETS_SCRIPT" \
         "${CONFIG[UPDATE_LXC]}" \
-        "${CONFIG[UPDATE_RUNNING_LXC]}" \
-        "${CONFIG[UPDATE_STOPPED_LXC]}"
+        "${CONFIG[UPDATE_RUNNING_LXC]}"
       ;;
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
