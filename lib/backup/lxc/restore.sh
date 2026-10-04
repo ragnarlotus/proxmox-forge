@@ -126,65 +126,155 @@ done
 storage_count="${fields[index++]}"
 [[ "$storage_count" =~ ^[0-9]+$ ]] || fail "restore plan returned invalid storage count"
 
-storages=()
+restore_storages=()
 for ((n = 0; n < storage_count; n++)); do
   (( index < ${#fields[@]} )) || fail "restore plan storage list is truncated"
-  storages+=("${fields[index++]}")
+  restore_storages+=("${fields[index++]}")
 done
 
-(( index == ${#fields[@]} )) || fail "restore plan returned unexpected trailing data"
+(( index == ${#fields[@]} )) || fail "restore plan returned unexpected trailing fields"
 
-for storage in "${storages[@]}"; do
+for storage in "${restore_storages[@]}"; do
   pvesm status --storage "$storage" >/dev/null 2>&1 || \
-    fail "required restore storage is unavailable: $storage"
+    fail "restore storage is not currently available: $storage"
 done
 
-current_state="$(pct status "$vmid" 2>/dev/null)" || fail "could not read LXC $vmid state before restore"
-current_state="${current_state#status: }"
-[[ "$current_state" == stopped ]] || fail "LXC $vmid must be stopped before restore (current state: $current_state)"
+for volume in "${preserve_volumes[@]}"; do
+  pvesm path "$volume" >/dev/null 2>&1 || \
+    fail "excluded mount-point volume is not currently available: $volume"
+done
+
+restore_help="$(pct help restore --verbose 2>&1)" || fail "could not read pct restore capabilities"
+printf '%s\n' "$restore_help" | grep -q -- '--rootfs' || fail "installed pct restore does not expose --rootfs"
+printf '%s\n' "$restore_help" | grep -q -- '--mp\[n\]' || fail "installed pct restore does not expose --mp[n]"
+printf '%s\n' "$restore_help" | grep -q -- '--force' || fail "installed pct restore does not expose --force"
 
 if [[ "$dry_run" == true ]]; then
-  printf 'restore=planned vmid=%s backup=%s\n' "$vmid" "$backup_volume"
+  printf 'restore=planned vmid=%s backup=%s preserved_mounts=%s\n' \
+    "$vmid" "$backup_volume" "$preserve_count"
+  for ((n = 0; n < preserve_count; n++)); do
+    printf 'preserve=%s volume=%s\n' "${preserve_keys[n]}" "${preserve_volumes[n]}"
+  done
   printf 'command='
   printf '%q ' "${restore_command[@]}"
   printf '\n'
   exit 0
 fi
 
-before_config="$(pct config "$vmid" 2>&1)" || fail "could not capture LXC $vmid configuration before restore"
+state_output="$(pct status "$vmid" 2>&1)"
+state_result=$?
+if (( state_result != 0 )); then
+  printf '%s\n' "$state_output" >&2
+  exit "$state_result"
+fi
+[[ "$state_output" == 'status: stopped' ]] || fail "LXC $vmid must be stopped before automatic restore"
+
+# pct restore --force destroys every storage-backed volume still referenced by
+# the old active configuration. Temporarily remove only the excluded volumes
+# that must survive; do not move them to unusedN, because unused volumes are
+# also destroyed by Proxmox during overwrite restore.
+if (( preserve_count > 0 )); then
+  VMID="$vmid" PLAN_JSON="$plan_json" perl -MPVE::LXC::Config -MJSON::PP -e '
+    use strict;
+    use warnings;
+
+    my $vmid = $ENV{VMID};
+    my $plan = decode_json($ENV{PLAN_JSON});
+    my $preserve = $plan->{preserve};
+    die "invalid preserve plan\n" unless ref($preserve) eq "ARRAY";
+
+    PVE::LXC::Config->lock_config(
+      $vmid,
+      sub {
+        my $conf = PVE::LXC::Config->load_config($vmid);
+
+        for my $item (@$preserve) {
+          my $key = $item->{key};
+          my $volume = $item->{volume};
+          my $raw = $conf->{$key};
+          die "$key disappeared before restore\n" unless defined($raw);
+
+          my $mp = PVE::LXC::Config->parse_volume($key, $raw);
+          die "$key changed before restore\n"
+            unless $mp->{type} eq "volume" && $mp->{volume} eq $volume;
+
+          for my $other (keys %$conf) {
+            next if $other eq $key;
+            next unless $other eq "rootfs" || $other =~ /^mp\d+$/ || $other =~ /^unused\d+$/;
+            my $other_mp = PVE::LXC::Config->parse_volume($other, $conf->{$other}, 1);
+            next unless $other_mp && $other_mp->{type} eq "volume";
+            die "volume $volume is also referenced by $other; refusing to hide it\n"
+              if $other_mp->{volume} eq $volume;
+          }
+        }
+
+        delete $conf->{$_->{key}} for @$preserve;
+        PVE::LXC::Config->write_config($vmid, $conf);
+      },
+    );
+  '
+  mask_result=$?
+  (( mask_result == 0 )) || exit "$mask_result"
+fi
 
 "${restore_command[@]}"
 restore_result=$?
+
 if (( restore_result != 0 )); then
-  printf 'ERROR: pct restore failed for LXC %s (exit code: %s)\n' "$vmid" "$restore_result" >&2
+  # If Proxmox failed before replacing the old rootfs, restore the temporarily
+  # hidden references so the pre-restore container configuration remains usable.
+  VMID="$vmid" PLAN_JSON="$plan_json" perl -MPVE::LXC::Config -MJSON::PP -e '
+    use strict;
+    use warnings;
+
+    my $vmid = $ENV{VMID};
+    my $plan = decode_json($ENV{PLAN_JSON});
+    my $preserve = $plan->{preserve};
+    exit 0 unless ref($preserve) eq "ARRAY" && @$preserve;
+    exit 0 unless -f "/etc/pve/lxc/$vmid.conf";
+
+    eval {
+      PVE::LXC::Config->lock_config(
+        $vmid,
+        sub {
+          my $conf = PVE::LXC::Config->load_config($vmid);
+          my $root_raw = $conf->{rootfs} // return;
+          my $root = PVE::LXC::Config->parse_volume("rootfs", $root_raw, 1) // return;
+          return unless $root->{type} eq "volume";
+          return unless $root->{volume} eq $plan->{current_rootfs_volume};
+
+          for my $item (@$preserve) {
+            next if defined($conf->{$item->{key}});
+            $conf->{$item->{key}} = $item->{value};
+          }
+          PVE::LXC::Config->write_config($vmid, $conf);
+        },
+      );
+    };
+    warn "WARNING: could not restore hidden mount-point references after failed restore: $@" if $@;
+  '
+
+  printf 'ERROR: restore failed for LXC %s from %s (exit code: %s)\n' \
+    "$vmid" "$backup_volume" "$restore_result" >&2
   exit "$restore_result"
 fi
 
-for ((n = 0; n < preserve_count; n++)); do
-  key="${preserve_keys[n]}"
-  expected_volume="${preserve_volumes[n]}"
-  expected_value="${preserve_values[n]}"
+VMID="$vmid" PLAN_JSON="$plan_json" perl -MPVE::LXC::Config -MJSON::PP -e '
+  use strict;
+  use warnings;
 
-  current_value="$(pct config "$vmid" | sed -n "s/^${key}: //p")" || \
-    fail "could not verify preserved mount point $key after restore"
+  my $vmid = $ENV{VMID};
+  my $plan = decode_json($ENV{PLAN_JSON});
+  my $conf = PVE::LXC::Config->load_config($vmid);
 
-  [[ -n "$current_value" ]] || fail "preserved mount point $key is missing after restore"
+  for my $item (@{$plan->{preserve}}) {
+    my $raw = $conf->{$item->{key}};
+    die "$item->{key} is missing after restore\n" unless defined($raw);
+    my $mp = PVE::LXC::Config->parse_volume($item->{key}, $raw);
+    die "$item->{key} does not reference preserved volume $item->{volume} after restore\n"
+      unless $mp->{type} eq "volume" && $mp->{volume} eq $item->{volume};
+  }
+' || fail "restore completed but preserved mount-point validation failed"
 
-  current_volume="${current_value%%,*}"
-  [[ "$current_volume" == "$expected_volume" ]] || \
-    fail "preserved mount point $key changed volume after restore (expected $expected_volume, got $current_volume)"
-
-  [[ "$current_value" == "$expected_value" ]] || \
-    fail "preserved mount point $key configuration differs after restore"
-done
-
-new_config="$(pct config "$vmid" 2>&1)" || fail "could not read LXC $vmid configuration after restore"
-[[ -n "$new_config" ]] || fail "LXC $vmid configuration is empty after restore"
-
-new_rootfs="$(printf '%s\n' "$new_config" | sed -n 's/^rootfs: //p')"
-[[ -n "$new_rootfs" ]] || fail "restored LXC $vmid has no rootfs"
-new_rootfs_volume="${new_rootfs%%,*}"
-[[ "$new_rootfs_volume" != "$original_rootfs_volume" ]] || \
-  printf 'WARNING: restored LXC %s reused the same rootfs volume identifier: %s\n' "$vmid" "$new_rootfs_volume" >&2
-
-printf 'restore=success vmid=%s backup=%s\n' "$vmid" "$backup_volume"
+printf 'restore=success vmid=%s backup=%s preserved_mounts=%s\n' \
+  "$vmid" "$backup_volume" "$preserve_count"
