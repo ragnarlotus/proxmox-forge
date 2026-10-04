@@ -17,16 +17,10 @@ UPDATE_HOST=true
 # Update LXC containers.
 UPDATE_LXC=true
 
-# Not part of the initial implementation scope.
-UPDATE_VM=false
-UPDATE_EXTERNAL=false
-
-# LXC lifecycle selection.
+# Include running LXC containers in the effective update scope.
 UPDATE_RUNNING_LXC=true
-UPDATE_STOPPED_LXC=false
 
-# When UPDATE_STOPPED_LXC=false, stopped containers are skipped and left
-# completely untouched. Forge does not start them or track/restore their state.
+# Stopped LXC containers are not update targets. Forge leaves them untouched.
 
 # Proxmox LXC templates are never update targets. They are clone/template
 # sources, not Community Scripts application-update helpers.
@@ -41,10 +35,6 @@ UPDATE_STOPPED_LXC=false
 # that does not match exactly must fail instead of selecting another target.
 # If an exact name is ambiguous, target resolution must also fail.
 # This is a runtime argument, not persistent configuration.
-
-# Optional persistent target filters. Disabled by default.
-# UPDATE_ONLY=""
-# UPDATE_EXCLUDE=""
 
 
 # -----------------------------------------------------------------------------
