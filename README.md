@@ -41,8 +41,6 @@ Not implemented yet:
 - generic pre/post hook frameworks;
 - an automated test suite.
 
-`UPDATE_VM`, `UPDATE_EXTERNAL`, `UPDATE_ONLY` and `UPDATE_EXCLUDE` already exist in the configuration schema or defaults as reserved/planned configuration, but the corresponding execution/selection behaviour is not implemented yet. Leave those capabilities disabled or unset.
-
 ## Repository layout
 
 ```text
@@ -136,7 +134,7 @@ Runs the current read-only host preflight. The host must currently be Proxmox VE
 
 ### `list-lxc-targets`
 
-Lists the effective LXC scope according to `UPDATE_LXC`, `UPDATE_RUNNING_LXC` and `UPDATE_STOPPED_LXC`, always excluding templates.
+Lists the effective running-LXC scope according to `UPDATE_LXC` and `UPDATE_RUNNING_LXC`, always excluding templates and stopped containers.
 
 ### `inspect-target TARGET`
 
@@ -199,10 +197,7 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
 | `UPDATE_LXC` | Boolean: `true` or `false` | Enable LXC updates. |
-| `UPDATE_VM` | Boolean: `true` or `false` | Reserved; VM updates are not implemented. |
-| `UPDATE_EXTERNAL` | Boolean: `true` or `false` | Reserved; external-host updates are not implemented. |
 | `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include running LXCs. |
-| `UPDATE_STOPPED_LXC` | Boolean: `true` or `false` | Planned stopped-LXC scope; actual stopped-LXC updating is not implemented. |
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
 | `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
 | `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |
@@ -215,8 +210,6 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 | `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation. |
 | `LOG_DIR` | Absolute path | Base Forge log directory. |
 | `LOG_KEEP` | Positive integer (`>= 1`) | Number of timestamped logs retained per LXC. |
-| `UPDATE_ONLY` | String; reserved. Intended format: comma-separated exact VMIDs/names | Reserved/accepted by schema; target filtering is not implemented and this format is not yet semantically validated. |
-| `UPDATE_EXCLUDE` | String; reserved. Intended format: comma-separated exact VMIDs/names | Reserved/accepted by schema; target filtering is not implemented and this format is not yet semantically validated. |
 
 ## Host update workflow
 
@@ -494,7 +487,7 @@ Current implementation deliberately enforces these rules:
 - the standalone PVE restore utility is the sole internal exception and acquires the same global lock itself;
 - configuration and effective target scope are resolved before mutation;
 - LXC templates are never update targets;
-- stopped LXCs are untouched in the default scope;
+- stopped LXCs are always left untouched;
 - package managers run non-interactively;
 - mutating commands are not repeated merely to capture errors;
 - backup task completion is validated rather than inferred from task creation;
