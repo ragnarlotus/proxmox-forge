@@ -14,15 +14,9 @@ fail() {
   exit 1
 }
 
-[[ $# -ge 1 && $# -le 2 ]] || fail "usage: create.sh VMID [--dry-run]"
+[[ $# -eq 1 ]] || fail "usage: create.sh VMID"
 vmid="$1"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
-
-dry_run=false
-if [[ $# -eq 2 ]]; then
-  [[ "$2" == --dry-run ]] || fail "unknown option '$2'"
-  dry_run=true
-fi
 
 command -v pvesh >/dev/null 2>&1 || fail "pvesh is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
@@ -84,14 +78,6 @@ command=(pvesh create "$endpoint")
 for ((i = 2; i < ${#fields[@]}; i += 2)); do
   command+=("${fields[i]}" "${fields[i + 1]}")
 done
-
-if [[ "$dry_run" == true ]]; then
-  printf 'execution=planned vmid=%s storage=%s\n' "$vmid" "$storage"
-  printf 'command='
-  printf '%q ' "${command[@]}"
-  printf '\n'
-  exit 0
-fi
 
 status_output="$(pct status "$vmid" 2>/dev/null)" || \
   fail "could not read pre-backup state for LXC $vmid"
