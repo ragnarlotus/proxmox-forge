@@ -16,11 +16,9 @@ fail() {
 
 [[ $# -eq 1 ]] || fail "usage: parse-value.sh RAW_VALUE"
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
-trim_script="$script_dir/../helpers/trim.sh"
-[[ -r "$trim_script" ]] || fail "trim helper is not readable: $trim_script"
-
-raw="$(bash "$trim_script" "$1")" || fail "could not trim configuration value"
+raw="$1"
+raw="${raw#"${raw%%[![:space:]]*}"}"
+raw="${raw%"${raw##*[![:space:]]}"}"
 
 if [[ "$raw" =~ ^\"([^\"]*)\"$ ]]; then
   printf '%s' "${BASH_REMATCH[1]}"
