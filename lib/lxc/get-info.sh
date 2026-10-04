@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Returns the minimal package-state information required by LXC preflight checks, or the complete available LXC information when explicitly requested with 'all'.
+# Description: Returns the package/update information required by LXC preflight, or the complete available LXC information when explicitly requested with 'all'.
 
 set -u
 
@@ -29,13 +29,12 @@ package_script="$script_dir/get-package-manager.sh"
 updater_script="$script_dir/get-application-updater.sh"
 config_get_script="$lib_dir/config/get.sh"
 
-for helper in "$target_script" "$field_script" "$package_script"; do
+for helper in "$target_script" "$field_script" "$package_script" "$config_get_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
 if [[ "$mode" == all ]]; then
   [[ -r "$updater_script" ]] || fail "LXC helper is not readable: $updater_script"
-  [[ -r "$config_get_script" ]] || fail "config helper is not readable: $config_get_script"
 fi
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
@@ -52,9 +51,20 @@ package_manager="$(bash "$field_script" "$package_record" package_manager)" || f
 dpkg_audit="$(bash "$field_script" "$package_record" dpkg_audit)" || fail "package-manager helper returned no dpkg_audit"
 package_process="$(bash "$field_script" "$package_record" package_process)" || fail "package-manager helper returned no package_process"
 
+# shellcheck source=/dev/null
+source "$config_get_script" || fail "could not load config helpers"
+config_get || fail "could not load effective Forge configuration"
+custom_scripts_dir="${CONFIG[CUSTOM_SCRIPTS_DIR]}"
+
+custom_script=false
+if [[ -d "$custom_scripts_dir/$vmid" ]] &&
+   find "$custom_scripts_dir/$vmid" -maxdepth 1 -type f -name '*.sh' -print -quit 2>/dev/null | grep -q .; then
+  custom_script=true
+fi
+
 if [[ "$mode" != all ]]; then
-  printf 'vmid=%s package_manager=%s dpkg_audit=%s package_process=%s\n' \
-    "$vmid" "$package_manager" "$dpkg_audit" "$package_process"
+  printf 'vmid=%s package_manager=%s dpkg_audit=%s package_process=%s custom_script=%s\n' \
+    "$vmid" "$package_manager" "$dpkg_audit" "$package_process" "$custom_script"
   exit 0
 fi
 
@@ -87,17 +97,6 @@ os_version="$(bash "$field_script" "$os_record" os_version)" || fail "OS inspect
 root_free_kb="$(bash "$field_script" "$os_record" root_free_kb)" || fail "OS inspection returned no root_free_kb"
 mem_available_kb="$(bash "$field_script" "$os_record" mem_available_kb)" || fail "OS inspection returned no mem_available_kb"
 application_updater="$(bash "$field_script" "$updater_record" application_updater)" || fail "application-updater helper returned no application_updater"
-
-# shellcheck source=/dev/null
-source "$config_get_script" || fail "could not load config helpers"
-config_get || fail "could not load effective Forge configuration"
-custom_scripts_dir="${CONFIG[CUSTOM_SCRIPTS_DIR]}"
-
-custom_script=false
-if [[ -d "$custom_scripts_dir/$vmid" ]] &&
-   find "$custom_scripts_dir/$vmid" -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
-  custom_script=true
-fi
 
 printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s custom_script=%s\n' \
   "$vmid" "$name" "$state" "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb" \
