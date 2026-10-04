@@ -109,8 +109,8 @@ if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then
   backup_output_file="$(mktemp)" || finish_failed backup 1
 
   bash "$log_capture_script" "$log_file" backup -- \
-    bash -o pipefail -c 'bash "$1" | tee "$2"' \
-      _ "$backup_create_script" "$backup_output_file"
+    bash -o pipefail -c 'bash "$1" --extra-paths "$2" | tee "$3"' \
+      _ "$backup_create_script" "${CONFIG[HOST_BACKUP_EXTRA_PATHS]}" "$backup_output_file"
   stage_result=$?
 
   if (( stage_result != 0 )); then
