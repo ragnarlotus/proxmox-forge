@@ -33,6 +33,7 @@ vmid="$(bash "$field_script" "$info" vmid)" || fail "LXC information returned no
 package_manager="$(bash "$field_script" "$info" package_manager)" || fail "LXC information returned no package_manager"
 dpkg_audit="$(bash "$field_script" "$info" dpkg_audit)" || fail "LXC information returned no dpkg_audit"
 package_process="$(bash "$field_script" "$info" package_process)" || fail "LXC information returned no package_process"
+custom_script="$(bash "$field_script" "$info" custom_script)" || fail "LXC information returned no custom_script"
 
 [[ "$package_manager" != unknown ]] || fail "LXC $vmid has no supported package manager"
 
@@ -43,4 +44,5 @@ esac
 
 [[ "$package_process" == none ]] || fail "LXC $vmid has an active package-manager process: $package_process"
 
-printf 'requirements=ok vmid=%s package_manager=%s\n' "$vmid" "$package_manager"
+printf 'requirements=ok vmid=%s package_manager=%s custom_script=%s\n' \
+  "$vmid" "$package_manager" "$custom_script"
