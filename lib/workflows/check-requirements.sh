@@ -43,4 +43,4 @@ esac
 
 [[ "$package_process" == none ]] || fail "LXC $vmid has an active package-manager process: $package_process"
 
-printf 'requirements=ok vmid=%s\n' "$vmid"
+printf 'requirements=ok vmid=%s package_manager=%s\n' "$vmid" "$package_manager"
