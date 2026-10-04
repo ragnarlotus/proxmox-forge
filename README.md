@@ -240,6 +240,17 @@ Forge verifies that the archive exists, is non-empty and can be listed by `tar` 
 
 Host failures are reported as failures with `rollback=unsupported`; Forge never pretends that LXC restore semantics apply to the Proxmox host.
 
+### Restoring a Proxmox VE host
+
+To restore a PVE host from a Forge host backup after a rebuild, first install Proxmox VE, then install/clone Proxmox Forge on the new host and run:
+
+```bash
+cd /opt/proxmox-forge
+bash lib/backup/host/restore.sh
+```
+
+The restore script then guides the remaining PVE recovery process. This is a manual recovery procedure, not automatic host rollback.
+
 ## LXC update workflow
 
 For one running LXC, the current workflow is:
