@@ -103,16 +103,3 @@ config_get() {
     config_get_files "$@"
   fi
 }
-
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  [[ $# -ge 1 && $# -le 2 ]] || {
-    printf 'ERROR: usage: get.sh DEFAULT_CONFIG_FILE [LOCAL_OVERRIDE_FILE]\n' >&2
-    exit 1
-  }
-
-  config_get "$@" || exit 1
-
-  for key in "${!CONFIG[@]}"; do
-    printf '%s=%s\n' "$key" "${CONFIG[$key]}"
-  done | sort
-fi
