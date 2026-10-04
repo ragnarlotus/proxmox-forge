@@ -249,7 +249,7 @@ attempt_recovery() {
 
 if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   bash "$log_capture_script" "$log_file" requirements -- \
-    bash "$requirements_script" "$vmid" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
+    bash "$requirements_script" "$vmid"
   stage_result=$?
 
   if (( stage_result != 0 )); then
