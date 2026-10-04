@@ -15,7 +15,7 @@ fail() {
 }
 
 usage() {
-  printf 'Usage: %s [--dry-run] [--extra-paths PATH1,PATH2,...]\n' "$0" >&2
+  printf 'Usage: %s [--extra-paths PATH1,PATH2,...]\n' "$0" >&2
   exit 1
 }
 
@@ -26,16 +26,11 @@ trim_value() {
   printf '%s' "$value"
 }
 
-dry_run=false
 extra_paths_value=""
 extra_paths_seen=false
 
 while (( $# )); do
   case "$1" in
-    --dry-run)
-      dry_run=true
-      shift
-      ;;
     --extra-paths)
       [[ $# -ge 2 ]] || usage
       [[ "$extra_paths_seen" == false ]] || fail "--extra-paths may only be specified once"
@@ -102,13 +97,6 @@ if [[ -n "$extra_paths_value" ]]; then
 
     [[ "$duplicate" == true ]] || include+=("$extra_path")
   done
-fi
-
-if [[ "$dry_run" == true ]]; then
-  printf 'backup=planned type=host storage=%s directory=%s path=%s include_count=%s\n' \
-    "$storage" "$backup_dir" "$backup_file" "${#include[@]}"
-  printf 'backup_include=%s\n' "${include[@]}"
-  exit 0
 fi
 
 umask 027
