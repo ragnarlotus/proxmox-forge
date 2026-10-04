@@ -3,6 +3,69 @@
 
 set -u
 
+restore_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
+  printf 'ERROR: could not determine restore directory\n' >&2
+  exit 1
+}
+forge_lib_dir="$(cd "$restore_script_dir/../.." && pwd)" || {
+  printf 'ERROR: could not determine Forge lib directory\n' >&2
+  exit 1
+}
+runtime_guard="$forge_lib_dir/runtime/require-context.sh"
+
+# This is the only lib/ entry point intentionally allowed to run outside the
+# public Forge CLI. It still participates in the same global lock so host
+# recovery can never overlap another Forge execution.
+if [[ "${FORGE_CONTEXT:-}" == active && -r "${FORGE_RUNTIME_GUARD:-}" ]]; then
+  bash "$FORGE_RUNTIME_GUARD" || exit 1
+else
+  lock_file="/run/lock/proxmox-forge.lock"
+  lock_fd=200
+
+  command -v flock >/dev/null 2>&1 || {
+    printf 'ERROR: flock is required for Forge runtime locking\n' >&2
+    exit 1
+  }
+  [[ -r "$runtime_guard" ]] || {
+    printf 'ERROR: Forge runtime guard is not readable: %s\n' "$runtime_guard" >&2
+    exit 1
+  }
+  [[ -d /run/lock && -w /run/lock ]] || {
+    printf 'ERROR: Forge lock directory is not writable: /run/lock\n' >&2
+    exit 1
+  }
+
+  exec 200<>"$lock_file" || {
+    printf 'ERROR: could not open Forge run lock: %s\n' "$lock_file" >&2
+    exit 1
+  }
+
+  if ! flock -n "$lock_fd"; then
+    holder="$(cat "$lock_file" 2>/dev/null)"
+    if [[ -n "$holder" ]]; then
+      printf 'ERROR: another Forge execution is already running (%s)\n' "$holder" >&2
+    else
+      printf 'ERROR: another Forge execution is already running\n' >&2
+    fi
+    exit 1
+  fi
+
+  run_id="$(date '+%Y%m%dT%H%M%S')-$$" || {
+    printf 'ERROR: could not create Forge restore run identifier\n' >&2
+    exit 1
+  }
+  printf 'pid=%s run_id=%s command=host-restore\n' "$$" "$run_id" > "$lock_file" || {
+    printf 'ERROR: could not record Forge restore lock metadata\n' >&2
+    exit 1
+  }
+
+  export FORGE_CONTEXT=active
+  export FORGE_RUN_ID="$run_id"
+  export FORGE_LOCK_FILE="$lock_file"
+  export FORGE_LOCK_FD="$lock_fd"
+  export FORGE_RUNTIME_GUARD="$runtime_guard"
+fi
+
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 help() {
@@ -80,7 +143,7 @@ for cmd in tar rsync cp mkdir mktemp rm find sort date hostname systemctl grep a
   command -v "$cmd" >/dev/null 2>&1 || fail "required command is not available: $cmd"
 done
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine restore directory"
+script_dir="$restore_script_dir"
 backup_lib="$(cd "$script_dir/.." && pwd)" || fail "could not determine backup library directory"
 read_storage="$backup_lib/read-storage.sh"; storage_path="$backup_lib/storage-path.sh"
 workspace=""; trap '[[ -z "$workspace" ]] || rm -rf -- "$workspace"' EXIT
