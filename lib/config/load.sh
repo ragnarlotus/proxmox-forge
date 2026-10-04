@@ -96,16 +96,3 @@ config_load() {
     config_load_file "$override_file" true || return 1
   fi
 }
-
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  [[ $# -ge 1 && $# -le 2 ]] || {
-    printf 'ERROR: usage: load.sh DEFAULT_CONFIG_FILE [LOCAL_OVERRIDE_FILE]\n' >&2
-    exit 1
-  }
-
-  config_load "$@" || exit 1
-
-  for key in "${!CONFIG[@]}"; do
-    printf '%s=%s\n' "$key" "${CONFIG[$key]}"
-  done | sort
-fi
