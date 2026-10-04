@@ -79,8 +79,7 @@ case "$state" in
     [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || fail "running LXCs are disabled by configuration"
     ;;
   stopped)
-    [[ "${CONFIG[UPDATE_STOPPED_LXC]}" == true ]] || fail "stopped LXCs are disabled by configuration"
-    fail "updating stopped LXCs is not implemented yet"
+    fail "LXC $vmid is stopped; stopped LXC updates are not supported"
     ;;
   *)
     fail "unsupported LXC state '$state' for VMID $vmid"
@@ -225,8 +224,8 @@ attempt_recovery() {
     return "$recovery_result"
   fi
 
-  # The initial mutating workflow only supports originally-running LXCs, so a
-  # successful recovery returns the guest to that state.
+  # The mutating workflow only supports originally-running LXCs, so a successful
+  # recovery returns the guest to that state.
   bash "$log_capture_script" "$log_file" recovery_start_guest -- pct start "$vmid"
   recovery_result=$?
   if (( recovery_result != 0 )); then
