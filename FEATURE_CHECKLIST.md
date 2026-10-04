@@ -16,7 +16,7 @@ Implemented means the capability exists in the current `main` branch at the scop
 These are agreed behavioural requirements for the initial implementation. They do not remove broader capabilities from the catalogue below.
 
 - [x] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
-- [x] **Stopped LXC scope** — while `UPDATE_STOPPED_LXC=false`, stopped containers are skipped and left completely untouched; Forge does not start them or track/restore their state.
+- [x] **Stopped LXC exclusion** — stopped containers are not update targets and are left completely untouched; Forge does not start them or track/restore their state.
 - [x] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
 - [x] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
 - [x] **Validate before mutation** — load and validate the complete configuration and resolve the selected targets before the first mutating operation.
@@ -60,7 +60,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F026** `EXCLUDE` selection by ID/name.
 - [ ] **F027** Include/exclude using tags.
 - [ ] **F028** Filter by target type: host/LXC/VM/external.
-- [x] **F029** Filter targets by running/stopped state.
+- [ ] **F029** Filter targets by running/stopped state.
 - [x] **F030** Skip templates automatically.
 - [ ] **F031** Separate filters for CHECK and UPDATE.
 - [ ] **F032** Select individual packages.
