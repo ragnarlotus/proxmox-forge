@@ -102,6 +102,7 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
 package_manager=""
+custom_script=false
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -265,15 +266,24 @@ if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
 
   package_manager="$(bash "$field_script" "$requirements_record" package_manager)" || \
     finish_failed requirements 1
+  custom_script="$(bash "$field_script" "$requirements_record" custom_script)" || \
+    finish_failed requirements 1
   [[ -n "$package_manager" ]] || finish_failed requirements 1
+  [[ "$custom_script" == true || "$custom_script" == false ]] || finish_failed requirements 1
 else
   record_skipped_stage requirements disabled
+
+  if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
+    && [[ -d "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" ]] \
+    && find "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" -maxdepth 1 -type f -name '*.sh' -print -quit 2>/dev/null | grep -q .; then
+    custom_script=true
+  fi
 fi
 
 mutation_planned=false
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]] \
   || [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]] \
-  || [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]]; then
+  || { [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] && [[ "$custom_script" == true ]]; }; then
   mutation_planned=true
 fi
 
@@ -339,7 +349,11 @@ else
   record_skipped_stage application_update disabled
 fi
 
-if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]]; then
+if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" != true ]]; then
+  record_skipped_stage custom_scripts disabled
+elif [[ "$custom_script" != true ]]; then
+  record_skipped_stage custom_scripts no_scripts
+else
   bash "$log_capture_script" "$log_file" custom_scripts -- \
     bash "$custom_scripts_update_script" "$vmid" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
   stage_result=$?
@@ -348,8 +362,6 @@ if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]]; then
     attempt_recovery custom_scripts "$stage_result" || true
     finish_failed custom_scripts "$stage_result"
   fi
-else
-  record_skipped_stage custom_scripts disabled
 fi
 
 if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
