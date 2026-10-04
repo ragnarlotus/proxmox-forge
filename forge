@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Main Forge CLI orchestrator. Acquires the single global Forge run lock, creates the runtime context, then dispatches commands without implementing domain logic.
+# Description: Main Forge CLI orchestrator. Acquires the single global Forge run lock, snapshots the effective configuration for the run, then dispatches commands without implementing domain logic.
 
 set -u
 
@@ -33,7 +33,16 @@ exec 200<>"$LOCK_FILE" || {
 }
 
 if ! flock -n "$LOCK_FD"; then
-  holder="$(cat "$LOCK_FILE" 2>/dev/null)"
+  holder="$(awk -F '\t' '
+    $1 == "meta" && ($2 == "pid" || $2 == "run_id" || $2 == "command") {
+      if (length(out)) out = out " ";
+      out = out $2 "=" $3;
+    }
+    END { print out }
+  ' "$LOCK_FILE" 2>/dev/null)"
+  if [[ -z "$holder" ]]; then
+    holder="$(head -n 1 "$LOCK_FILE" 2>/dev/null)"
+  fi
   if [[ -n "$holder" ]]; then
     printf 'ERROR: another Forge execution is already running (%s)\n' "$holder" >&2
   else
@@ -42,12 +51,18 @@ if ! flock -n "$LOCK_FD"; then
   exit 1
 fi
 
+cleanup_run_state() {
+  : > "$LOCK_FILE" 2>/dev/null || true
+}
+trap cleanup_run_state EXIT
+
 run_id="$(date '+%Y%m%dT%H%M%S')-$$" || {
   printf 'ERROR: could not create Forge run identifier\n' >&2
   exit 1
 }
 command_name="${1:-none}"
-printf 'pid=%s run_id=%s command=%s\n' "$$" "$run_id" "$command_name" > "$LOCK_FILE" || {
+printf 'meta\tpid\t%s\nmeta\trun_id\t%s\nmeta\tcommand\t%s\n' \
+  "$$" "$run_id" "$command_name" > "$LOCK_FILE" || {
   printf 'ERROR: could not record Forge run lock metadata\n' >&2
   exit 1
 }
@@ -57,6 +72,7 @@ export FORGE_RUN_ID="$run_id"
 export FORGE_LOCK_FILE="$LOCK_FILE"
 export FORGE_LOCK_FD="$LOCK_FD"
 export FORGE_RUNTIME_GUARD="$RUNTIME_GUARD_SCRIPT"
+unset FORGE_RUNTIME_CONFIG_READY
 
 FAIL_SCRIPT="$FORGE_DIR/lib/helpers/fail.sh"
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
@@ -80,13 +96,36 @@ source "$FAIL_SCRIPT"
 # shellcheck source=/dev/null
 source "$CONFIG_GET_SCRIPT" || fail "could not load config helpers"
 
+write_runtime_state() {
+  local key
+  local -a keys=()
+
+  mapfile -t keys < <(printf '%s\n' "${!CONFIG[@]}" | LC_ALL=C sort)
+
+  {
+    printf 'meta\tpid\t%s\n' "$$"
+    printf 'meta\trun_id\t%s\n' "$run_id"
+    printf 'meta\tcommand\t%s\n' "$command_name"
+    for key in "${keys[@]}"; do
+      printf 'config\t%s\t%s\n' "$key" "${CONFIG[$key]}"
+    done
+  } > "$LOCK_FILE" || fail "could not record effective Forge run state"
+}
+
+case "$command_name" in
+  validate-config|check-host-requirements|update-host|list-lxc-targets|inspect-target|check-requirements|update|update-all)
+    config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
+    write_runtime_state
+    export FORGE_RUNTIME_CONFIG_READY=true
+    ;;
+esac
+
 main() {
   local command="${1:-}"
 
   case "$command" in
     validate-config)
       [[ $# -eq 1 ]] || fail "validate-config does not accept additional arguments"
-      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       if [[ -f "$LOCAL_CONFIG_FILE" ]]; then
         printf 'Forge configuration OK: defaults=%s overrides=%s\n' "$CONFIG_FILE" "$LOCAL_CONFIG_FILE"
       else
@@ -95,7 +134,6 @@ main() {
       ;;
     check-host-requirements)
       [[ $# -eq 1 ]] || fail "check-host-requirements does not accept additional arguments"
-      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$HOST_REQUIREMENTS_SCRIPT" ]] || fail "host requirements workflow is not readable: $HOST_REQUIREMENTS_SCRIPT"
       bash "$HOST_REQUIREMENTS_SCRIPT"
       ;;
@@ -106,7 +144,6 @@ main() {
       ;;
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
-      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$LXC_LIST_TARGETS_SCRIPT" ]] || fail "LXC target-list helper is not readable: $LXC_LIST_TARGETS_SCRIPT"
       bash "$LXC_LIST_TARGETS_SCRIPT" \
         "${CONFIG[UPDATE_LXC]}" \
@@ -115,13 +152,11 @@ main() {
       ;;
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
-      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$LXC_GET_INFO_SCRIPT" ]] || fail "LXC information helper is not readable: $LXC_GET_INFO_SCRIPT"
       bash "$LXC_GET_INFO_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
       ;;
     check-requirements)
       [[ $# -eq 2 ]] || fail "check-requirements requires exactly one VMID or name"
-      config_get "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
       [[ -r "$CHECK_REQUIREMENTS_SCRIPT" ]] || fail "requirements workflow is not readable: $CHECK_REQUIREMENTS_SCRIPT"
       bash "$CHECK_REQUIREMENTS_SCRIPT" "$2" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
       ;;
