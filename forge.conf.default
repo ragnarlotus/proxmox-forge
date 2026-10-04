@@ -104,6 +104,13 @@ CHECK_LXC_REQUIREMENTS=true
 # pve/ directory. Host backup failure prevents the host update from starting.
 CREATE_BACKUP_BEFORE_HOST_UPDATE=true
 
+# Additional absolute paths to include in Forge host configuration backups,
+# separated by commas. The built-in paths /etc/, /root, /var/lib/pve-cluster
+# and /usr/local/bin are always included. Configured extra paths must exist;
+# a missing path makes the host backup fail instead of being skipped silently.
+# Example: HOST_BACKUP_EXTRA_PATHS="/opt/custom,/srv/config"
+HOST_BACKUP_EXTRA_PATHS=""
+
 # Create a recovery backup immediately before the LXC update starts.
 #
 # Proxmox is authoritative for backup behaviour. Forge must read and respect
