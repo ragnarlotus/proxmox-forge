@@ -102,6 +102,7 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
+package_manager=""
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -248,13 +249,24 @@ attempt_recovery() {
 }
 
 if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
+  requirements_output_file="$(mktemp)" || finish_failed requirements 1
+
   bash "$log_capture_script" "$log_file" requirements -- \
-    bash "$requirements_script" "$vmid"
+    bash -o pipefail -c 'bash "$1" "$2" | tee "$3"' \
+      _ "$requirements_script" "$vmid" "$requirements_output_file"
   stage_result=$?
 
   if (( stage_result != 0 )); then
+    rm -f "$requirements_output_file"
     finish_failed requirements "$stage_result"
   fi
+
+  requirements_record="$(grep '^requirements=ok ' "$requirements_output_file" | tail -n 1)"
+  rm -f "$requirements_output_file"
+
+  package_manager="$(bash "$field_script" "$requirements_record" package_manager)" || \
+    finish_failed requirements 1
+  [[ -n "$package_manager" ]] || finish_failed requirements 1
 else
   record_skipped_stage requirements disabled
 fi
@@ -304,7 +316,7 @@ fi
 
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
   bash "$log_capture_script" "$log_file" os_update -- \
-    bash "$os_update_script" "$vmid"
+    bash "$os_update_script" "$vmid" "$package_manager"
   stage_result=$?
 
   if (( stage_result != 0 )); then
