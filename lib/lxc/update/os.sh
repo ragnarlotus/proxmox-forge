@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Updates the operating-system packages of one running LXC using its detected supported package manager; it does not perform logging or orchestration.
+# Description: Updates the operating-system packages of one running LXC using a supplied or detected supported package manager; it does not perform logging or orchestration.
 
 set -u
 
@@ -28,25 +28,28 @@ run_update_command() {
   fi
 }
 
-[[ $# -eq 1 ]] || fail "usage: os.sh VMID"
+[[ $# -ge 1 && $# -le 2 ]] || fail "usage: os.sh VMID [PACKAGE_MANAGER]"
 vmid="$1"
+package_manager="${2:-}"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 
 command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine update script directory"
-lxc_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine LXC directory"
-package_manager_script="$lxc_dir/get-package-manager.sh"
-field_script="$lxc_dir/get-field.sh"
+if [[ -z "$package_manager" ]]; then
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine update script directory"
+  lxc_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine LXC directory"
+  package_manager_script="$lxc_dir/get-package-manager.sh"
+  field_script="$lxc_dir/get-field.sh"
 
-for helper in "$package_manager_script" "$field_script"; do
-  [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
-done
+  for helper in "$package_manager_script" "$field_script"; do
+    [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
+  done
 
-package_record="$(bash "$package_manager_script" "$vmid")" || \
-  fail "could not determine package manager for LXC $vmid"
-package_manager="$(bash "$field_script" "$package_record" package_manager)" || \
-  fail "package-manager record returned no package_manager"
+  package_record="$(bash "$package_manager_script" "$vmid")" || \
+    fail "could not determine package manager for LXC $vmid"
+  package_manager="$(bash "$field_script" "$package_record" package_manager)" || \
+    fail "package-manager record returned no package_manager"
+fi
 
 case "$package_manager" in
   apt)
