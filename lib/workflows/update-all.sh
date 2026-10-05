@@ -23,14 +23,12 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 config_get_script="$lib_dir/config/get.sh"
 host_update_script="$lib_dir/host/update.sh"
 lxc_list_targets_script="$lib_dir/lxc/list-targets.sh"
-lxc_field_script="$lib_dir/lxc/get-field.sh"
 lxc_update_script="$lib_dir/lxc/update.sh"
 
 for helper in \
   "$config_get_script" \
   "$host_update_script" \
   "$lxc_list_targets_script" \
-  "$lxc_field_script" \
   "$lxc_update_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
@@ -50,8 +48,15 @@ vmids=()
 while IFS= read -r target_record; do
   [[ -n "$target_record" ]] || continue
 
-  vmid="$(bash "$lxc_field_script" "$target_record" vmid)" || \
-    fail "target record returned no vmid: $target_record"
+  vmid=""
+  for field in $target_record; do
+    if [[ "$field" == vmid=* ]]; then
+      vmid="${field#*=}"
+      break
+    fi
+  done
+
+  [[ -n "$vmid" ]] || fail "target record returned no vmid: $target_record"
   [[ "$vmid" =~ ^[0-9]+$ ]] || fail "target record returned invalid vmid '$vmid'"
 
   vmids+=("$vmid")
