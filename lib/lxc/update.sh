@@ -14,6 +14,20 @@ fail() {
   exit 1
 }
 
+parse_record() {
+  local record="$1"
+  local field key
+
+  RECORD_FIELDS=()
+  for field in $record; do
+    [[ "$field" == *=* ]] || continue
+    key="${field%%=*}"
+    RECORD_FIELDS["$key"]="${field#*=}"
+  done
+}
+
+declare -A RECORD_FIELDS=()
+
 [[ $# -eq 2 ]] || fail "usage: update.sh VMID_OR_NAME CONFIG_FILE"
 target="$1"
 config_file="$2"
@@ -23,7 +37,6 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 
 config_get_script="$lib_dir/config/get.sh"
 target_script="$script_dir/get-target.sh"
-field_script="$script_dir/get-field.sh"
 state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
 backup_create_script="$lib_dir/backup/lxc/create.sh"
@@ -40,7 +53,6 @@ log_write_script="$lib_dir/logging/write.sh"
 for helper in \
   "$config_get_script" \
   "$target_script" \
-  "$field_script" \
   "$state_script" \
   "$requirements_script" \
   "$backup_create_script" \
@@ -67,10 +79,15 @@ config_get "$config_file" || fail "could not load Forge configuration: $config_f
 [[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by configuration"
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
-vmid="$(bash "$field_script" "$target_record" vmid)" || fail "target record returned no vmid"
-name="$(bash "$field_script" "$target_record" name)" || fail "target record returned no name"
-state="$(bash "$field_script" "$target_record" state)" || fail "target record returned no state"
-template="$(bash "$field_script" "$target_record" template)" || fail "target record returned no template flag"
+parse_record "$target_record"
+vmid="${RECORD_FIELDS[vmid]:-}"
+name="${RECORD_FIELDS[name]:-}"
+state="${RECORD_FIELDS[state]:-}"
+template="${RECORD_FIELDS[template]:-}"
+[[ -n "$vmid" ]] || fail "target record returned no vmid"
+[[ -n "$name" ]] || fail "target record returned no name"
+[[ -n "$state" ]] || fail "target record returned no state"
+[[ -n "$template" ]] || fail "target record returned no template flag"
 
 [[ "$template" == false ]] || fail "LXC $vmid is a template and cannot be updated"
 
@@ -264,10 +281,9 @@ if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   requirements_record="$(grep '^requirements=ok ' "$requirements_output_file" | tail -n 1)"
   rm -f "$requirements_output_file"
 
-  package_manager="$(bash "$field_script" "$requirements_record" package_manager)" || \
-    finish_failed requirements 1
-  custom_script="$(bash "$field_script" "$requirements_record" custom_script)" || \
-    finish_failed requirements 1
+  parse_record "$requirements_record"
+  package_manager="${RECORD_FIELDS[package_manager]:-}"
+  custom_script="${RECORD_FIELDS[custom_script]:-}"
   [[ -n "$package_manager" ]] || finish_failed requirements 1
   [[ "$custom_script" == true || "$custom_script" == false ]] || finish_failed requirements 1
 else
@@ -304,14 +320,14 @@ if [[ "$mutation_planned" == true ]]; then
     backup_record="$(grep '^backup=success ' "$backup_output_file" | tail -n 1)"
     rm -f "$backup_output_file"
 
-    backup_volume="$(bash "$field_script" "$backup_record" volume)" || {
+    parse_record "$backup_record"
+    backup_volume="${RECORD_FIELDS[volume]:-}"
+    if [[ -z "$backup_volume" ]]; then
       bash "$log_write_script" "$log_file" ERROR backup_artifact_error \
         "vmid=$vmid" \
         "reason=missing_volume" || true
       finish_failed backup 1
-    }
-
-    [[ -n "$backup_volume" ]] || finish_failed backup 1
+    fi
 
     bash "$log_write_script" "$log_file" INFO recovery_artifact \
       "vmid=$vmid" \
