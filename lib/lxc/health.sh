@@ -27,15 +27,6 @@ state_script="$script_dir/get-state.sh"
 state="$(bash "$state_script" "$vmid")" || fail "could not read state for LXC $vmid"
 [[ "$state" == running ]] || fail "LXC $vmid is $state after update"
 
-pct exec "$vmid" -- sh -c 'exit 0' </dev/null
-health_result=$?
-
-if (( health_result != 0 )); then
-  printf 'ERROR: LXC %s is running but pct exec health check failed (exit code: %s)\n' \
-    "$vmid" "$health_result" >&2
-  exit "$health_result"
-fi
-
 init_system="$(
   pct exec "$vmid" -- sh -c '
     if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
@@ -48,7 +39,7 @@ init_system="$(
 init_result=$?
 
 if (( init_result != 0 )); then
-  printf 'ERROR: LXC %s accepted pct exec but init-system detection failed (exit code: %s)\n' \
+  printf 'ERROR: pct exec/init-system detection failed for LXC %s (exit code: %s)\n' \
     "$vmid" "$init_result" >&2
   exit "$init_result"
 fi
