@@ -44,7 +44,6 @@ backup_restore_script="$lib_dir/backup/lxc/restore.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
 custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
-post_update_script="$script_dir/post-update.sh"
 health_script="$script_dir/health.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
@@ -60,7 +59,6 @@ for helper in \
   "$os_update_script" \
   "$application_update_script" \
   "$custom_scripts_update_script" \
-  "$post_update_script" \
   "$health_script" \
   "$log_init_script" \
   "$log_capture_script" \
@@ -396,8 +394,7 @@ else
 fi
 
 if [[ "$mutation_planned" == true ]]; then
-  bash "$log_capture_script" "$log_file" fstrim -- \
-    bash "$post_update_script" "$vmid"
+  bash "$log_capture_script" "$log_file" fstrim -- pct fstrim "$vmid"
   stage_result=$?
 
   if (( stage_result != 0 )); then
