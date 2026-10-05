@@ -20,20 +20,36 @@ target="$1"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 info_script="$lib_dir/lxc/get-info.sh"
-field_script="$lib_dir/lxc/get-field.sh"
 
-for helper in "$info_script" "$field_script"; do
-  [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
-done
+[[ -r "$info_script" ]] || fail "required helper is not readable: $info_script"
 
 info="$(bash "$info_script" "$target")" || fail "could not collect LXC information for '$target'"
 printf '%s\n' "$info"
 
-vmid="$(bash "$field_script" "$info" vmid)" || fail "LXC information returned no vmid"
-package_manager="$(bash "$field_script" "$info" package_manager)" || fail "LXC information returned no package_manager"
-dpkg_audit="$(bash "$field_script" "$info" dpkg_audit)" || fail "LXC information returned no dpkg_audit"
-package_process="$(bash "$field_script" "$info" package_process)" || fail "LXC information returned no package_process"
-custom_script="$(bash "$field_script" "$info" custom_script)" || fail "LXC information returned no custom_script"
+declare -A info_fields=()
+for field in $info; do
+  [[ "$field" == *=* ]] || continue
+  key="${field%%=*}"
+  info_fields["$key"]="${field#*=}"
+done
+
+vmid="${info_fields[vmid]:-}"
+name="${info_fields[name]:-}"
+state="${info_fields[state]:-}"
+template="${info_fields[template]:-}"
+package_manager="${info_fields[package_manager]:-}"
+dpkg_audit="${info_fields[dpkg_audit]:-}"
+package_process="${info_fields[package_process]:-}"
+custom_script="${info_fields[custom_script]:-}"
+
+[[ -n "$vmid" ]] || fail "LXC information returned no vmid"
+[[ -n "$name" ]] || fail "LXC information returned no name"
+[[ -n "$state" ]] || fail "LXC information returned no state"
+[[ -n "$template" ]] || fail "LXC information returned no template"
+[[ -n "$package_manager" ]] || fail "LXC information returned no package_manager"
+[[ -n "$dpkg_audit" ]] || fail "LXC information returned no dpkg_audit"
+[[ -n "$package_process" ]] || fail "LXC information returned no package_process"
+[[ "$custom_script" == true || "$custom_script" == false ]] || fail "LXC information returned invalid custom_script"
 
 [[ "$package_manager" != unknown ]] || fail "LXC $vmid has no supported package manager"
 
@@ -44,5 +60,5 @@ esac
 
 [[ "$package_process" == none ]] || fail "LXC $vmid has an active package-manager process: $package_process"
 
-printf 'requirements=ok vmid=%s package_manager=%s custom_script=%s\n' \
-  "$vmid" "$package_manager" "$custom_script"
+printf 'requirements=ok vmid=%s name=%s state=%s template=%s package_manager=%s custom_script=%s\n' \
+  "$vmid" "$name" "$state" "$template" "$package_manager" "$custom_script"
