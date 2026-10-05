@@ -20,23 +20,13 @@ vmid="$1"
 
 command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine update script directory"
-lxc_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine LXC directory"
-updater_script="$lxc_dir/get-application-updater.sh"
-
-[[ -r "$updater_script" ]] || fail "required helper is not readable: $updater_script"
-
-updater_record="$(bash "$updater_script" "$vmid")" || \
-  fail "could not determine application updater for LXC $vmid"
-read -r vmid_field updater_field extra_field <<< "$updater_record"
-
-[[ "$vmid_field" == vmid=* ]] || fail "application-updater record returned no vmid"
-[[ "$updater_field" == application_updater=* ]] || fail "application-updater record returned no application_updater"
-[[ -z "${extra_field:-}" ]] || fail "application-updater record returned unexpected fields"
-
-record_vmid="${vmid_field#vmid=}"
-application_updater="${updater_field#application_updater=}"
-[[ "$record_vmid" == "$vmid" ]] || fail "application-updater record returned mismatched vmid '$record_vmid' for $vmid"
+application_updater="$(pct exec "$vmid" -- sh -c '
+  if [ -x /usr/bin/update ]; then
+    printf "/usr/bin/update"
+  else
+    printf "none"
+  fi
+' </dev/null)" || fail "could not determine application updater for LXC $vmid"
 
 case "$application_updater" in
   none)
