@@ -39,16 +39,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 target_script="$script_dir/get-target.sh"
 package_script="$script_dir/get-package-manager.sh"
-updater_script="$script_dir/get-application-updater.sh"
 config_get_script="$lib_dir/config/get.sh"
 
 for helper in "$target_script" "$package_script" "$config_get_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
-
-if [[ "$mode" == all ]]; then
-  [[ -r "$updater_script" ]] || fail "LXC helper is not readable: $updater_script"
-fi
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
 parse_record "$target_record"
@@ -108,25 +103,27 @@ os_record="$(pct exec "$vmid" -- sh -c '
   mem_available_kb=$(awk "/^MemAvailable:/ {print \$2; exit}" /proc/meminfo 2>/dev/null)
   [ -n "$mem_available_kb" ] || mem_available_kb=unknown
 
-  printf "os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s\n" \
-    "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb"
-' </dev/null)" || fail "OS/resource inspection failed for LXC $vmid"
+  if [ -x /usr/bin/update ]; then
+    application_updater=/usr/bin/update
+  else
+    application_updater=none
+  fi
 
-updater_record="$(bash "$updater_script" "$vmid")" || fail "could not read application-updater information for LXC $vmid ($name)"
+  printf "os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s application_updater=%s\n" \
+    "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb" "$application_updater"
+' </dev/null)" || fail "OS/resource inspection failed for LXC $vmid"
 
 parse_record "$os_record"
 os_id="${RECORD_FIELDS[os_id]:-}"
 os_version="${RECORD_FIELDS[os_version]:-}"
 root_free_kb="${RECORD_FIELDS[root_free_kb]:-}"
 mem_available_kb="${RECORD_FIELDS[mem_available_kb]:-}"
+application_updater="${RECORD_FIELDS[application_updater]:-}"
 [[ -n "$os_id" ]] || fail "OS inspection returned no os_id"
 [[ -n "$os_version" ]] || fail "OS inspection returned no os_version"
 [[ -n "$root_free_kb" ]] || fail "OS inspection returned no root_free_kb"
 [[ -n "$mem_available_kb" ]] || fail "OS inspection returned no mem_available_kb"
-
-parse_record "$updater_record"
-application_updater="${RECORD_FIELDS[application_updater]:-}"
-[[ -n "$application_updater" ]] || fail "application-updater helper returned no application_updater"
+[[ -n "$application_updater" ]] || fail "OS inspection returned no application_updater"
 
 printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s custom_script=%s\n' \
   "$vmid" "$name" "$state" "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb" \
