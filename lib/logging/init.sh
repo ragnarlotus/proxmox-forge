@@ -26,10 +26,6 @@ identifier="$4"
 [[ "$identifier" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid log identifier '$identifier'"
 command -v hostname >/dev/null 2>&1 || fail "hostname is not available"
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
-prune_script="$script_dir/prune.sh"
-[[ -r "$prune_script" ]] || fail "log prune helper is not readable: $prune_script"
-
 pve_fqdn="$(hostname -f 2>/dev/null)" || fail "could not determine Proxmox host FQDN"
 [[ "$pve_fqdn" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid Proxmox host FQDN '$pve_fqdn'"
 
@@ -64,8 +60,14 @@ case "$scope" in
     printf '%s level=INFO event=log_open scope=lxc identifier=%s\n' \
       "$timestamp" "$identifier" >> "$log_file" || fail "could not initialize LXC log file: $log_file"
 
-    bash "$prune_script" "$log_dir" "$log_keep" "$scope" "$identifier" || \
-      fail "could not apply log retention for $scope/$identifier"
+    mapfile -t logs < <(
+      find "$target_dir" -maxdepth 1 -type f -name '*.log' -printf '%f\n' | LC_ALL=C sort -r
+    )
+
+    for ((i = log_keep; i < ${#logs[@]}; i++)); do
+      rm -f -- "$target_dir/${logs[i]}" || fail "could not remove old log: $target_dir/${logs[i]}"
+    done
+
     printf '%s\n' "$log_file"
     ;;
   *)
