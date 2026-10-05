@@ -30,9 +30,8 @@ done
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
 target_script="$script_dir/get-target.sh"
-field_script="$script_dir/get-field.sh"
 
-for helper in "$environment_script" "$target_script" "$field_script"; do
+for helper in "$environment_script" "$target_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
@@ -47,10 +46,21 @@ for config_file in "${config_files[@]}"; do
   vmid="${vmid%.conf}"
 
   target_record="$(bash "$target_script" "$vmid")" || fail "could not read LXC target $vmid"
-  name="$(bash "$field_script" "$target_record" name)" || fail "LXC target helper returned no name"
-  state="$(bash "$field_script" "$target_record" state)" || fail "LXC target helper returned no state"
-  template="$(bash "$field_script" "$target_record" template)" || fail "LXC target helper returned no template field"
+  read -r type_field vmid_field name_field state_field template_field extra_field <<< "$target_record"
 
+  [[ "$type_field" == type=lxc ]] || fail "LXC target helper returned invalid type field"
+  [[ "$vmid_field" == vmid=* ]] || fail "LXC target helper returned no vmid"
+  [[ "$name_field" == name=* ]] || fail "LXC target helper returned no name"
+  [[ "$state_field" == state=* ]] || fail "LXC target helper returned no state"
+  [[ "$template_field" == template=* ]] || fail "LXC target helper returned no template field"
+  [[ -z "${extra_field:-}" ]] || fail "LXC target helper returned unexpected fields"
+
+  record_vmid="${vmid_field#vmid=}"
+  name="${name_field#name=}"
+  state="${state_field#state=}"
+  template="${template_field#template=}"
+
+  [[ "$record_vmid" == "$vmid" ]] || fail "LXC target helper returned mismatched vmid '$record_vmid' for $vmid"
   [[ "$template" == true ]] && continue
   [[ "$state" == stopped ]] && continue
   [[ "$state" == running ]] || fail "LXC $vmid returned unsupported state '$state'"
