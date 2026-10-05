@@ -18,6 +18,9 @@ fail() {
 target="$1"
 [[ -n "$target" ]] || fail "target must not be empty"
 
+run_id="${FORGE_RUN_ID:-}"
+[[ -n "$run_id" ]] || fail "Forge run identifier is unavailable"
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
 id_by_name_script="$script_dir/get-id-by-name.sh"
@@ -28,9 +31,9 @@ for helper in "$environment_script" "$id_by_name_script" "$state_script" "$templ
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
-if [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" != true ]]; then
+if [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" != "$run_id" ]]; then
   bash "$environment_script" >/dev/null || fail "LXC environment check failed"
-  export FORGE_LXC_ENVIRONMENT_READY=true
+  export FORGE_LXC_ENVIRONMENT_READY="$run_id"
 fi
 
 if [[ "$target" =~ ^[0-9]+$ ]]; then
