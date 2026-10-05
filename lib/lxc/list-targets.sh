@@ -36,6 +36,7 @@ for helper in "$environment_script" "$target_script"; do
 done
 
 bash "$environment_script" >/dev/null || fail "LXC environment check failed"
+export FORGE_LXC_ENVIRONMENT_READY=true
 
 shopt -s nullglob
 config_files=(/etc/pve/lxc/*.conf)
