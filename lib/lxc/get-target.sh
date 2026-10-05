@@ -28,7 +28,10 @@ for helper in "$environment_script" "$id_by_name_script" "$state_script" "$templ
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
-bash "$environment_script" >/dev/null || fail "LXC environment check failed"
+if [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" != true ]]; then
+  bash "$environment_script" >/dev/null || fail "LXC environment check failed"
+  export FORGE_LXC_ENVIRONMENT_READY=true
+fi
 
 if [[ "$target" =~ ^[0-9]+$ ]]; then
   vmid="$target"
