@@ -27,6 +27,9 @@ done
 
 [[ "$update_lxc" == true && "$update_running" == true ]] || exit 0
 
+run_id="${FORGE_RUN_ID:-}"
+[[ -n "$run_id" ]] || fail "Forge run identifier is unavailable"
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
 target_script="$script_dir/get-target.sh"
@@ -36,7 +39,7 @@ for helper in "$environment_script" "$target_script"; do
 done
 
 bash "$environment_script" >/dev/null || fail "LXC environment check failed"
-export FORGE_LXC_ENVIRONMENT_READY=true
+export FORGE_LXC_ENVIRONMENT_READY="$run_id"
 
 shopt -s nullglob
 config_files=(/etc/pve/lxc/*.conf)
