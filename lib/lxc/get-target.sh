@@ -25,9 +25,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 environment_script="$script_dir/get-environment.sh"
 id_by_name_script="$script_dir/get-id-by-name.sh"
 state_script="$script_dir/get-state.sh"
-template_script="$script_dir/is-template.sh"
 
-for helper in "$environment_script" "$id_by_name_script" "$state_script" "$template_script"; do
+for helper in "$environment_script" "$id_by_name_script" "$state_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
@@ -44,11 +43,18 @@ if [[ "$target" =~ ^[0-9]+$ ]]; then
   [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
 else
   vmid="$(bash "$id_by_name_script" "$target")" || fail "could not resolve LXC name '$target'"
+  config_file="/etc/pve/lxc/${vmid}.conf"
+  [[ -f "$config_file" ]] || fail "LXC $vmid does not exist"
   name="$target"
 fi
 
 state="$(bash "$state_script" "$vmid")" || fail "could not read state for LXC $vmid"
-template="$(bash "$template_script" "$vmid")" || fail "could not determine whether LXC $vmid is a template"
+
+if grep -Eq '^template:[[:space:]]*1([[:space:]]|$)' "$config_file"; then
+  template=true
+else
+  template=false
+fi
 
 printf 'type=lxc vmid=%s name=%s state=%s template=%s\n' \
   "$vmid" "$name" "$state" "$template"
