@@ -36,25 +36,21 @@ package_manager="${2:-}"
 command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
 if [[ -z "$package_manager" ]]; then
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine update script directory"
-  lxc_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine LXC directory"
-  package_manager_script="$lxc_dir/get-package-manager.sh"
-
-  [[ -r "$package_manager_script" ]] || fail "required helper is not readable: $package_manager_script"
-
-  package_record="$(bash "$package_manager_script" "$vmid")" || \
-    fail "could not determine package manager for LXC $vmid"
-  read -r vmid_field package_manager_field dpkg_audit_field package_process_field extra_field <<< "$package_record"
-
-  [[ "$vmid_field" == vmid=* ]] || fail "package-manager record returned no vmid"
-  [[ "$package_manager_field" == package_manager=* ]] || fail "package-manager record returned no package_manager"
-  [[ "$dpkg_audit_field" == dpkg_audit=* ]] || fail "package-manager record returned no dpkg_audit"
-  [[ "$package_process_field" == package_process=* ]] || fail "package-manager record returned no package_process"
-  [[ -z "${extra_field:-}" ]] || fail "package-manager record returned unexpected fields"
-
-  record_vmid="${vmid_field#vmid=}"
-  package_manager="${package_manager_field#package_manager=}"
-  [[ "$record_vmid" == "$vmid" ]] || fail "package-manager record returned mismatched vmid '$record_vmid' for $vmid"
+  package_manager="$(pct exec "$vmid" -- sh -c '
+    if command -v apt-get >/dev/null 2>&1; then
+      printf apt
+    elif command -v dnf >/dev/null 2>&1; then
+      printf dnf
+    elif command -v yum >/dev/null 2>&1; then
+      printf yum
+    elif command -v apk >/dev/null 2>&1; then
+      printf apk
+    elif command -v pacman >/dev/null 2>&1; then
+      printf pacman
+    else
+      printf unknown
+    fi
+  ' </dev/null)" || fail "could not determine package manager for LXC $vmid"
 fi
 
 case "$package_manager" in
