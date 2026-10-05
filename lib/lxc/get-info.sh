@@ -14,6 +14,20 @@ fail() {
   exit 1
 }
 
+parse_record() {
+  local record="$1"
+  local field key
+
+  RECORD_FIELDS=()
+  for field in $record; do
+    [[ "$field" == *=* ]] || continue
+    key="${field%%=*}"
+    RECORD_FIELDS["$key"]="${field#*=}"
+  done
+}
+
+declare -A RECORD_FIELDS=()
+
 [[ $# -ge 1 && $# -le 2 ]] || fail "usage: get-info.sh VMID_OR_NAME [all]"
 target="$1"
 mode="${2:-}"
@@ -24,12 +38,11 @@ mode="${2:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 target_script="$script_dir/get-target.sh"
-field_script="$script_dir/get-field.sh"
 package_script="$script_dir/get-package-manager.sh"
 updater_script="$script_dir/get-application-updater.sh"
 config_get_script="$lib_dir/config/get.sh"
 
-for helper in "$target_script" "$field_script" "$package_script" "$config_get_script"; do
+for helper in "$target_script" "$package_script" "$config_get_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
@@ -38,18 +51,27 @@ if [[ "$mode" == all ]]; then
 fi
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
-vmid="$(bash "$field_script" "$target_record" vmid)" || fail "LXC target helper returned no vmid"
-name="$(bash "$field_script" "$target_record" name)" || fail "LXC target helper returned no name"
-state="$(bash "$field_script" "$target_record" state)" || fail "LXC target helper returned no state"
-template="$(bash "$field_script" "$target_record" template)" || fail "LXC target helper returned no template field"
+parse_record "$target_record"
+vmid="${RECORD_FIELDS[vmid]:-}"
+name="${RECORD_FIELDS[name]:-}"
+state="${RECORD_FIELDS[state]:-}"
+template="${RECORD_FIELDS[template]:-}"
+[[ -n "$vmid" ]] || fail "LXC target helper returned no vmid"
+[[ -n "$name" ]] || fail "LXC target helper returned no name"
+[[ -n "$state" ]] || fail "LXC target helper returned no state"
+[[ -n "$template" ]] || fail "LXC target helper returned no template field"
 
 [[ "$template" == false ]] || fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
 [[ "$state" == running ]] || fail "LXC $vmid ($name) is $state; information collection requires a running container"
 
 package_record="$(bash "$package_script" "$vmid")" || fail "could not read package-manager information for LXC $vmid ($name)"
-package_manager="$(bash "$field_script" "$package_record" package_manager)" || fail "package-manager helper returned no package_manager"
-dpkg_audit="$(bash "$field_script" "$package_record" dpkg_audit)" || fail "package-manager helper returned no dpkg_audit"
-package_process="$(bash "$field_script" "$package_record" package_process)" || fail "package-manager helper returned no package_process"
+parse_record "$package_record"
+package_manager="${RECORD_FIELDS[package_manager]:-}"
+dpkg_audit="${RECORD_FIELDS[dpkg_audit]:-}"
+package_process="${RECORD_FIELDS[package_process]:-}"
+[[ -n "$package_manager" ]] || fail "package-manager helper returned no package_manager"
+[[ -n "$dpkg_audit" ]] || fail "package-manager helper returned no dpkg_audit"
+[[ -n "$package_process" ]] || fail "package-manager helper returned no package_process"
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
@@ -63,8 +85,8 @@ if [[ -d "$custom_scripts_dir/$vmid" ]] &&
 fi
 
 if [[ "$mode" != all ]]; then
-  printf 'vmid=%s package_manager=%s dpkg_audit=%s package_process=%s custom_script=%s\n' \
-    "$vmid" "$package_manager" "$dpkg_audit" "$package_process" "$custom_script"
+  printf 'type=lxc vmid=%s name=%s state=%s template=false package_manager=%s dpkg_audit=%s package_process=%s custom_script=%s\n' \
+    "$vmid" "$name" "$state" "$package_manager" "$dpkg_audit" "$package_process" "$custom_script"
   exit 0
 fi
 
@@ -92,11 +114,19 @@ os_record="$(pct exec "$vmid" -- sh -c '
 
 updater_record="$(bash "$updater_script" "$vmid")" || fail "could not read application-updater information for LXC $vmid ($name)"
 
-os_id="$(bash "$field_script" "$os_record" os_id)" || fail "OS inspection returned no os_id"
-os_version="$(bash "$field_script" "$os_record" os_version)" || fail "OS inspection returned no os_version"
-root_free_kb="$(bash "$field_script" "$os_record" root_free_kb)" || fail "OS inspection returned no root_free_kb"
-mem_available_kb="$(bash "$field_script" "$os_record" mem_available_kb)" || fail "OS inspection returned no mem_available_kb"
-application_updater="$(bash "$field_script" "$updater_record" application_updater)" || fail "application-updater helper returned no application_updater"
+parse_record "$os_record"
+os_id="${RECORD_FIELDS[os_id]:-}"
+os_version="${RECORD_FIELDS[os_version]:-}"
+root_free_kb="${RECORD_FIELDS[root_free_kb]:-}"
+mem_available_kb="${RECORD_FIELDS[mem_available_kb]:-}"
+[[ -n "$os_id" ]] || fail "OS inspection returned no os_id"
+[[ -n "$os_version" ]] || fail "OS inspection returned no os_version"
+[[ -n "$root_free_kb" ]] || fail "OS inspection returned no root_free_kb"
+[[ -n "$mem_available_kb" ]] || fail "OS inspection returned no mem_available_kb"
+
+parse_record "$updater_record"
+application_updater="${RECORD_FIELDS[application_updater]:-}"
+[[ -n "$application_updater" ]] || fail "application-updater helper returned no application_updater"
 
 printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s custom_script=%s\n' \
   "$vmid" "$name" "$state" "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb" \
