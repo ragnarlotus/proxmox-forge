@@ -21,7 +21,11 @@ name="$1"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
 [[ -r "$environment_script" ]] || fail "LXC environment helper is not readable: $environment_script"
-bash "$environment_script" >/dev/null || fail "LXC environment check failed"
+
+if [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" != true ]]; then
+  bash "$environment_script" >/dev/null || fail "LXC environment check failed"
+  export FORGE_LXC_ENVIRONMENT_READY=true
+fi
 
 matches=()
 shopt -s nullglob
