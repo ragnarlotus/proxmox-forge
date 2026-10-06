@@ -14,15 +14,9 @@ fail() {
   exit 1
 }
 
-[[ $# -ge 1 && $# -le 2 ]] || fail "usage: prepare.sh VMID [--json]"
+[[ $# -eq 1 ]] || fail "usage: prepare.sh VMID"
 vmid="$1"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
-
-output_mode=human
-if [[ $# -eq 2 ]]; then
-  [[ "$2" == --json ]] || fail "unknown option '$2'"
-  output_mode=json
-fi
 
 command -v vzdump >/dev/null 2>&1 || fail "vzdump is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
@@ -52,13 +46,12 @@ jobs_json="$(printf '%s\n' "$policy_output" | sed '1d')"
 
 usage_text="$(vzdump help 2>&1)" || fail "could not read vzdump CLI usage"
 
-VMID="$vmid" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" perl -MJSON::PP -e '
+VMID="$vmid" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
   use strict;
   use warnings;
 
   my $vmid = $ENV{VMID};
   my $usage = $ENV{USAGE_TEXT};
-  my $output_mode = $ENV{OUTPUT_MODE};
   my $jobs = decode_json(do { local $/; <STDIN> });
 
   die "policy data is not an array\n" unless ref($jobs) eq "ARRAY";
@@ -125,26 +118,11 @@ VMID="$vmid" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" perl -MJSON::PP
     push @params, { name => $key, value => $value, source => "job" };
   }
 
-  if ($output_mode eq "json") {
-    my $plan = {
-      vmid => "$vmid",
-      job_id => defined($job->{id}) ? "$job->{id}" : "unknown",
-      parameters => \@params,
-    };
+  my $plan = {
+    vmid => "$vmid",
+    job_id => defined($job->{id}) ? "$job->{id}" : "unknown",
+    parameters => \@params,
+  };
 
-    print JSON::PP->new->canonical(1)->pretty(1)->encode($plan);
-    exit 0;
-  }
-
-  print "vmid=$vmid\n";
-  print "job_id=" . (defined($job->{id}) ? $job->{id} : "unknown") . "\n";
-
-  for my $param (@params) {
-    my $key = $param->{name};
-    my $value = $param->{value};
-    my $source = $param->{source};
-    $value =~ s/\\/\\\\/g;
-    $value =~ s/\n/\\n/g;
-    print "parameter=$key source=$source value=$value\n";
-  }
+  print JSON::PP->new->canonical(1)->pretty(1)->encode($plan);
 ' <<<"$jobs_json" || fail "could not build Proxmox backup execution plan for LXC $vmid"
