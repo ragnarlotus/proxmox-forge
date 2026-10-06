@@ -103,7 +103,7 @@ VMID="$vmid" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
   my @params;
 
   if (defined $job->{id} && $accepted{"job-id"}) {
-    push @params, { name => "job-id", value => "$job->{id}", source => "job" };
+    push @params, { name => "job-id", value => "$job->{id}" };
   }
 
   for my $key (sort keys %$job) {
@@ -115,7 +115,7 @@ VMID="$vmid" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
 
     my $value = cli_value($key, $job->{$key});
     next unless defined $value;
-    push @params, { name => $key, value => $value, source => "job" };
+    push @params, { name => $key, value => $value };
   }
 
   my $plan = {
