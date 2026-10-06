@@ -85,11 +85,15 @@ service_manager="none"
 baseline_services=()
 
 if [[ "$pre_backup_state" == running ]]; then
-  pct exec "$vmid" -- sh -c 'exit 0' </dev/null || \
-    fail "LXC $vmid is running but not ready before backup"
+  service_manager="$(pct exec "$vmid" -- sh -c '
+    if command -v systemctl >/dev/null 2>&1; then
+      printf "systemd"
+    else
+      printf "none"
+    fi
+  ' </dev/null)" || fail "LXC $vmid is running but not ready before backup"
 
-  if pct exec "$vmid" -- sh -c 'command -v systemctl >/dev/null 2>&1' </dev/null; then
-    service_manager="systemd"
+  if [[ "$service_manager" == systemd ]]; then
     baseline_output="$(
       pct exec "$vmid" -- \
         systemctl list-units --type=service --state=active --no-legend --no-pager --plain \
