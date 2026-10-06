@@ -32,9 +32,6 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 policy_script="$script_dir/read-policy.sh"
 [[ -r "$policy_script" ]] || fail "backup policy helper is not readable: $policy_script"
 
-node="$(hostname -s)" || fail "could not determine local Proxmox node name"
-[[ -n "$node" ]] || fail "local Proxmox node name is empty"
-
 policy_output="$(bash "$policy_script" "$vmid")" || fail "could not resolve Proxmox backup policy for LXC $vmid"
 match_count="$(printf '%s\n' "$policy_output" | sed -n 's/^match_count=//p' | head -n 1)"
 [[ "$match_count" =~ ^[0-9]+$ ]] || fail "backup policy helper returned an invalid match count"
@@ -55,12 +52,11 @@ jobs_json="$(printf '%s\n' "$policy_output" | sed '1d')"
 
 usage_text="$(vzdump help 2>&1)" || fail "could not read vzdump CLI usage"
 
-VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" perl -MJSON::PP -e '
+VMID="$vmid" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" perl -MJSON::PP -e '
   use strict;
   use warnings;
 
   my $vmid = $ENV{VMID};
-  my $node = $ENV{NODE};
   my $usage = $ENV{USAGE_TEXT};
   my $output_mode = $ENV{OUTPUT_MODE};
   my $jobs = decode_json(do { local $/; <STDIN> });
@@ -132,7 +128,6 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" pe
   if ($output_mode eq "json") {
     my $plan = {
       vmid => "$vmid",
-      node => "$node",
       job_id => defined($job->{id}) ? "$job->{id}" : "unknown",
       parameters => \@params,
     };
@@ -142,7 +137,6 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" pe
   }
 
   print "vmid=$vmid\n";
-  print "node=$node\n";
   print "job_id=" . (defined($job->{id}) ? $job->{id} : "unknown") . "\n";
 
   for my $param (@params) {
