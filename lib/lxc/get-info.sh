@@ -38,10 +38,9 @@ mode="${2:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 target_script="$script_dir/get-target.sh"
-package_script="$script_dir/get-package-manager.sh"
 config_get_script="$lib_dir/config/get.sh"
 
-for helper in "$target_script" "$package_script" "$config_get_script"; do
+for helper in "$target_script" "$config_get_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
@@ -59,14 +58,51 @@ template="${RECORD_FIELDS[template]:-}"
 [[ "$template" == false ]] || fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
 [[ "$state" == running ]] || fail "LXC $vmid ($name) is $state; information collection requires a running container"
 
-package_record="$(bash "$package_script" "$vmid")" || fail "could not read package-manager information for LXC $vmid ($name)"
+package_record="$(pct exec "$vmid" -- sh -c '
+  set -u
+
+  package_manager=unknown
+  dpkg_audit=not_applicable
+  package_process=none
+
+  if command -v apt-get >/dev/null 2>&1; then
+    package_manager=apt
+  elif command -v dnf >/dev/null 2>&1; then
+    package_manager=dnf
+  elif command -v yum >/dev/null 2>&1; then
+    package_manager=yum
+  elif command -v apk >/dev/null 2>&1; then
+    package_manager=apk
+  elif command -v pacman >/dev/null 2>&1; then
+    package_manager=pacman
+  fi
+
+  if [ "$package_manager" = apt ]; then
+    if audit=$(dpkg --audit 2>&1); then
+      if [ -n "$audit" ]; then
+        dpkg_audit=issues
+      else
+        dpkg_audit=clean
+      fi
+    else
+      dpkg_audit=error
+    fi
+
+    package_process=$(ps -eo comm= 2>/dev/null | awk "\$1 ~ /^(apt|apt-get|dpkg|unattended-upgr)$/ {print \$1; exit}")
+    [ -n "$package_process" ] || package_process=none
+  fi
+
+  printf "package_manager=%s dpkg_audit=%s package_process=%s\n" \
+    "$package_manager" "$dpkg_audit" "$package_process"
+' </dev/null)" || fail "package-manager inspection failed for LXC $vmid ($name)"
+
 parse_record "$package_record"
 package_manager="${RECORD_FIELDS[package_manager]:-}"
 dpkg_audit="${RECORD_FIELDS[dpkg_audit]:-}"
 package_process="${RECORD_FIELDS[package_process]:-}"
-[[ -n "$package_manager" ]] || fail "package-manager helper returned no package_manager"
-[[ -n "$dpkg_audit" ]] || fail "package-manager helper returned no dpkg_audit"
-[[ -n "$package_process" ]] || fail "package-manager helper returned no package_process"
+[[ -n "$package_manager" ]] || fail "package-manager inspection returned no package_manager"
+[[ -n "$dpkg_audit" ]] || fail "package-manager inspection returned no dpkg_audit"
+[[ -n "$package_process" ]] || fail "package-manager inspection returned no package_process"
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
