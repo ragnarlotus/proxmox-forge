@@ -34,14 +34,12 @@ plan_json="$(bash "$plan_script" "$vmid")" || \
   fail "could not prepare Proxmox backup for LXC $vmid"
 
 mapfile -d '' -t fields < <(
-  PLAN_JSON="$plan_json" VMID="$vmid" perl -MJSON::PP -e '
+  PLAN_JSON="$plan_json" perl -MJSON::PP -e '
     use strict;
     use warnings;
 
     my $plan = decode_json($ENV{PLAN_JSON});
     die "backup plan is not an object\n" unless ref($plan) eq "HASH";
-    die "backup plan has no vmid\n" unless defined($plan->{vmid}) && !ref($plan->{vmid}) && length($plan->{vmid});
-    die "backup plan vmid does not match target\n" unless "$plan->{vmid}" eq $ENV{VMID};
     die "backup plan parameters are not an array\n" unless ref($plan->{parameters}) eq "ARRAY";
 
     my @storage;
