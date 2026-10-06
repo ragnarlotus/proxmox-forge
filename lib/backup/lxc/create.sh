@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Executes one prepared Proxmox backup request for an LXC, waits for the authoritative task result, verifies that a running guest returns to its pre-backup service baseline, and returns the exact created recovery volume.
+# Description: Executes one prepared synchronous vzdump backup for an LXC, verifies that a running guest returns to its pre-backup service baseline, and returns the exact created recovery volume.
 
 set -u
 
@@ -18,17 +18,15 @@ fail() {
 vmid="$1"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 
-command -v pvesh >/dev/null 2>&1 || fail "pvesh is not available"
+command -v vzdump >/dev/null 2>&1 || fail "vzdump is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
 command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
-lib_dir="$(cd "$script_dir/../.." && pwd)" || fail "could not determine lib directory"
 plan_script="$script_dir/prepare.sh"
 list_script="$script_dir/list-volumes.sh"
-wait_script="$lib_dir/tasks/wait.sh"
 
-for helper in "$plan_script" "$list_script" "$wait_script"; do
+for helper in "$plan_script" "$list_script"; do
   [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
 done
 
@@ -36,13 +34,14 @@ plan_json="$(bash "$plan_script" "$vmid" --json)" || \
   fail "could not prepare Proxmox backup for LXC $vmid"
 
 mapfile -d '' -t fields < <(
-  PLAN_JSON="$plan_json" perl -MJSON::PP -e '
+  PLAN_JSON="$plan_json" VMID="$vmid" perl -MJSON::PP -e '
     use strict;
     use warnings;
 
     my $plan = decode_json($ENV{PLAN_JSON});
     die "backup plan is not an object\n" unless ref($plan) eq "HASH";
-    die "backup plan has no endpoint\n" unless defined($plan->{endpoint}) && !ref($plan->{endpoint}) && length($plan->{endpoint});
+    die "backup plan has no vmid\n" unless defined($plan->{vmid}) && !ref($plan->{vmid}) && length($plan->{vmid});
+    die "backup plan vmid does not match target\n" unless "$plan->{vmid}" eq $ENV{VMID};
     die "backup plan parameters are not an array\n" unless ref($plan->{parameters}) eq "ARRAY";
 
     my @storage;
@@ -60,7 +59,7 @@ mapfile -d '' -t fields < <(
     die "backup plan must contain exactly one storage parameter\n" unless @storage == 1;
     die "backup storage value is missing\n" unless length($storage[0]);
 
-    print "$plan->{endpoint}\0$storage[0]\0";
+    print "$storage[0]\0";
 
     for my $param (@{$plan->{parameters}}) {
       print "--$param->{name}\0$param->{value}\0";
@@ -68,14 +67,13 @@ mapfile -d '' -t fields < <(
   '
 ) || fail "could not decode Proxmox backup plan"
 
-(( ${#fields[@]} >= 4 )) || fail "backup plan returned no execution parameters"
-(( (${#fields[@]} - 2) % 2 == 0 )) || fail "backup plan returned malformed execution parameters"
+(( ${#fields[@]} >= 3 )) || fail "backup plan returned no execution parameters"
+(( (${#fields[@]} - 1) % 2 == 0 )) || fail "backup plan returned malformed execution parameters"
 
-endpoint="${fields[0]}"
-storage="${fields[1]}"
-command=(pvesh create "$endpoint")
+storage="${fields[0]}"
+command=(vzdump "$vmid")
 
-for ((i = 2; i < ${#fields[@]}; i += 2)); do
+for ((i = 1; i < ${#fields[@]}; i += 2)); do
   command+=("${fields[i]}" "${fields[i + 1]}")
 done
 
@@ -109,25 +107,14 @@ fi
 before_backups="$(bash "$list_script" "$storage" "$vmid")" || \
   fail "could not list existing backups for LXC $vmid on storage $storage"
 
-output="$("${command[@]}" 2>&1)"
+"${command[@]}"
 create_result=$?
-printf '%s\n' "$output"
 
-upid="$(printf '%s\n' "$output" | sed -n 's/^\(UPID:[^[:space:]]*\)$/\1/p' | tail -n 1)"
-
-if [[ -z "$upid" ]]; then
-  if (( create_result != 0 )); then
-    printf 'ERROR: Proxmox backup request failed before returning a task UPID (exit code: %s)\n' "$create_result" >&2
-    exit "$create_result"
-  fi
-
-  fail "Proxmox backup request returned no task UPID"
+if (( create_result != 0 )); then
+  printf 'ERROR: Proxmox vzdump backup failed for LXC %s (exit code: %s)\n' \
+    "$vmid" "$create_result" >&2
+  exit "$create_result"
 fi
-
-# The UPID is not success by itself. The task result is authoritative.
-bash "$wait_script" "$upid"
-wait_result=$?
-(( wait_result == 0 )) || exit "$wait_result"
 
 if [[ "$pre_backup_state" == running ]]; then
   post_backup_ready=false
@@ -220,5 +207,5 @@ if (( ${#new_backups[@]} != 1 )); then
 fi
 
 backup_volume="${new_backups[0]}"
-printf 'backup=success vmid=%s storage=%s volume=%s upid=%s\n' \
-  "$vmid" "$storage" "$backup_volume" "$upid"
+printf 'backup=success vmid=%s storage=%s volume=%s\n' \
+  "$vmid" "$storage" "$backup_volume"
