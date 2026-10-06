@@ -112,7 +112,6 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" pe
   }
 
   my @params;
-  push @params, { name => "vmid", value => "$vmid", source => "target" };
 
   if (defined $job->{id} && $accepted{"job-id"}) {
     push @params, { name => "job-id", value => "$job->{id}", source => "job" };
@@ -135,7 +134,6 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" pe
       vmid => "$vmid",
       node => "$node",
       job_id => defined($job->{id}) ? "$job->{id}" : "unknown",
-      endpoint => "/nodes/$node/vzdump",
       parameters => \@params,
     };
 
@@ -146,7 +144,6 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" pe
   print "vmid=$vmid\n";
   print "node=$node\n";
   print "job_id=" . (defined($job->{id}) ? $job->{id} : "unknown") . "\n";
-  print "endpoint=/nodes/$node/vzdump\n";
 
   for my $param (@params) {
     my $key = $param->{name};
