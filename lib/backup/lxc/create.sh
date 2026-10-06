@@ -129,29 +129,30 @@ if [[ "$pre_backup_state" == running ]]; then
     status_output="$(pct status "$vmid" 2>/dev/null)" || status_output=""
     post_backup_state="${status_output#status: }"
 
-    if [[ "$post_backup_state" == running ]] \
-      && pct exec "$vmid" -- sh -c 'exit 0' </dev/null; then
+    if [[ "$post_backup_state" == running ]]; then
       if [[ "$service_manager" != systemd ]]; then
-        post_backup_ready=true
-        break
-      fi
+        if pct exec "$vmid" -- sh -c 'exit 0' </dev/null; then
+          post_backup_ready=true
+          break
+        fi
+      else
+        baseline_active=true
+        if (( ${#baseline_services[@]} > 0 )); then
+          pct exec "$vmid" -- \
+            systemctl is-active --quiet "${baseline_services[@]}" \
+            </dev/null || baseline_active=false
+        fi
 
-      baseline_active=true
-      if (( ${#baseline_services[@]} > 0 )); then
-        pct exec "$vmid" -- \
-          systemctl is-active --quiet "${baseline_services[@]}" \
-          </dev/null || baseline_active=false
-      fi
+        failed_units="$(
+          pct exec "$vmid" -- \
+            systemctl --failed --type=service --no-legend --no-pager --plain \
+            </dev/null 2>/dev/null
+        )" || failed_units="__forge_systemctl_error__"
 
-      failed_units="$(
-        pct exec "$vmid" -- \
-          systemctl --failed --type=service --no-legend --no-pager --plain \
-          </dev/null 2>/dev/null
-      )" || failed_units="__forge_systemctl_error__"
-
-      if [[ "$baseline_active" == true && -z "$failed_units" ]]; then
-        post_backup_ready=true
-        break
+        if [[ "$baseline_active" == true && -z "$failed_units" ]]; then
+          post_backup_ready=true
+          break
+        fi
       fi
     fi
 
