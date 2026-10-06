@@ -30,7 +30,7 @@ for helper in "$plan_script" "$list_script"; do
   [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
 done
 
-plan_json="$(bash "$plan_script" "$vmid" --json)" || \
+plan_json="$(bash "$plan_script" "$vmid")" || \
   fail "could not prepare Proxmox backup for LXC $vmid"
 
 mapfile -d '' -t fields < <(
