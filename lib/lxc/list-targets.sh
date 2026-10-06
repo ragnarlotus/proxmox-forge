@@ -32,11 +32,7 @@ run_id="${FORGE_RUN_ID:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
-target_script="$script_dir/get-target.sh"
-
-for helper in "$environment_script" "$target_script"; do
-  [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
-done
+[[ -r "$environment_script" ]] || fail "LXC environment helper is not readable: $environment_script"
 
 bash "$environment_script" >/dev/null || fail "LXC environment check failed"
 export FORGE_LXC_ENVIRONMENT_READY="$run_id"
@@ -49,25 +45,21 @@ for config_file in "${config_files[@]}"; do
   vmid="${config_file##*/}"
   vmid="${vmid%.conf}"
 
-  target_record="$(bash "$target_script" "$vmid")" || fail "could not read LXC target $vmid"
-  read -r type_field vmid_field name_field state_field template_field extra_field <<< "$target_record"
+  name="$(sed -n 's/^hostname:[[:space:]]*//p' "$config_file" | head -n 1)"
+  [[ -n "$name" ]] || fail "LXC $vmid has no hostname in $config_file"
 
-  [[ "$type_field" == type=lxc ]] || fail "LXC target helper returned invalid type field"
-  [[ "$vmid_field" == vmid=* ]] || fail "LXC target helper returned no vmid"
-  [[ "$name_field" == name=* ]] || fail "LXC target helper returned no name"
-  [[ "$state_field" == state=* ]] || fail "LXC target helper returned no state"
-  [[ "$template_field" == template=* ]] || fail "LXC target helper returned no template field"
-  [[ -z "${extra_field:-}" ]] || fail "LXC target helper returned unexpected fields"
+  state="$(pct status "$vmid")" || fail "could not read state for LXC $vmid"
+  state="${state#status: }"
+  case "$state" in
+    running|stopped) ;;
+    *) fail "LXC $vmid returned unsupported state '$state'" ;;
+  esac
 
-  record_vmid="${vmid_field#vmid=}"
-  name="${name_field#name=}"
-  state="${state_field#state=}"
-  template="${template_field#template=}"
+  if grep -Eq '^template:[[:space:]]*1([[:space:]]|$)' "$config_file"; then
+    continue
+  fi
 
-  [[ "$record_vmid" == "$vmid" ]] || fail "LXC target helper returned mismatched vmid '$record_vmid' for $vmid"
-  [[ "$template" == true ]] && continue
   [[ "$state" == stopped ]] && continue
-  [[ "$state" == running ]] || fail "LXC $vmid returned unsupported state '$state'"
 
-  printf 'type=lxc vmid=%s name=%s state=%s template=false\n' "$vmid" "$name" "$state"
+  printf 'type=lxc vmid=%s name=%s state=running template=false\n' "$vmid" "$name"
 done
