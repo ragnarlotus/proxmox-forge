@@ -46,11 +46,10 @@ jobs_json="$(printf '%s\n' "$policy_output" | sed '1d')"
 
 usage_text="$(vzdump help 2>&1)" || fail "could not read vzdump CLI usage"
 
-VMID="$vmid" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
+USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
   use strict;
   use warnings;
 
-  my $vmid = $ENV{VMID};
   my $usage = $ENV{USAGE_TEXT};
   my $jobs = decode_json(do { local $/; <STDIN> });
 
@@ -119,7 +118,6 @@ VMID="$vmid" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
   }
 
   my $plan = {
-    vmid => "$vmid",
     parameters => \@params,
   };
 
