@@ -120,7 +120,6 @@ VMID="$vmid" USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
 
   my $plan = {
     vmid => "$vmid",
-    job_id => defined($job->{id}) ? "$job->{id}" : "unknown",
     parameters => \@params,
   };
 
