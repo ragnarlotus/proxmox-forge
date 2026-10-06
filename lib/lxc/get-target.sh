@@ -23,11 +23,7 @@ run_id="${FORGE_RUN_ID:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 environment_script="$script_dir/get-environment.sh"
-state_script="$script_dir/get-state.sh"
-
-for helper in "$environment_script" "$state_script"; do
-  [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
-done
+[[ -r "$environment_script" ]] || fail "LXC environment helper is not readable: $environment_script"
 
 if [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" != "$run_id" ]]; then
   bash "$environment_script" >/dev/null || fail "LXC environment check failed"
@@ -70,7 +66,12 @@ else
   name="$target"
 fi
 
-state="$(bash "$state_script" "$vmid")" || fail "could not read state for LXC $vmid"
+state="$(pct status "$vmid")" || fail "could not read state for LXC $vmid"
+state="${state#status: }"
+case "$state" in
+  running|stopped) ;;
+  *) fail "LXC $vmid returned unsupported state '$state'" ;;
+esac
 
 if grep -Eq '^template:[[:space:]]*1([[:space:]]|$)' "$config_file"; then
   template=true
