@@ -14,19 +14,22 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: application.sh VMID"
+[[ $# -ge 1 && $# -le 2 ]] || fail "usage: application.sh VMID [APPLICATION_UPDATER]"
 vmid="$1"
+application_updater="${2:-}"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 
 command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
-application_updater="$(pct exec "$vmid" -- sh -c '
-  if [ -x /usr/bin/update ]; then
-    printf "/usr/bin/update"
-  else
-    printf "none"
-  fi
-' </dev/null)" || fail "could not determine application updater for LXC $vmid"
+if [[ -z "$application_updater" ]]; then
+  application_updater="$(pct exec "$vmid" -- sh -c '
+    if [ -x /usr/bin/update ]; then
+      printf "/usr/bin/update"
+    else
+      printf "none"
+    fi
+  ' </dev/null)" || fail "could not determine application updater for LXC $vmid"
+fi
 
 case "$application_updater" in
   none)
