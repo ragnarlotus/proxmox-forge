@@ -117,6 +117,7 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
 package_manager=""
+application_updater=""
 custom_script=false
 
 record_skipped_stage() {
@@ -281,8 +282,10 @@ if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
 
   parse_record "$requirements_record"
   package_manager="${RECORD_FIELDS[package_manager]:-}"
+  application_updater="${RECORD_FIELDS[application_updater]:-}"
   custom_script="${RECORD_FIELDS[custom_script]:-}"
   [[ -n "$package_manager" ]] || finish_failed requirements 1
+  [[ -n "$application_updater" ]] || finish_failed requirements 1
   [[ "$custom_script" == true || "$custom_script" == false ]] || finish_failed requirements 1
 else
   record_skipped_stage requirements disabled
@@ -352,7 +355,7 @@ fi
 
 if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
   bash "$log_capture_script" "$log_file" application_update -- \
-    bash "$application_update_script" "$vmid"
+    bash "$application_update_script" "$vmid" "$application_updater"
   stage_result=$?
 
   if (( stage_result != 0 )); then
