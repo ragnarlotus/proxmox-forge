@@ -24,7 +24,7 @@ if [[ $# -eq 2 ]]; then
   output_mode=json
 fi
 
-command -v pvesh >/dev/null 2>&1 || fail "pvesh is not available"
+command -v vzdump >/dev/null 2>&1 || fail "vzdump is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
 [[ -f "/etc/pve/lxc/${vmid}.conf" ]] || fail "LXC $vmid does not exist on this Proxmox host"
 
@@ -53,7 +53,7 @@ esac
 jobs_json="$(printf '%s\n' "$policy_output" | sed '1d')"
 [[ -n "$jobs_json" ]] || fail "backup policy helper returned no job data"
 
-usage_text="$(pvesh usage "/nodes/$node/vzdump" -v)" || fail "could not read vzdump endpoint schema from Proxmox"
+usage_text="$(vzdump help 2>&1)" || fail "could not read vzdump CLI usage"
 
 VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" perl -MJSON::PP -e '
   use strict;
@@ -76,7 +76,7 @@ VMID="$vmid" NODE="$node" USAGE_TEXT="$usage_text" OUTPUT_MODE="$output_mode" pe
     $accepted{$1} = 1;
   }
 
-  die "could not discover vzdump endpoint parameters\n" unless %accepted;
+  die "could not discover vzdump CLI parameters\n" unless %accepted;
 
   my %skip = map { $_ => 1 } qw(
     all
