@@ -102,7 +102,7 @@ write_runtime_state() {
   mapfile -t keys < <(printf '%s\n' "${!CONFIG[@]}" | LC_ALL=C sort)
 
   {
-    printf 'meta\tpid\t%s\n' "$"
+    printf 'meta\tpid\t%s\n' "$$"
     printf 'meta\trun_id\t%s\n' "$run_id"
     printf 'meta\tcommand\t%s\n' "$command_name"
     for key in "${keys[@]}"; do
