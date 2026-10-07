@@ -14,8 +14,7 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: update.sh CONFIG_FILE"
-config_file="$1"
+[[ $# -eq 0 ]] || fail "usage: update.sh"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine host script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -45,7 +44,7 @@ done
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
-config_get "$config_file" || fail "could not load Forge configuration: $config_file"
+config_get || fail "could not load effective Forge configuration"
 
 [[ "${CONFIG[UPDATE_HOST]}" == true ]] || fail "host updates are disabled by configuration"
 
