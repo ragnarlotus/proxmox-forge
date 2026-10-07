@@ -14,8 +14,7 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: update-all.sh CONFIG_FILE"
-config_file="$1"
+[[ $# -eq 0 ]] || fail "usage: update-all.sh"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine workflow directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -35,7 +34,7 @@ done
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
-config_get "$config_file" || fail "could not load Forge configuration: $config_file"
+config_get || fail "could not load effective Forge configuration"
 
 # Resolve and freeze the complete effective LXC scope before the first mutating operation.
 targets_output="$(
@@ -69,7 +68,7 @@ printf 'update_all=start update_host=%s update_lxc=%s lxc_targets=%s\n' \
 
 if [[ "${CONFIG[UPDATE_HOST]}" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
-  bash "$host_update_script" "$config_file"
+  bash "$host_update_script"
   host_result=$?
 
   if (( host_result != 0 )); then
@@ -91,7 +90,7 @@ if [[ "${CONFIG[UPDATE_LXC]}" == true ]]; then
   for vmid in "${vmids[@]}"; do
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
-    bash "$lxc_update_script" "$vmid" "$config_file"
+    bash "$lxc_update_script" "$vmid"
     target_result=$?
 
     if (( target_result == 0 )); then
