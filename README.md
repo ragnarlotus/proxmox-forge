@@ -15,7 +15,7 @@ Forge currently supports:
 - one local **Proxmox VE 9 / Debian 13** host;
 - local **running LXC containers** through `pct`;
 - host updates through APT;
-- LXC OS updates through APT, DNF, YUM, APK or Pacman;
+- LXC OS updates through APT;
 - Proxmox Community Scripts applications exposing `/usr/bin/update`;
 - target-specific local custom scripts;
 - Proxmox-native LXC recovery backups;
@@ -54,12 +54,10 @@ proxmox-forge/
 │   ├── backup/                 # Host and LXC backup/recovery helpers
 │   ├── cli/                    # CLI help
 │   ├── config/                 # Config loading/parsing/validation
-│   ├── helpers/                # Shared internal helpers
 │   ├── host/                   # Host preflight and update workflow
 │   ├── logging/                # Structured logging and terminal capture
 │   ├── lxc/                    # LXC discovery, update, health and maintenance
 │   ├── runtime/                # Internal runtime-context validation
-│   ├── tasks/                  # Proxmox task result/wait helpers
 │   └── workflows/              # Higher-level orchestration
 └── scripts.d/
     ├── README.md
@@ -292,19 +290,15 @@ The recovery backup is created whenever at least one mutating LXC stage is enabl
 
 ### Package-manager update strategies
 
-Forge detects the package manager inside the running LXC and currently uses:
+Forge currently supports APT-based LXCs only.
 
 | Package manager | Update sequence |
 | --- | --- |
 | APT | `apt-get update` → `apt-get dist-upgrade` → `apt-get autoremove` |
-| DNF | `dnf -y upgrade` |
-| YUM | `yum -y update` |
-| APK | `apk update` → `apk upgrade` |
-| Pacman | `pacman -Syu --noconfirm` |
 
-APT-based LXC updates use non-interactive package configuration and preserve existing local configuration files when package defaults differ.
+APT runs non-interactively and preserves existing local configuration files when package defaults differ.
 
-An unsupported package manager fails requirements before the update begins.
+A non-APT LXC is rejected by requirements before the update begins.
 
 ### Community Scripts application update
 
@@ -358,14 +352,13 @@ A `fstrim` failure is logged and reported as a **warning**. Forge deliberately d
 
 Forge does not maintain a second, competing LXC backup policy. Proxmox remains authoritative.
 
-For each LXC, Forge reads enabled Proxmox backup jobs and requires exactly one applicable job. It builds a one-target `vzdump` request from the job options accepted by the current Proxmox API, including the configured storage and applicable backup behaviour.
+For each LXC, Forge reads enabled Proxmox backup jobs and requires exactly one applicable job. It builds a one-target `vzdump` command from the job options exposed by the installed `vzdump` CLI, including the configured storage and applicable backup behaviour.
 
 The important guarantees are:
 
-- a successful API request alone is not treated as success;
-- Forge waits for the Proxmox task UPID to reach an authoritative final result;
-- the exact newly created recovery volume is identified by comparing backup volumes before and after the task;
-- a running guest must recover its pre-backup service baseline before Forge proceeds;
+- `vzdump` runs synchronously and its exit status is authoritative;
+- the exact newly created recovery volume is identified by comparing backup volumes before and after `vzdump`;
+- backup creation is limited to creating and identifying the recovery artifact; guest health is validated later by the update workflow;
 - the exact recovery artifact is retained for possible same-run rollback;
 - Forge does not implement a separate LXC backup-retention system; applicable Proxmox job options remain authoritative.
 
@@ -490,7 +483,7 @@ Current implementation deliberately enforces these rules:
 - stopped LXCs are always left untouched;
 - package managers run non-interactively;
 - mutating commands are not repeated merely to capture errors;
-- backup task completion is validated rather than inferred from task creation;
+- synchronous `vzdump` completion and the newly created recovery volume are both validated;
 - guest failures remain failures even if recovery succeeds;
 - a host failure aborts `update-all` before guest processing;
 - Forge never performs guest-style rollback on the host;
