@@ -26,35 +26,23 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 policy_script="$script_dir/read-policy.sh"
 [[ -r "$policy_script" ]] || fail "backup policy helper is not readable: $policy_script"
 
-policy_output="$(bash "$policy_script" "$vmid")" || fail "could not resolve Proxmox backup policy for LXC $vmid"
-match_count="$(printf '%s\n' "$policy_output" | sed -n 's/^match_count=//p' | head -n 1)"
-[[ "$match_count" =~ ^[0-9]+$ ]] || fail "backup policy helper returned an invalid match count"
-
-case "$match_count" in
-  0)
-    fail "no enabled Proxmox backup job applies to LXC $vmid"
-    ;;
-  1)
-    ;;
-  *)
-    fail "multiple enabled Proxmox backup jobs apply to LXC $vmid; Forge will not choose implicitly"
-    ;;
-esac
-
-jobs_json="$(printf '%s\n' "$policy_output" | sed '1d')"
+jobs_json="$(bash "$policy_script" "$vmid")" || fail "could not resolve Proxmox backup policy for LXC $vmid"
 [[ -n "$jobs_json" ]] || fail "backup policy helper returned no job data"
 
 usage_text="$(vzdump help 2>&1)" || fail "could not read vzdump CLI usage"
 
-USAGE_TEXT="$usage_text" perl -MJSON::PP -e '
+USAGE_TEXT="$usage_text" VMID="$vmid" perl -MJSON::PP -e '
   use strict;
   use warnings;
 
   my $usage = $ENV{USAGE_TEXT};
+  my $vmid = $ENV{VMID};
   my $jobs = decode_json(do { local $/; <STDIN> });
 
   die "policy data is not an array\n" unless ref($jobs) eq "ARRAY";
-  die "policy data does not contain exactly one job\n" unless @$jobs == 1;
+  die "no enabled Proxmox backup job applies to LXC $vmid\n" unless @$jobs;
+  die "multiple enabled Proxmox backup jobs apply to LXC $vmid; Forge will not choose implicitly\n"
+    if @$jobs > 1;
 
   my $job = $jobs->[0];
   die "policy job is not an object\n" unless ref($job) eq "HASH";
