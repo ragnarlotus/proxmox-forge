@@ -20,15 +20,8 @@ target="$1"
 
 run_id="${FORGE_RUN_ID:-}"
 [[ -n "$run_id" ]] || fail "Forge run identifier is unavailable"
-
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
-environment_script="$script_dir/get-environment.sh"
-[[ -r "$environment_script" ]] || fail "LXC environment helper is not readable: $environment_script"
-
-if [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" != "$run_id" ]]; then
-  bash "$environment_script" >/dev/null || fail "LXC environment check failed"
-  export FORGE_LXC_ENVIRONMENT_READY="$run_id"
-fi
+[[ "${FORGE_LXC_ENVIRONMENT_READY:-}" == "$run_id" ]] || \
+  fail "LXC environment was not validated for this Forge run"
 
 if [[ "$target" =~ ^[0-9]+$ ]]; then
   vmid="$target"
