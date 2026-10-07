@@ -13,6 +13,18 @@ forge_lib_dir="$(cd "$restore_script_dir/../.." && pwd)" || {
 }
 runtime_guard="$forge_lib_dir/runtime/require-context.sh"
 
+workspace=""
+standalone_lock=false
+lock_file=""
+
+cleanup_restore_state() {
+  [[ -z "$workspace" ]] || rm -rf -- "$workspace"
+  if [[ "$standalone_lock" == true && -n "$lock_file" ]]; then
+    : > "$lock_file" 2>/dev/null || true
+  fi
+}
+trap cleanup_restore_state EXIT
+
 # This is the only lib/ entry point intentionally allowed to run outside the
 # public Forge CLI. It still participates in the same global lock so host
 # recovery can never overlap another Forge execution.
@@ -41,7 +53,16 @@ else
   }
 
   if ! flock -n "$lock_fd"; then
-    holder="$(cat "$lock_file" 2>/dev/null)"
+    holder="$(awk -F '\t' '
+      $1 == "meta" && ($2 == "pid" || $2 == "run_id" || $2 == "command") {
+        if (length(out)) out = out " ";
+        out = out $2 "=" $3;
+      }
+      END { print out }
+    ' "$lock_file" 2>/dev/null)"
+    if [[ -z "$holder" ]]; then
+      holder="$(head -n 1 "$lock_file" 2>/dev/null)"
+    fi
     if [[ -n "$holder" ]]; then
       printf 'ERROR: another Forge execution is already running (%s)\n' "$holder" >&2
     else
@@ -49,12 +70,14 @@ else
     fi
     exit 1
   fi
+  standalone_lock=true
 
-  run_id="$(date '+%Y%m%dT%H%M%S')-$$" || {
+  run_id="$(date '+%Y%m%dT%H%M%S')-$" || {
     printf 'ERROR: could not create Forge restore run identifier\n' >&2
     exit 1
   }
-  printf 'pid=%s run_id=%s command=host-restore\n' "$$" "$run_id" > "$lock_file" || {
+  printf 'meta\tpid\t%s\nmeta\trun_id\t%s\nmeta\tcommand\t%s\n' \
+    "$" "$run_id" "host-restore" > "$lock_file" || {
     printf 'ERROR: could not record Forge restore lock metadata\n' >&2
     exit 1
   }
@@ -146,7 +169,6 @@ done
 script_dir="$restore_script_dir"
 backup_lib="$(cd "$script_dir/.." && pwd)" || fail "could not determine backup library directory"
 read_storage="$backup_lib/read-storage.sh"; storage_path="$backup_lib/storage-path.sh"
-workspace=""; trap '[[ -z "$workspace" ]] || rm -rf -- "$workspace"' EXIT
 
 normalize_dir() {
   local d="$1"
