@@ -70,7 +70,7 @@ pending_cr = False
 
 def emit_line():
     dst.write(line)
-    dst.write(b"\\n")
+    dst.write(bytes((0x0A,)))
     dst.flush()
     line.clear()
 
@@ -170,7 +170,7 @@ while True:
                     output.append(c)
                 break
 
-            if pending == b"\\x1b":
+            if pending == bytes((0x1B,)):
                 if c == 0x5B:
                     pending.append(c)
                     break
@@ -178,7 +178,7 @@ while True:
                 pending.clear()
                 continue
 
-            if pending == b"\\x1b[":
+            if pending == bytes((0x1B, 0x5B)):
                 if c == 0x33:
                     pending.append(c)
                     break
@@ -186,7 +186,7 @@ while True:
                 pending.clear()
                 continue
 
-            if pending == b"\\x1b[3":
+            if pending == bytes((0x1B, 0x5B, 0x33)):
                 if c == 0x4A:
                     pending.clear()
                     break
