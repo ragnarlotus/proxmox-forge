@@ -19,41 +19,51 @@ storage="$1"
 [[ "$storage" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || fail "invalid storage identifier '$storage'"
 
 command -v pvesm >/dev/null 2>&1 || fail "pvesm is not available"
-command -v perl >/dev/null 2>&1 || fail "perl is not available"
 [[ -r /etc/pve/storage.cfg ]] || fail "/etc/pve/storage.cfg is not readable"
 
 pvesm status --storage "$storage" >/dev/null 2>&1 || fail "Proxmox storage is not currently available: $storage"
 
-record="$(
-  STORAGE="$storage" perl -e '
-    use strict;
-    use warnings;
+active=false
+path=""
+content=""
 
-    my $wanted = $ENV{STORAGE};
-    open my $fh, "<", "/etc/pve/storage.cfg" or die "cannot read storage.cfg: $!\n";
+while IFS= read -r line || [[ -n "$line" ]]; do
+  if [[ "$line" =~ ^[^[:space:]][^:]*:[[:space:]]+([^[:space:]#]+) ]]; then
+    [[ "$active" == true ]] && break
 
-    my ($active, $path, $content);
-    while (my $line = <$fh>) {
-      if ($line =~ /^\s*([A-Za-z0-9_-]+):\s+([^\s#]+)\s*$/) {
-        last if $active;
-        $active = ($2 eq $wanted) ? 1 : 0;
-        next;
-      }
+    if [[ "${BASH_REMATCH[1]}" == "$storage" ]]; then
+      active=true
+    else
+      active=false
+    fi
+    continue
+  fi
 
-      next unless $active;
-      $path = $1 if $line =~ /^\s+path\s+(.+?)\s*$/;
-      $content = $1 if $line =~ /^\s+content\s+(.+?)\s*$/;
-    }
+  [[ "$active" == true ]] || continue
 
-    die "storage $wanted has no explicit local path\n" unless defined($path) && length($path);
-    die "storage $wanted does not allow backup content\n"
-      unless defined($content) && grep { $_ eq "backup" } split /,/, $content;
+  if [[ "$line" =~ ^[[:space:]]+path[[:space:]]+(.+[^[:space:]])[[:space:]]*$ ]]; then
+    path="${BASH_REMATCH[1]}"
+    continue
+  fi
 
-    print "path=$path\ncontent=$content\n";
-  '
-)" || fail "could not resolve filesystem path for Proxmox storage $storage"
+  if [[ "$line" =~ ^[[:space:]]+content[[:space:]]+(.+[^[:space:]])[[:space:]]*$ ]]; then
+    content="${BASH_REMATCH[1]}"
+  fi
+done < /etc/pve/storage.cfg
 
-path="$(printf '%s\n' "$record" | sed -n 's/^path=//p' | head -n 1)"
+[[ -n "$path" ]] || fail "storage $storage has no explicit local path"
+
+allows_backup=false
+IFS=',' read -r -a content_types <<<"$content"
+for content_type in "${content_types[@]}"; do
+  content_type="${content_type//[[:space:]]/}"
+  if [[ "$content_type" == backup ]]; then
+    allows_backup=true
+    break
+  fi
+done
+
+[[ "$allows_backup" == true ]] || fail "storage $storage does not allow backup content"
 [[ "$path" == /* ]] || fail "storage $storage returned a non-absolute path"
 [[ -d "$path" ]] || fail "storage path does not exist: $path"
 
