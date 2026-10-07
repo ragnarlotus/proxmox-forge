@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Executes one prepared synchronous vzdump backup for an LXC, verifies that a running guest returns to its pre-backup service baseline, and returns the exact created recovery volume.
+# Description: Executes one prepared synchronous vzdump backup for an LXC and returns the exact created recovery volume.
 
 set -u
 
@@ -20,7 +20,6 @@ vmid="$1"
 
 command -v vzdump >/dev/null 2>&1 || fail "vzdump is not available"
 command -v perl >/dev/null 2>&1 || fail "perl is not available"
-command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 plan_script="$script_dir/prepare.sh"
@@ -75,37 +74,6 @@ for ((i = 1; i < ${#fields[@]}; i += 2)); do
   command+=("${fields[i]}" "${fields[i + 1]}")
 done
 
-status_output="$(pct status "$vmid" 2>/dev/null)" || \
-  fail "could not read pre-backup state for LXC $vmid"
-pre_backup_state="${status_output#status: }"
-
-service_manager="none"
-baseline_services=()
-
-if [[ "$pre_backup_state" == running ]]; then
-  service_manager="$(pct exec "$vmid" -- sh -c '
-    if command -v systemctl >/dev/null 2>&1; then
-      printf "systemd"
-    else
-      printf "none"
-    fi
-  ' </dev/null)" || fail "LXC $vmid is running but not ready before backup"
-
-  if [[ "$service_manager" == systemd ]]; then
-    baseline_output="$(
-      pct exec "$vmid" -- \
-        systemctl list-units --type=service --state=active --no-legend --no-pager --plain \
-        </dev/null
-    )" || fail "could not capture active systemd services before backup for LXC $vmid"
-
-    mapfile -t baseline_services < <(
-      printf '%s\n' "$baseline_output" |
-        awk 'NF {print $1}' |
-        LC_ALL=C sort -u
-    )
-  fi
-fi
-
 before_backups="$(bash "$list_script" "$storage" "$vmid")" || \
   fail "could not list existing backups for LXC $vmid on storage $storage"
 
@@ -116,79 +84,6 @@ if (( create_result != 0 )); then
   printf 'ERROR: Proxmox vzdump backup failed for LXC %s (exit code: %s)\n' \
     "$vmid" "$create_result" >&2
   exit "$create_result"
-fi
-
-if [[ "$pre_backup_state" == running ]]; then
-  post_backup_ready=false
-  failed_units=""
-  inactive_services=()
-
-  for ((attempt = 1; attempt <= 30; attempt++)); do
-    status_output="$(pct status "$vmid" 2>/dev/null)" || status_output=""
-    post_backup_state="${status_output#status: }"
-
-    if [[ "$post_backup_state" == running ]]; then
-      if [[ "$service_manager" != systemd ]]; then
-        if pct exec "$vmid" -- sh -c 'exit 0' </dev/null; then
-          post_backup_ready=true
-          break
-        fi
-      else
-        baseline_active=true
-        if (( ${#baseline_services[@]} > 0 )); then
-          pct exec "$vmid" -- \
-            systemctl is-active --quiet "${baseline_services[@]}" \
-            </dev/null || baseline_active=false
-        fi
-
-        failed_units="$(
-          pct exec "$vmid" -- \
-            systemctl --failed --type=service --no-legend --no-pager --plain \
-            </dev/null 2>/dev/null
-        )" || failed_units="__forge_systemctl_error__"
-
-        if [[ "$baseline_active" == true && -z "$failed_units" ]]; then
-          post_backup_ready=true
-          break
-        fi
-      fi
-    fi
-
-    sleep 2
-  done
-
-  if [[ "$post_backup_ready" != true ]]; then
-    if [[ "$service_manager" == systemd ]]; then
-      inactive_services=()
-
-      for service in "${baseline_services[@]}"; do
-        if ! pct exec "$vmid" -- systemctl is-active --quiet "$service" </dev/null 2>/dev/null; then
-          inactive_services+=("$service")
-        fi
-      done
-
-      failed_units="$(
-        pct exec "$vmid" -- \
-          systemctl --failed --type=service --no-legend --no-pager --plain \
-          </dev/null 2>/dev/null
-      )" || failed_units="could not query failed systemd services"
-
-      if (( ${#inactive_services[@]} > 0 )); then
-        printf 'ERROR: LXC %s did not recover its pre-backup active services: %s\n' \
-          "$vmid" "${inactive_services[*]}" >&2
-      fi
-
-      if [[ -n "$failed_units" ]]; then
-        printf 'ERROR: LXC %s has failed systemd services after backup:\n%s\n' \
-          "$vmid" "$failed_units" >&2
-      fi
-    else
-      printf 'ERROR: LXC %s did not return to a ready running state after backup\n' \
-        "$vmid" >&2
-    fi
-
-    exit 1
-  fi
 fi
 
 after_backups="$(bash "$list_script" "$storage" "$vmid")" || \
