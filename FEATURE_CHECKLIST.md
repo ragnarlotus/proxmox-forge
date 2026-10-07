@@ -84,15 +84,17 @@ These are agreed behavioural requirements for the initial implementation. They d
 ## E. Operating systems and package managers
 
 - [x] **F046** Debian/Ubuntu updates through APT.
-- [x] **F047** Fedora/RHEL/Rocky/Alma updates through DNF/YUM.
-- [x] **F048** Arch updates through Pacman.
-- [x] **F049** Alpine updates through APK.
+- [ ] **F047** Fedora/RHEL/Rocky/Alma updates through DNF/YUM.
+- [ ] **F048** Arch updates through Pacman.
+- [ ] **F049** Alpine updates through APK.
 - [ ] **F050** Devuan support.
 - [ ] **F051** Mint/Kali/Neon and other Debian derivatives.
 - [ ] **F052** FreeBSD updates through `pkg`.
 - [ ] **F053** Extensible/future Windows Update support.
-- [x] **F054** Automatically detect the appropriate update strategy.
+- [x] **F054** Automatically detect the supported update strategy.
 - [ ] **F055** Configurable package-manager-specific arguments.
+
+> The current LXC update scope is APT-only. F054 currently means detecting APT as supported and rejecting any unsupported package manager; it does not imply that DNF/YUM, Pacman or APK adapters exist.
 
 ## F. Application updates and custom scripts
 
