@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Performs read-only checks that determine whether an LXC satisfies the current requirements to begin an update; it never creates backups or mutates the target.
+# Description: Performs read-only checks that determine whether an LXC satisfies the current requirements to begin an update, reusing an already-resolved target record when supplied; it never creates backups or mutates the target.
 
 set -u
 
@@ -14,8 +14,9 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: check-requirements.sh VMID_OR_NAME"
+[[ $# -ge 1 && $# -le 2 ]] || fail "usage: check-requirements.sh VMID_OR_NAME [TARGET_RECORD]"
 target="$1"
+target_record="${2:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -23,7 +24,13 @@ info_script="$lib_dir/lxc/get-info.sh"
 
 [[ -r "$info_script" ]] || fail "required helper is not readable: $info_script"
 
-info="$(bash "$info_script" "$target")" || fail "could not collect LXC information for '$target'"
+if [[ -n "$target_record" ]]; then
+  info="$(bash "$info_script" "$target" "" "$target_record")" || \
+    fail "could not collect LXC information for '$target'"
+else
+  info="$(bash "$info_script" "$target")" || \
+    fail "could not collect LXC information for '$target'"
+fi
 printf '%s\n' "$info"
 
 declare -A info_fields=()

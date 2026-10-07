@@ -154,8 +154,8 @@ if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   requirements_output_file="$(mktemp)" || finish_failed requirements 1
 
   bash "$log_capture_script" "$log_file" requirements -- \
-    bash -o pipefail -c 'bash "$1" "$2" | tee "$3"' \
-      _ "$requirements_script" "$vmid" "$requirements_output_file"
+    bash -o pipefail -c 'bash "$1" "$2" "$3" | tee "$4"' \
+      _ "$requirements_script" "$vmid" "$target_record" "$requirements_output_file"
   stage_result=$?
 
   if (( stage_result != 0 )); then

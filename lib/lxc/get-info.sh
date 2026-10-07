@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Returns the package/update information required by LXC preflight, or the complete available LXC information when explicitly requested with 'all'.
+# Description: Returns the package/update information required by LXC requirements checks, or complete LXC information with 'all', reusing an already-resolved target record when supplied.
 
 set -u
 
@@ -28,9 +28,10 @@ parse_record() {
 
 declare -A RECORD_FIELDS=()
 
-[[ $# -ge 1 && $# -le 2 ]] || fail "usage: get-info.sh VMID_OR_NAME [all]"
+[[ $# -ge 1 && $# -le 3 ]] || fail "usage: get-info.sh VMID_OR_NAME [all] [TARGET_RECORD]"
 target="$1"
 mode="${2:-}"
+target_record="${3:-}"
 
 [[ -n "$target" ]] || fail "target must not be empty"
 [[ -z "$mode" || "$mode" == all ]] || fail "unsupported information mode '$mode'; expected 'all'"
@@ -44,16 +45,23 @@ for helper in "$target_script" "$config_get_script"; do
   [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
 done
 
-target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
+if [[ -z "$target_record" ]]; then
+  target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
+fi
+
 parse_record "$target_record"
+record_type="${RECORD_FIELDS[type]:-}"
 vmid="${RECORD_FIELDS[vmid]:-}"
 name="${RECORD_FIELDS[name]:-}"
 state="${RECORD_FIELDS[state]:-}"
 template="${RECORD_FIELDS[template]:-}"
+[[ "$record_type" == lxc ]] || fail "LXC target record returned invalid type '$record_type'"
 [[ -n "$vmid" ]] || fail "LXC target helper returned no vmid"
 [[ -n "$name" ]] || fail "LXC target helper returned no name"
 [[ -n "$state" ]] || fail "LXC target helper returned no state"
 [[ -n "$template" ]] || fail "LXC target helper returned no template field"
+[[ "$target" == "$vmid" || "$target" == "$name" ]] || \
+  fail "LXC target record does not match requested target '$target'"
 
 [[ "$template" == false ]] || fail "LXC $vmid ($name) is a template and cannot be inspected as an update target"
 [[ "$state" == running ]] || fail "LXC $vmid ($name) is $state; information collection requires a running container"
