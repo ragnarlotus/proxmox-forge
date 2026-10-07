@@ -28,9 +28,8 @@ parse_record() {
 
 declare -A RECORD_FIELDS=()
 
-[[ $# -eq 2 ]] || fail "usage: update.sh VMID_OR_NAME CONFIG_FILE"
+[[ $# -eq 1 ]] || fail "usage: update.sh VMID_OR_NAME"
 target="$1"
-config_file="$2"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -72,7 +71,7 @@ command -v tee >/dev/null 2>&1 || fail "tee is not available"
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
-config_get "$config_file" || fail "could not load Forge configuration: $config_file"
+config_get || fail "could not load effective Forge configuration"
 
 [[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by configuration"
 
