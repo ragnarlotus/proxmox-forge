@@ -34,7 +34,7 @@ if (( extract_result != 0 )); then
   exit "$extract_result"
 fi
 
-VMID="$vmid" BACKUP_VOLUME="$backup_volume" BACKUP_CONFIG="$backup_config" \
+VMID="$vmid" BACKUP_CONFIG="$backup_config" \
 perl -MPVE::LXC::Config -MPVE::Storage -MJSON::PP -e '
   use strict;
   use warnings;
@@ -156,8 +156,6 @@ perl -MPVE::LXC::Config -MPVE::Storage -MJSON::PP -e '
   }
 
   my $plan = {
-    vmid => "$vmid",
-    backup_volume => $ENV{BACKUP_VOLUME},
     rootfs => print_mountpoint("rootfs", $rootfs, 1),
     current_rootfs_volume => $current_rootfs->{volume},
     mounts => \@mounts,
