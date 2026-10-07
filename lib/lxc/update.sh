@@ -183,9 +183,16 @@ else
   fi
 fi
 
+application_update_planned=false
+if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
+  if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" != true || "$application_updater" != none ]]; then
+    application_update_planned=true
+  fi
+fi
+
 mutation_planned=false
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]] \
-  || [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]] \
+  || [[ "$application_update_planned" == true ]] \
   || { [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] && [[ "$custom_script" == true ]]; }; then
   mutation_planned=true
 fi
