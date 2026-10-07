@@ -36,10 +36,9 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 
 config_get_script="$lib_dir/config/get.sh"
 target_script="$script_dir/get-target.sh"
-state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
 backup_create_script="$lib_dir/backup/lxc/create.sh"
-backup_restore_script="$lib_dir/backup/lxc/restore.sh"
+recovery_script="$script_dir/recover.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
 custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
@@ -51,10 +50,9 @@ log_write_script="$lib_dir/logging/write.sh"
 for helper in \
   "$config_get_script" \
   "$target_script" \
-  "$state_script" \
   "$requirements_script" \
   "$backup_create_script" \
-  "$backup_restore_script" \
+  "$recovery_script" \
   "$os_update_script" \
   "$application_update_script" \
   "$custom_scripts_update_script" \
@@ -150,118 +148,6 @@ finish_failed() {
   exit "$primary_result"
 }
 
-attempt_recovery() {
-  local failed_stage="$1"
-  local primary_result="$2"
-  local current_state
-  local recovery_result
-
-  if [[ "${CONFIG[ROLLBACK_ON_FAILURE]}" != true ]]; then
-    bash "$log_write_script" "$log_file" WARN recovery_skipped \
-      "vmid=$vmid" \
-      "failed_stage=$failed_stage" \
-      "primary_exit_code=$primary_result" \
-      "reason=disabled" || \
-      printf 'ERROR: could not record skipped recovery in %s\n' "$log_file" >&2
-    return 0
-  fi
-
-  if [[ -z "$backup_volume" ]]; then
-    bash "$log_write_script" "$log_file" WARN recovery_skipped \
-      "vmid=$vmid" \
-      "failed_stage=$failed_stage" \
-      "primary_exit_code=$primary_result" \
-      "reason=no_recovery_artifact" || \
-      printf 'ERROR: could not record unavailable recovery in %s\n' "$log_file" >&2
-    return 0
-  fi
-
-  bash "$log_write_script" "$log_file" WARN recovery_start \
-    "vmid=$vmid" \
-    "failed_stage=$failed_stage" \
-    "primary_exit_code=$primary_result" \
-    "backup=$backup_volume" || \
-    printf 'ERROR: could not record recovery start in %s\n' "$log_file" >&2
-
-  current_state="$(bash "$state_script" "$vmid")"
-  recovery_result=$?
-  if (( recovery_result != 0 )); then
-    bash "$log_write_script" "$log_file" ERROR recovery_end \
-      "vmid=$vmid" \
-      "status=failed" \
-      "step=read_state" \
-      "exit_code=$recovery_result" \
-      "backup=$backup_volume" || true
-    return "$recovery_result"
-  fi
-
-  case "$current_state" in
-    running)
-      bash "$log_capture_script" "$log_file" recovery_stop -- pct stop "$vmid"
-      recovery_result=$?
-      if (( recovery_result != 0 )); then
-        bash "$log_write_script" "$log_file" ERROR recovery_end \
-          "vmid=$vmid" \
-          "status=failed" \
-          "step=stop" \
-          "exit_code=$recovery_result" \
-          "backup=$backup_volume" || true
-        return "$recovery_result"
-      fi
-      ;;
-    stopped)
-      bash "$log_write_script" "$log_file" INFO stage_skipped \
-        "stage=recovery_stop" \
-        "reason=already_stopped" || true
-      ;;
-    *)
-      printf 'ERROR: unsupported LXC state during recovery: %s\n' "$current_state" >&2
-      bash "$log_write_script" "$log_file" ERROR recovery_end \
-        "vmid=$vmid" \
-        "status=failed" \
-        "step=stop" \
-        "reason=unsupported_state" \
-        "state=$current_state" \
-        "backup=$backup_volume" || true
-      return 1
-      ;;
-  esac
-
-  bash "$log_capture_script" "$log_file" recovery_restore -- \
-    bash "$backup_restore_script" "$vmid" "$backup_volume"
-  recovery_result=$?
-  if (( recovery_result != 0 )); then
-    bash "$log_write_script" "$log_file" ERROR recovery_end \
-      "vmid=$vmid" \
-      "status=failed" \
-      "step=restore" \
-      "exit_code=$recovery_result" \
-      "backup=$backup_volume" || true
-    return "$recovery_result"
-  fi
-
-  # The mutating workflow only supports originally-running LXCs, so a successful
-  # recovery returns the guest to that state.
-  bash "$log_capture_script" "$log_file" recovery_start_guest -- pct start "$vmid"
-  recovery_result=$?
-  if (( recovery_result != 0 )); then
-    bash "$log_write_script" "$log_file" ERROR recovery_end \
-      "vmid=$vmid" \
-      "status=failed" \
-      "step=start" \
-      "exit_code=$recovery_result" \
-      "backup=$backup_volume" || true
-    return "$recovery_result"
-  fi
-
-  bash "$log_write_script" "$log_file" INFO recovery_end \
-    "vmid=$vmid" \
-    "status=success" \
-    "backup=$backup_volume" || \
-    printf 'ERROR: could not record successful recovery in %s\n' "$log_file" >&2
-
-  return 0
-}
 
 if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   requirements_output_file="$(mktemp)" || finish_failed requirements 1
@@ -345,7 +231,9 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    attempt_recovery os_update "$stage_result" || true
+    bash "$recovery_script" \
+      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      os_update "$stage_result" || true
     finish_failed os_update "$stage_result"
   fi
 else
@@ -358,7 +246,9 @@ if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    attempt_recovery application_update "$stage_result" || true
+    bash "$recovery_script" \
+      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      application_update "$stage_result" || true
     finish_failed application_update "$stage_result"
   fi
 else
@@ -375,7 +265,9 @@ else
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    attempt_recovery custom_scripts "$stage_result" || true
+    bash "$recovery_script" \
+      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      custom_scripts "$stage_result" || true
     finish_failed custom_scripts "$stage_result"
   fi
 fi
@@ -386,7 +278,9 @@ if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    attempt_recovery health "$stage_result" || true
+    bash "$recovery_script" \
+      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      health "$stage_result" || true
     finish_failed health "$stage_result"
   fi
 elif [[ "${CONFIG[HEALTH_CHECK]}" != true ]]; then
