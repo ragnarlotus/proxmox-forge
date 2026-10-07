@@ -28,7 +28,7 @@ shift
 [[ "$stage" =~ ^[a-z][a-z0-9_-]*$ ]] || fail "invalid stage '$stage'"
 command -v mkfifo >/dev/null 2>&1 || fail "mkfifo is not available"
 command -v mktemp >/dev/null 2>&1 || fail "mktemp is not available"
-command -v perl >/dev/null 2>&1 || fail "perl is not available"
+command -v python3 >/dev/null 2>&1 || fail "python3 is not available"
 command -v tee >/dev/null 2>&1 || fail "tee is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
@@ -59,110 +59,87 @@ trap cleanup_capture EXIT
 # A separate consumer sanitizes the byte stream for the persistent log.
 # Standalone CR means "rewrite this line", so only the latest visible version is
 # kept in the log instead of turning every progress redraw into a fake new line.
-LC_ALL=C perl -e '
-  use strict;
-  use warnings;
+LC_ALL=C python3 -u -c '
+import sys
 
-  binmode STDIN;
-  binmode STDOUT;
-  $| = 1;
+src = sys.stdin.buffer
+dst = sys.stdout.buffer
+state = "text"
+line = bytearray()
+pending_cr = False
 
-  my $state = "text";
-  my $line = "";
-  my $pending_cr = 0;
+def emit_line():
+    dst.write(line)
+    dst.write(b"\\n")
+    dst.flush()
+    line.clear()
 
-  sub emit_line {
-    print $line, "\n";
-    $line = "";
-  }
+while True:
+    chunk = src.read(4096)
+    if not chunk:
+        break
 
-  sub append_text {
-    my ($c) = @_;
-    if ($c eq "\b") {
-      chop $line if length $line;
-    } else {
-      $line .= $c;
-    }
-  }
+    for c in chunk:
+        if pending_cr:
+            if c == 0x0A:
+                emit_line()
+                pending_cr = False
+                continue
 
-  while (read(STDIN, my $chunk, 4096)) {
-    for my $c (split //, $chunk) {
-      if ($pending_cr) {
-        if ($c eq "\n") {
-          emit_line();
-          $pending_cr = 0;
-          next;
-        }
+            # A bare carriage return moves the cursor back to column zero. The
+            # next bytes replace the current progress line rather than creating
+            # a new one.
+            line.clear()
+            pending_cr = False
 
-        # A bare carriage return moves the cursor back to column zero. The next
-        # bytes replace the current progress line rather than creating a new one.
-        $line = "";
-        $pending_cr = 0;
-      }
+        if state == "osc":
+            if c == 0x07:
+                state = "text"
+            elif c == 0x1B:
+                state = "osc_esc"
+            continue
 
-      if ($state eq "osc") {
-        if ($c eq "\a") {
-          $state = "text";
-        } elsif ($c eq "\e") {
-          $state = "osc_esc";
-        }
-        next;
-      }
+        if state == "osc_esc":
+            if c == 0x5C or c == 0x07:
+                state = "text"
+            elif c != 0x1B:
+                state = "osc"
+            continue
 
-      if ($state eq "osc_esc") {
-        if ($c eq "\\" || $c eq "\a") {
-          $state = "text";
-        } elsif ($c ne "\e") {
-          $state = "osc";
-        }
-        next;
-      }
+        if state == "csi":
+            if 0x40 <= c <= 0x7E:
+                state = "text"
+            continue
 
-      if ($state eq "csi") {
-        my $ord = ord($c);
-        $state = "text" if $ord >= 0x40 && $ord <= 0x7e;
-        next;
-      }
+        if state == "esc":
+            if c == 0x5B:
+                state = "csi"
+                continue
+            if c == 0x5D:
+                state = "osc"
+                continue
+            if 0x40 <= c <= 0x5F:
+                state = "text"
+                continue
+            state = "text"
 
-      if ($state eq "esc") {
-        if ($c eq "[") {
-          $state = "csi";
-          next;
-        }
-        if ($c eq "]") {
-          $state = "osc";
-          next;
-        }
+        if c == 0x1B:
+            state = "esc"
+            continue
+        if c == 0x0D:
+            pending_cr = True
+            continue
+        if c == 0x0A:
+            emit_line()
+            continue
+        if c == 0x08:
+            if line:
+                line.pop()
+        else:
+            line.append(c)
 
-        my $ord = ord($c);
-        if ($ord >= 0x40 && $ord <= 0x5f) {
-          $state = "text";
-          next;
-        }
-
-        $state = "text";
-      }
-
-      if ($c eq "\e") {
-        $state = "esc";
-        next;
-      }
-      if ($c eq "\r") {
-        $pending_cr = 1;
-        next;
-      }
-      if ($c eq "\n") {
-        emit_line();
-        next;
-      }
-
-      append_text($c);
-    }
-  }
-
-  if ($pending_cr || length $line) {
-    emit_line();
-  }
+if pending_cr or line:
+    emit_line()
 ' <"$log_pipe" >>"$log_file" &
 sanitize_pid=$!
 
@@ -170,62 +147,60 @@ sanitize_pid=$!
 # screen clears, but suppress CSI 3 J. That sequence clears terminal scrollback;
 # Community Scripts emits it as part of its header repaint, which would otherwise
 # erase earlier Forge stages from an update-all run.
-"$@" 2>&1 | tee "$log_pipe" | LC_ALL=C perl -e '
-  use strict;
-  use warnings;
+"$@" 2>&1 | tee "$log_pipe" | LC_ALL=C python3 -u -c '
+import sys
 
-  binmode STDIN;
-  binmode STDOUT;
-  $| = 1;
+src = sys.stdin.buffer
+dst = sys.stdout.buffer
+pending = bytearray()
 
-  my $pending = "";
+while True:
+    chunk = src.read(4096)
+    if not chunk:
+        break
 
-  while (read(STDIN, my $chunk, 4096)) {
-    for my $c (split //, $chunk) {
-      while (1) {
-        if ($pending eq "") {
-          if ($c eq "\e") {
-            $pending = $c;
-          } else {
-            print $c;
-          }
-          last;
-        }
+    output = bytearray()
 
-        if ($pending eq "\e") {
-          if ($c eq "[") {
-            $pending .= $c;
-            last;
-          }
-          print $pending;
-          $pending = "";
-          next;
-        }
+    for c in chunk:
+        while True:
+            if not pending:
+                if c == 0x1B:
+                    pending.append(c)
+                else:
+                    output.append(c)
+                break
 
-        if ($pending eq "\e[") {
-          if ($c eq "3") {
-            $pending .= $c;
-            last;
-          }
-          print $pending;
-          $pending = "";
-          next;
-        }
+            if pending == b"\\x1b":
+                if c == 0x5B:
+                    pending.append(c)
+                    break
+                output.extend(pending)
+                pending.clear()
+                continue
 
-        if ($pending eq "\e[3") {
-          if ($c eq "J") {
-            $pending = "";
-            last;
-          }
-          print $pending;
-          $pending = "";
-          next;
-        }
-      }
-    }
-  }
+            if pending == b"\\x1b[":
+                if c == 0x33:
+                    pending.append(c)
+                    break
+                output.extend(pending)
+                pending.clear()
+                continue
 
-  print $pending if length $pending;
+            if pending == b"\\x1b[3":
+                if c == 0x4A:
+                    pending.clear()
+                    break
+                output.extend(pending)
+                pending.clear()
+                continue
+
+    if output:
+        dst.write(output)
+        dst.flush()
+
+if pending:
+    dst.write(pending)
+    dst.flush()
 '
 pipeline_status=("${PIPESTATUS[@]}")
 command_status="${pipeline_status[0]}"
@@ -249,7 +224,7 @@ if (( command_status != 0 )); then
 fi
 
 if (( sanitize_status != 0 )); then
-  printf 'ERROR: output sanitization failed for stage %s (perl exit code %s)\n' \
+  printf 'ERROR: output sanitization failed for stage %s (python3 exit code %s)\n' \
     "$stage" "$sanitize_status" >&2
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=logging_failed" "exit_code=$sanitize_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
@@ -264,7 +239,7 @@ if (( tee_status != 0 )); then
 fi
 
 if (( terminal_filter_status != 0 )); then
-  printf 'ERROR: terminal output filtering failed for stage %s (perl exit code %s)\n' \
+  printf 'ERROR: terminal output filtering failed for stage %s (python3 exit code %s)\n' \
     "$stage" "$terminal_filter_status" >&2
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=terminal_output_failed" "exit_code=$terminal_filter_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
