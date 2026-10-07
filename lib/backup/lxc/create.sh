@@ -39,7 +39,7 @@ list_backup_volumes() {
 vmid="$1"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 
-for command_name in vzdump pvesh pvesm perl hostname; do
+for command_name in vzdump pvesh pvesm python3 hostname; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is not available"
 done
 
@@ -55,121 +55,133 @@ usage_text="$(vzdump help 2>&1)" || fail "could not read vzdump CLI usage"
 
 mapfile -d '' -t fields < <(
   JOBS_JSON="$jobs_json" USAGE_TEXT="$usage_text" VMID="$vmid" NODE="$node" \
-  perl -MJSON::PP -e '
-    use strict;
-    use warnings;
+  python3 -c '
+import json
+import os
+import re
+import sys
 
-    my $vmid = $ENV{VMID};
-    my $node = $ENV{NODE};
-    my $usage = $ENV{USAGE_TEXT};
-    my $jobs = decode_json($ENV{JOBS_JSON});
+vmid = os.environ["VMID"]
+node = os.environ["NODE"]
+usage = os.environ["USAGE_TEXT"]
+jobs = json.loads(os.environ["JOBS_JSON"])
 
-    die "backup API response is not an array\n" unless ref($jobs) eq "ARRAY";
+if not isinstance(jobs, list):
+    raise SystemExit("backup API response is not an array")
 
-    sub contains_vmid {
-      my ($value, $wanted) = @_;
-      return 0 unless defined $value;
+def is_false(value):
+    return value is None or value is False or value == 0 or value == "" or value == "0"
 
-      for my $item (split /[,\s]+/, "$value") {
-        return 1 if length($item) && $item eq $wanted;
-      }
+def contains_vmid(value, wanted):
+    if value is None:
+        return False
+    return wanted in [item for item in re.split(r"[,\s]+", str(value)) if item]
 
-      return 0;
-    }
+matches = []
 
-    my @matches;
+for job in jobs:
+    if not isinstance(job, dict):
+        continue
 
-    for my $job (@$jobs) {
-      next unless ref($job) eq "HASH";
-      next if exists($job->{enabled}) && !$job->{enabled};
-      next if defined($job->{node}) && $job->{node} ne $node;
+    if "enabled" in job and is_false(job["enabled"]):
+        continue
 
-      my $matches = 0;
+    job_node = job.get("node")
+    if job_node is not None and str(job_node) != node:
+        continue
 
-      if (defined $job->{vmid}) {
-        $matches = contains_vmid($job->{vmid}, $vmid);
-      }
-      elsif ($job->{all}) {
-        $matches = !contains_vmid($job->{exclude}, $vmid);
-      }
+    applies = False
 
-      push @matches, $job if $matches;
-    }
+    if job.get("vmid") is not None:
+        applies = contains_vmid(job["vmid"], vmid)
+    elif not is_false(job.get("all")):
+        applies = not contains_vmid(job.get("exclude"), vmid)
 
-    die "no enabled Proxmox backup job applies to LXC $vmid\n" unless @matches;
-    die "multiple enabled Proxmox backup jobs apply to LXC $vmid; Forge will not choose implicitly\n"
-      if @matches > 1;
+    if applies:
+        matches.append(job)
 
-    my $job = $matches[0];
+if not matches:
+    raise SystemExit(f"no enabled Proxmox backup job applies to LXC {vmid}")
 
-    my %accepted;
-    while ($usage =~ /^\s*--([a-z0-9][a-z0-9-]*)\b/mg) {
-      $accepted{$1} = 1;
-    }
+if len(matches) > 1:
+    raise SystemExit(
+        f"multiple enabled Proxmox backup jobs apply to LXC {vmid}; "
+        "Forge will not choose implicitly"
+    )
 
-    die "could not discover vzdump CLI parameters\n" unless %accepted;
+job = matches[0]
+accepted = set(re.findall(r"^\s*--([a-z0-9][a-z0-9-]*)\b", usage, re.MULTILINE))
 
-    my %skip = map { $_ => 1 } qw(
-      all
-      enabled
-      exclude
-      id
-      next-run
-      node
-      repeat-missed
-      schedule
-      type
-      vmid
-    );
+if not accepted:
+    raise SystemExit("could not discover vzdump CLI parameters")
 
-    sub cli_value {
-      my ($key, $value) = @_;
+skip = {
+    "all",
+    "enabled",
+    "exclude",
+    "id",
+    "next-run",
+    "node",
+    "repeat-missed",
+    "schedule",
+    "type",
+    "vmid",
+}
 
-      return undef unless defined $value;
+def scalar_value(key, value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        parts = []
+        for subkey in sorted(value):
+            subvalue = value[subkey]
+            if isinstance(subvalue, (dict, list)):
+                raise SystemExit(f"unsupported nested value in backup option {key}")
+            if subvalue is None:
+                text = ""
+            elif isinstance(subvalue, bool):
+                text = "1" if subvalue else "0"
+            else:
+                text = str(subvalue)
+            parts.append(f"{subkey}={text}")
+        return ",".join(parts)
+    raise SystemExit(f"unsupported Proxmox backup option shape for {key}")
 
-      if (!ref($value)) {
-        return "$value";
-      }
+params = []
 
-      if (ref($value) eq "HASH") {
-        return join ",", map {
-          my $v = $value->{$_};
-          die "unsupported nested value in backup option $key\n" if ref($v);
-          $_ . "=" . (defined($v) ? $v : "")
-        } sort keys %$value;
-      }
+if job.get("id") is not None and "job-id" in accepted:
+    params.append(("job-id", str(job["id"])))
 
-      die "unsupported Proxmox backup option shape for $key\n";
-    }
+for key in sorted(job):
+    if key in skip or key not in accepted:
+        continue
 
-    my @params;
+    # Forge currently creates LXC backups; Proxmox documents fleecing as VM-only.
+    if key == "fleecing":
+        continue
 
-    if (defined $job->{id} && $accepted{"job-id"}) {
-      push @params, ["job-id", "$job->{id}"];
-    }
+    value = scalar_value(key, job[key])
+    if value is not None:
+        params.append((key, value))
 
-    for my $key (sort keys %$job) {
-      next if $skip{$key};
-      next unless $accepted{$key};
+storages = [value for name, value in params if name == "storage"]
 
-      # Forge currently creates LXC backups; Proxmox documents fleecing as VM-only.
-      next if $key eq "fleecing";
+if len(storages) != 1:
+    raise SystemExit("backup plan must contain exactly one storage parameter")
 
-      my $value = cli_value($key, $job->{$key});
-      next unless defined $value;
-      push @params, [$key, $value];
-    }
+if not storages[0]:
+    raise SystemExit("backup storage value is missing")
 
-    my @storage = map { $_->[1] } grep { $_->[0] eq "storage" } @params;
-    die "backup plan must contain exactly one storage parameter\n" unless @storage == 1;
-    die "backup storage value is missing\n" unless length($storage[0]);
+output = [storages[0]]
+for name, value in params:
+    output.extend((f"--{name}", value))
 
-    print "$storage[0]\0";
-
-    for my $param (@params) {
-      print "--$param->[0]\0$param->[1]\0";
-    }
-  '
+sys.stdout.buffer.write(b"\0".join(item.encode() for item in output) + b"\0")
+'
 )
 
 (( ${#fields[@]} >= 3 )) || fail "backup policy returned no execution parameters"
