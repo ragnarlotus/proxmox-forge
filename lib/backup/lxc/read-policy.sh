@@ -68,6 +68,5 @@ VMID="$vmid" NODE="$node" perl -MJSON::PP -e '
     push @matches, $job if $matches;
   }
 
-  print "match_count=" . scalar(@matches) . "\n";
   print JSON::PP->new->canonical(1)->pretty(1)->encode(\@matches);
 ' <<<"$jobs_json" || fail "could not evaluate Proxmox backup policy for LXC $vmid"
