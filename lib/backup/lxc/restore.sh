@@ -59,7 +59,6 @@ mapfile -d '' -t fields < <(
     die "restore plan storages are not an array\n" unless ref($plan->{storages}) eq "ARRAY";
 
     print "$plan->{rootfs}\0";
-    print "$plan->{current_rootfs_volume}\0";
     print scalar(@{$plan->{mounts}}) . "\0";
     for my $mount (@{$plan->{mounts}}) {
       die "invalid restore mount entry\n" unless ref($mount) eq "HASH";
@@ -73,7 +72,7 @@ mapfile -d '' -t fields < <(
       die "invalid preserve entry\n" unless ref($item) eq "HASH";
       die "preserve entry has no key, volume, or value\n"
         unless defined($item->{key}) && defined($item->{volume}) && defined($item->{value});
-      print "$item->{key}\0$item->{volume}\0$item->{value}\0";
+      print "$item->{volume}\0";
     }
 
     print scalar(@{$plan->{storages}}) . "\0";
@@ -85,10 +84,9 @@ mapfile -d '' -t fields < <(
 )
 
 index=0
-(( ${#fields[@]} >= 5 )) || fail "restore plan returned too few fields"
+(( ${#fields[@]} >= 4 )) || fail "restore plan returned too few fields"
 
 rootfs_arg="${fields[index++]}"
-original_rootfs_volume="${fields[index++]}"
 mount_count="${fields[index++]}"
 [[ "$mount_count" =~ ^[0-9]+$ ]] || fail "restore plan returned invalid mount count"
 
@@ -106,14 +104,10 @@ done
 preserve_count="${fields[index++]}"
 [[ "$preserve_count" =~ ^[0-9]+$ ]] || fail "restore plan returned invalid preserve count"
 
-preserve_keys=()
 preserve_volumes=()
-preserve_values=()
 for ((n = 0; n < preserve_count; n++)); do
-  (( index + 2 < ${#fields[@]} )) || fail "restore plan preserve list is truncated"
-  preserve_keys+=("${fields[index++]}")
+  (( index < ${#fields[@]} )) || fail "restore plan preserve list is truncated"
   preserve_volumes+=("${fields[index++]}")
-  preserve_values+=("${fields[index++]}")
 done
 
 (( index < ${#fields[@]} )) || fail "restore plan has no storage count"
