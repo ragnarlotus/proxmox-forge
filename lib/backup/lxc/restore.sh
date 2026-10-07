@@ -21,7 +21,7 @@ backup_volume="$2"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 [[ "$backup_volume" == *:* ]] || fail "BACKUP_VOLUME must be a Proxmox volume ID"
 
-for command_name in pct pvesm perl; do
+for command_name in pct pvesm perl python3; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is not available"
 done
 
@@ -169,41 +169,74 @@ plan_json="$(
 )" || fail "could not build safe restore plan for LXC $vmid"
 
 mapfile -d '' -t fields < <(
-  PLAN_JSON="$plan_json" perl -MJSON::PP -e '
-    use strict;
-    use warnings;
+  PLAN_JSON="$plan_json" python3 -c '
+import json
+import os
+import sys
 
-    my $plan = decode_json($ENV{PLAN_JSON});
-    die "restore plan is not an object\n" unless ref($plan) eq "HASH";
-    die "restore plan has no rootfs\n" unless defined($plan->{rootfs}) && !ref($plan->{rootfs});
-    die "restore plan has no current rootfs volume\n"
-      unless defined($plan->{current_rootfs_volume}) && !ref($plan->{current_rootfs_volume});
-    die "restore plan mounts are not an array\n" unless ref($plan->{mounts}) eq "ARRAY";
-    die "restore plan preserve list is not an array\n" unless ref($plan->{preserve}) eq "ARRAY";
-    die "restore plan storages are not an array\n" unless ref($plan->{storages}) eq "ARRAY";
+def fail(message):
+    raise SystemExit(message)
 
-    print "$plan->{rootfs}\0";
-    print scalar(@{$plan->{mounts}}) . "\0";
-    for my $mount (@{$plan->{mounts}}) {
-      die "invalid restore mount entry\n" unless ref($mount) eq "HASH";
-      die "restore mount has no key or value\n"
-        unless defined($mount->{key}) && defined($mount->{value});
-      print "$mount->{key}\0$mount->{value}\0";
-    }
+try:
+    plan = json.loads(os.environ["PLAN_JSON"])
+except (KeyError, json.JSONDecodeError) as exc:
+    fail(f"invalid restore plan JSON: {exc}")
 
-    print scalar(@{$plan->{preserve}}) . "\0";
-    for my $item (@{$plan->{preserve}}) {
-      die "invalid preserve entry\n" unless ref($item) eq "HASH";
-      die "preserve entry has no key, volume, or value\n"
-        unless defined($item->{key}) && defined($item->{volume}) && defined($item->{value});
-      print "$item->{volume}\0";
-    }
+if not isinstance(plan, dict):
+    fail("restore plan is not an object")
 
-    print scalar(@{$plan->{storages}}) . "\0";
-    for my $storage (@{$plan->{storages}}) {
-      die "invalid restore storage entry\n" if ref($storage) || !length($storage);
-      print "$storage\0";
-    }
+rootfs = plan.get("rootfs")
+if not isinstance(rootfs, str):
+    fail("restore plan has no rootfs")
+
+current_rootfs_volume = plan.get("current_rootfs_volume")
+if not isinstance(current_rootfs_volume, str):
+    fail("restore plan has no current rootfs volume")
+
+mounts = plan.get("mounts")
+if not isinstance(mounts, list):
+    fail("restore plan mounts are not an array")
+
+preserve = plan.get("preserve")
+if not isinstance(preserve, list):
+    fail("restore plan preserve list is not an array")
+
+storages = plan.get("storages")
+if not isinstance(storages, list):
+    fail("restore plan storages are not an array")
+
+fields = [rootfs, str(len(mounts))]
+
+for mount in mounts:
+    if not isinstance(mount, dict):
+        fail("invalid restore mount entry")
+    key = mount.get("key")
+    value = mount.get("value")
+    if not isinstance(key, str) or not isinstance(value, str):
+        fail("restore mount has no key or value")
+    fields.extend((key, value))
+
+fields.append(str(len(preserve)))
+for item in preserve:
+    if not isinstance(item, dict):
+        fail("invalid preserve entry")
+    key = item.get("key")
+    volume = item.get("volume")
+    value = item.get("value")
+    if not isinstance(key, str) or not isinstance(volume, str) or not isinstance(value, str):
+        fail("preserve entry has no key, volume, or value")
+    fields.append(volume)
+
+fields.append(str(len(storages)))
+for storage in storages:
+    if not isinstance(storage, str) or not storage:
+        fail("invalid restore storage entry")
+    fields.append(storage)
+
+out = sys.stdout.buffer
+for field in fields:
+    out.write(field.encode())
+    out.write(bytes((0,)))
   '
 )
 
