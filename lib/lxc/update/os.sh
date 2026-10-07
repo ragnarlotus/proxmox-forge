@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Updates the operating-system packages of one running LXC using a supplied or detected supported package manager; it does not perform logging or orchestration.
+# Description: Updates the operating-system packages of one running APT-based LXC; it does not perform logging or orchestration.
 
 set -u
 
@@ -39,14 +39,6 @@ if [[ -z "$package_manager" ]]; then
   package_manager="$(pct exec "$vmid" -- sh -c '
     if command -v apt-get >/dev/null 2>&1; then
       printf apt
-    elif command -v dnf >/dev/null 2>&1; then
-      printf dnf
-    elif command -v yum >/dev/null 2>&1; then
-      printf yum
-    elif command -v apk >/dev/null 2>&1; then
-      printf apk
-    elif command -v pacman >/dev/null 2>&1; then
-      printf pacman
     else
       printf unknown
     fi
@@ -75,24 +67,6 @@ case "$package_manager" in
           -o Dpkg::Options::=--force-confdef \
           -o Dpkg::Options::=--force-confold \
           autoremove </dev/null
-    ;;
-  dnf)
-    run_update_command "dnf upgrade" \
-      pct exec "$vmid" -- dnf -y upgrade </dev/null
-    ;;
-  yum)
-    run_update_command "yum update" \
-      pct exec "$vmid" -- yum -y update </dev/null
-    ;;
-  apk)
-    run_update_command "apk update" \
-      pct exec "$vmid" -- apk update </dev/null
-    run_update_command "apk upgrade" \
-      pct exec "$vmid" -- apk upgrade </dev/null
-    ;;
-  pacman)
-    run_update_command "pacman update" \
-      pct exec "$vmid" -- pacman -Syu --noconfirm </dev/null
     ;;
   *)
     fail "LXC $vmid has unsupported package manager '$package_manager'"
