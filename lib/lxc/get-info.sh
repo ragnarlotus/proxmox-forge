@@ -67,14 +67,6 @@ info_record="$(pct exec "$vmid" -- env FORGE_INFO_MODE="$mode" sh -c '
 
   if command -v apt-get >/dev/null 2>&1; then
     package_manager=apt
-  elif command -v dnf >/dev/null 2>&1; then
-    package_manager=dnf
-  elif command -v yum >/dev/null 2>&1; then
-    package_manager=yum
-  elif command -v apk >/dev/null 2>&1; then
-    package_manager=apk
-  elif command -v pacman >/dev/null 2>&1; then
-    package_manager=pacman
   fi
 
   if [ "$package_manager" = apt ]; then
