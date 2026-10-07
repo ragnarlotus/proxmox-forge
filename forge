@@ -78,11 +78,13 @@ export FORGE_LOCK_FILE="$LOCK_FILE"
 export FORGE_LOCK_FD="$LOCK_FD"
 export FORGE_RUNTIME_GUARD="$RUNTIME_GUARD_SCRIPT"
 unset FORGE_RUNTIME_CONFIG_READY
+unset FORGE_LXC_ENVIRONMENT_READY
 
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
 HOST_REQUIREMENTS_SCRIPT="$FORGE_DIR/lib/host/check-requirements.sh"
 HOST_UPDATE_SCRIPT="$FORGE_DIR/lib/host/update.sh"
+LXC_ENVIRONMENT_SCRIPT="$FORGE_DIR/lib/lxc/get-environment.sh"
 LXC_LIST_TARGETS_SCRIPT="$FORGE_DIR/lib/lxc/list-targets.sh"
 LXC_GET_INFO_SCRIPT="$FORGE_DIR/lib/lxc/get-info.sh"
 LXC_UPDATE_SCRIPT="$FORGE_DIR/lib/lxc/update.sh"
@@ -100,13 +102,20 @@ write_runtime_state() {
   mapfile -t keys < <(printf '%s\n' "${!CONFIG[@]}" | LC_ALL=C sort)
 
   {
-    printf 'meta\tpid\t%s\n' "$$"
+    printf 'meta\tpid\t%s\n' "$"
     printf 'meta\trun_id\t%s\n' "$run_id"
     printf 'meta\tcommand\t%s\n' "$command_name"
     for key in "${keys[@]}"; do
       printf 'config\t%s\t%s\n' "$key" "${CONFIG[$key]}"
     done
   } > "$LOCK_FILE" || fail "could not record effective Forge run state"
+}
+
+ensure_lxc_environment() {
+  [[ "${FORGE_LXC_ENVIRONMENT_READY:-}" == "$run_id" ]] && return 0
+  [[ -r "$LXC_ENVIRONMENT_SCRIPT" ]] || fail "LXC environment helper is not readable: $LXC_ENVIRONMENT_SCRIPT"
+  bash "$LXC_ENVIRONMENT_SCRIPT" >/dev/null || fail "LXC environment check failed"
+  export FORGE_LXC_ENVIRONMENT_READY="$run_id"
 }
 
 case "$command_name" in
@@ -142,6 +151,9 @@ main() {
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
       [[ -r "$LXC_LIST_TARGETS_SCRIPT" ]] || fail "LXC target-list helper is not readable: $LXC_LIST_TARGETS_SCRIPT"
+      if [[ "${CONFIG[UPDATE_LXC]}" == true && "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+        ensure_lxc_environment
+      fi
       bash "$LXC_LIST_TARGETS_SCRIPT" \
         "${CONFIG[UPDATE_LXC]}" \
         "${CONFIG[UPDATE_RUNNING_LXC]}"
@@ -149,21 +161,29 @@ main() {
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
       [[ -r "$LXC_GET_INFO_SCRIPT" ]] || fail "LXC information helper is not readable: $LXC_GET_INFO_SCRIPT"
+      ensure_lxc_environment
       bash "$LXC_GET_INFO_SCRIPT" "$2" all
       ;;
     check-requirements)
       [[ $# -eq 2 ]] || fail "check-requirements requires exactly one VMID or name"
       [[ -r "$CHECK_REQUIREMENTS_SCRIPT" ]] || fail "requirements workflow is not readable: $CHECK_REQUIREMENTS_SCRIPT"
+      ensure_lxc_environment
       bash "$CHECK_REQUIREMENTS_SCRIPT" "$2"
       ;;
     update)
       [[ $# -eq 2 ]] || fail "update requires exactly one VMID or name"
       [[ -r "$LXC_UPDATE_SCRIPT" ]] || fail "LXC update workflow is not readable: $LXC_UPDATE_SCRIPT"
+      if [[ "${CONFIG[UPDATE_LXC]}" == true ]]; then
+        ensure_lxc_environment
+      fi
       bash "$LXC_UPDATE_SCRIPT" "$2" "$CONFIG_FILE"
       ;;
     update-all)
       [[ $# -eq 1 ]] || fail "update-all does not accept additional arguments"
       [[ -r "$UPDATE_ALL_SCRIPT" ]] || fail "global update coordinator is not readable: $UPDATE_ALL_SCRIPT"
+      if [[ "${CONFIG[UPDATE_LXC]}" == true && "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+        ensure_lxc_environment
+      fi
       bash "$UPDATE_ALL_SCRIPT" "$CONFIG_FILE"
       ;;
     help|-h|--help)
