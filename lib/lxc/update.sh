@@ -42,6 +42,7 @@ recovery_script="$script_dir/recover.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
 custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
+fstrim_script="$script_dir/update/fstrim.sh"
 health_script="$script_dir/health.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
@@ -56,6 +57,7 @@ for helper in \
   "$os_update_script" \
   "$application_update_script" \
   "$custom_scripts_update_script" \
+  "$fstrim_script" \
   "$health_script" \
   "$log_init_script" \
   "$log_capture_script" \
@@ -63,7 +65,6 @@ for helper in \
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
-command -v pct >/dev/null 2>&1 || fail "pct is not available"
 command -v mktemp >/dev/null 2>&1 || fail "mktemp is not available"
 command -v tee >/dev/null 2>&1 || fail "tee is not available"
 
@@ -290,7 +291,8 @@ else
 fi
 
 if [[ "$mutation_planned" == true ]]; then
-  bash "$log_capture_script" "$log_file" fstrim -- pct fstrim "$vmid"
+  bash "$log_capture_script" "$log_file" fstrim -- \
+    bash "$fstrim_script" "$vmid"
   stage_result=$?
 
   if (( stage_result != 0 )); then
