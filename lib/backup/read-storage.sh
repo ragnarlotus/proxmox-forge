@@ -16,7 +16,7 @@ fail() {
 
 [[ $# -eq 0 ]] || fail "read-storage.sh does not accept arguments"
 
-for command_name in pvesh hostname perl; do
+for command_name in pvesh hostname python3; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is not available: $command_name"
 done
 
@@ -27,27 +27,41 @@ jobs_json="$(pvesh get /cluster/backup --output-format json)" || \
   fail "could not read Proxmox backup jobs through pvesh"
 
 storages="$(
-  NODE="$node" perl -MJSON::PP -e '
-    use strict;
-    use warnings;
+  NODE="$node" python3 -c '
+import json
+import os
+import sys
 
-    my $node = $ENV{NODE};
-    my $jobs = decode_json(do { local $/; <STDIN> });
-    die "backup API response is not an array\n" unless ref($jobs) eq "ARRAY";
+node = os.environ["NODE"]
+jobs = json.load(sys.stdin)
 
-    my %storages;
-    for my $job (@$jobs) {
-      next unless ref($job) eq "HASH";
-      next if exists($job->{enabled}) && !$job->{enabled};
-      next if defined($job->{node}) && $job->{node} ne $node;
+if not isinstance(jobs, list):
+    raise SystemExit("backup API response is not an array")
 
-      my $storage = $job->{storage};
-      next unless defined($storage) && !ref($storage) && length($storage);
-      $storages{$storage} = 1;
-    }
+storages = set()
 
-    print "$_\n" for sort keys %storages;
-  ' <<<"$jobs_json"
+for job in jobs:
+    if not isinstance(job, dict):
+        continue
+
+    if "enabled" in job and job["enabled"] in (0, False, None, "", "0"):
+        continue
+
+    job_node = job.get("node")
+    if job_node is not None and str(job_node) != node:
+        continue
+
+    storage = job.get("storage")
+    if storage is None or isinstance(storage, (dict, list)):
+        continue
+
+    storage = str(storage)
+    if storage:
+        storages.add(storage)
+
+for storage in sorted(storages):
+    print(storage)
+' <<<"$jobs_json"
 )" || fail "could not evaluate Proxmox backup storages for node $node"
 
 mapfile -t storage_list <<<"$storages"
