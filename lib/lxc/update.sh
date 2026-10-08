@@ -230,7 +230,11 @@ if [[ "$initial_state" == stopped ]]; then
     finish_failed lifecycle_start "$stage_result"
   fi
 
-  state="$(bash "$state_script" "$vmid")" || finish_failed lifecycle_start 1
+  state="$(bash "$state_script" "$vmid")"
+  stage_result=$?
+  if (( stage_result != 0 )); then
+    finish_failed lifecycle_start "$stage_result"
+  fi
   [[ "$state" == running ]] || finish_failed lifecycle_start 1
   target_record="type=lxc vmid=$vmid name=$name state=running template=false"
 fi
