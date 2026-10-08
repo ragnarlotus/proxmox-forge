@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Performs the same-run recovery workflow for one failed LXC update, restoring its exact recovery backup and returning the guest to its supported running state.
+# Description: Performs same-run recovery for one failed LXC update, restoring its exact recovery backup and returning the guest to running state so the caller can restore any original stopped state.
 
 set -u
 
@@ -131,8 +131,8 @@ if (( recovery_result != 0 )); then
   exit "$recovery_result"
 fi
 
-# LXC updates currently support only originally-running guests, so a successful
-# recovery returns the guest to that state.
+# Recovery returns the guest to running state. The update orchestrator restores
+# an explicitly targeted guest to stopped afterwards when that was its original state.
 bash "$log_capture_script" "$log_file" recovery_start_guest -- pct start "$vmid"
 recovery_result=$?
 if (( recovery_result != 0 )); then

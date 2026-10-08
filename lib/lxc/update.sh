@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Orchestrates one protected LXC update, owns its single per-attempt log, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
+# Description: Orchestrates one protected LXC update, temporarily starts an explicitly selected stopped guest and restores its original state, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
 
 set -u
 
@@ -28,14 +28,21 @@ parse_record() {
 
 declare -A RECORD_FIELDS=()
 
-[[ $# -eq 1 ]] || fail "usage: update.sh VMID_OR_NAME"
+[[ $# -ge 1 && $# -le 2 ]] || fail "usage: update.sh VMID_OR_NAME [explicit|scope]"
 target="$1"
+selection_mode="${2:-explicit}"
+
+case "$selection_mode" in
+  explicit|scope) ;;
+  *) fail "unsupported LXC selection mode '$selection_mode'" ;;
+esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 
 config_get_script="$lib_dir/config/get.sh"
 target_script="$script_dir/get-target.sh"
+state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
 backup_create_script="$lib_dir/backup/lxc/create.sh"
 recovery_script="$script_dir/recover.sh"
@@ -51,6 +58,7 @@ log_write_script="$lib_dir/logging/write.sh"
 for helper in \
   "$config_get_script" \
   "$target_script" \
+  "$state_script" \
   "$requirements_script" \
   "$backup_create_script" \
   "$recovery_script" \
@@ -72,8 +80,6 @@ command -v tee >/dev/null 2>&1 || fail "tee is not available"
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
 
-[[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by configuration"
-
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
 parse_record "$target_record"
 vmid="${RECORD_FIELDS[vmid]:-}"
@@ -89,15 +95,19 @@ template="${RECORD_FIELDS[template]:-}"
 
 case "$state" in
   running)
-    [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || fail "running LXCs are disabled by configuration"
     ;;
   stopped)
-    fail "LXC $vmid is stopped; stopped LXC updates are not supported"
+    if [[ "$selection_mode" == scope ]]; then
+      printf 'update=skipped vmid=%s reason=stopped\n' "$vmid"
+      exit 3
+    fi
     ;;
   *)
     fail "unsupported LXC state '$state' for VMID $vmid"
     ;;
 esac
+
+initial_state="$state"
 
 log_file="$(
   bash "$log_init_script" \
@@ -110,7 +120,8 @@ log_file="$(
 bash "$log_write_script" "$log_file" INFO target_update_start \
   "vmid=$vmid" \
   "name=$name" \
-  "state=$state" || fail "could not record update start for LXC $vmid"
+  "state=$initial_state" \
+  "selection_mode=$selection_mode" || fail "could not record update start for LXC $vmid"
 
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
@@ -127,11 +138,68 @@ record_skipped_stage() {
     "reason=$reason" || fail "could not record skipped $stage_name stage"
 }
 
+restore_initial_state() {
+  local current_state
+  local restore_result
+
+  [[ "$initial_state" == stopped ]] || return 0
+
+  current_state="$(bash "$state_script" "$vmid")"
+  restore_result=$?
+  if (( restore_result != 0 )); then
+    bash "$log_write_script" "$log_file" ERROR lifecycle_restore_failed \
+      "vmid=$vmid" \
+      "target_state=stopped" \
+      "step=read_state" \
+      "exit_code=$restore_result" || true
+    return "$restore_result"
+  fi
+
+  case "$current_state" in
+    stopped)
+      bash "$log_write_script" "$log_file" INFO stage_skipped \
+        "stage=lifecycle_stop" \
+        "reason=already_stopped" || true
+      return 0
+      ;;
+    running)
+      bash "$log_capture_script" "$log_file" lifecycle_stop -- pct shutdown "$vmid"
+      restore_result=$?
+      if (( restore_result != 0 )); then
+        bash "$log_write_script" "$log_file" ERROR lifecycle_restore_failed \
+          "vmid=$vmid" \
+          "target_state=stopped" \
+          "step=shutdown" \
+          "exit_code=$restore_result" || true
+        return "$restore_result"
+      fi
+      ;;
+    *)
+      bash "$log_write_script" "$log_file" ERROR lifecycle_restore_failed \
+        "vmid=$vmid" \
+        "target_state=stopped" \
+        "step=read_state" \
+        "reason=unsupported_state" \
+        "state=$current_state" || true
+      return 1
+      ;;
+  esac
+
+  bash "$log_write_script" "$log_file" INFO lifecycle_restored \
+    "vmid=$vmid" \
+    "state=stopped" || return 1
+}
+
 finish_failed() {
   local failed_stage="$1"
   local primary_result="$2"
   local finished_at
   local duration_seconds
+  local state_restore_result=0
+
+  if [[ "$failed_stage" != lifecycle_restore ]]; then
+    restore_initial_state || state_restore_result=$?
+  fi
 
   finished_at="$(date +%s)" || finished_at="$started_at"
   duration_seconds=$((finished_at - started_at))
@@ -141,14 +209,31 @@ finish_failed() {
     "status=failed" \
     "stage=$failed_stage" \
     "exit_code=$primary_result" \
+    "state_restore_exit_code=$state_restore_result" \
     "duration_seconds=$duration_seconds" || \
     printf 'ERROR: could not record failed update result in %s\n' "$log_file" >&2
+
+  if (( state_restore_result != 0 )); then
+    printf 'WARNING: failed to restore original stopped state for LXC %s (exit code: %s)\n' \
+      "$vmid" "$state_restore_result" >&2
+  fi
 
   printf 'update=failed vmid=%s stage=%s exit_code=%s log=%s\n' \
     "$vmid" "$failed_stage" "$primary_result" "$log_file"
   exit "$primary_result"
 }
 
+if [[ "$initial_state" == stopped ]]; then
+  bash "$log_capture_script" "$log_file" lifecycle_start -- pct start "$vmid"
+  stage_result=$?
+  if (( stage_result != 0 )); then
+    finish_failed lifecycle_start "$stage_result"
+  fi
+
+  state="$(bash "$state_script" "$vmid")" || finish_failed lifecycle_start 1
+  [[ "$state" == running ]] || finish_failed lifecycle_start 1
+  target_record="type=lxc vmid=$vmid name=$name state=running template=false"
+fi
 
 if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   requirements_output_file="$(mktemp)" || finish_failed requirements 1
@@ -315,12 +400,21 @@ else
   record_skipped_stage fstrim no_mutating_stages
 fi
 
+restore_initial_state
+stage_result=$?
+if (( stage_result != 0 )); then
+  finish_failed lifecycle_restore "$stage_result"
+fi
+
 finished_at="$(date +%s)" || finished_at="$started_at"
 duration_seconds=$((finished_at - started_at))
 
 bash "$log_write_script" "$log_file" INFO target_update_end \
   "vmid=$vmid" \
   "status=success" \
+  "initial_state=$initial_state" \
+  "final_state=$initial_state" \
   "duration_seconds=$duration_seconds" || fail "could not record successful update result"
 
-printf 'update=success vmid=%s log=%s\n' "$vmid" "$log_file"
+printf 'update=success vmid=%s initial_state=%s final_state=%s log=%s\n' \
+  "$vmid" "$initial_state" "$initial_state" "$log_file"

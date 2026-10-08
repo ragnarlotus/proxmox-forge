@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Lists effective local running LXC update targets according to the configured LXC scope, always excluding templates and stopped containers.
+# Description: Lists the automatic local LXC update scope: currently running non-template containers when UPDATE_RUNNING_LXC is enabled.
 
 set -u
 
@@ -14,18 +14,15 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 2 ]] || fail "usage: list-targets.sh UPDATE_LXC UPDATE_RUNNING_LXC"
-update_lxc="$1"
-update_running="$2"
+[[ $# -eq 1 ]] || fail "usage: list-targets.sh UPDATE_RUNNING_LXC"
+update_running="$1"
 
-for value in "$update_lxc" "$update_running"; do
-  case "$value" in
-    true|false) ;;
-    *) fail "scope values must be true or false" ;;
-  esac
-done
+case "$update_running" in
+  true|false) ;;
+  *) fail "UPDATE_RUNNING_LXC must be true or false" ;;
+esac
 
-[[ "$update_lxc" == true && "$update_running" == true ]] || exit 0
+[[ "$update_running" == true ]] || exit 0
 
 run_id="${FORGE_RUN_ID:-}"
 [[ -n "$run_id" ]] || fail "Forge run identifier is unavailable"

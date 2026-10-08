@@ -132,7 +132,7 @@ Runs the current read-only host preflight. The host must currently be Proxmox VE
 
 ### `list-lxc-targets`
 
-Lists the effective running-LXC scope according to `UPDATE_LXC` and `UPDATE_RUNNING_LXC`, always excluding templates and stopped containers.
+Lists the automatic LXC scope controlled by `UPDATE_RUNNING_LXC`: currently running non-template containers only. Stopped containers are never selected automatically.
 
 ### `inspect-target TARGET`
 
@@ -144,7 +144,7 @@ Runs the read-only LXC requirements workflow. It rejects unsupported package man
 
 ### `update TARGET`
 
-Runs one protected LXC update transaction.
+Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC`. If the explicitly selected LXC is stopped, Forge starts it temporarily, performs the update while it is running, and returns it to stopped state afterwards.
 
 ### `update-host`
 
@@ -152,7 +152,7 @@ Runs the protected local Proxmox host update. Host rollback is intentionally uns
 
 ### `update-all`
 
-Validates configuration and freezes the complete effective LXC VMID scope before the first mutation, updates the Proxmox host first, then updates those VMIDs serially. Each LXC is resolved again when its own update begins so its current existence, name, state and template flag are revalidated.
+Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first, then updates those VMIDs serially. Each selected LXC is resolved again when its own turn begins; if it has become stopped meanwhile, `update-all` skips it instead of starting it.
 
 If the host update fails, LXC processing does not start. If an individual LXC fails, Forge preserves that failure, attempts guest recovery when applicable, continues with later LXCs and returns a failed aggregate result at the end.
 
@@ -194,8 +194,7 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
-| `UPDATE_LXC` | Boolean: `true` or `false` | Enable LXC updates. |
-| `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include running LXCs. |
+| `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include currently running LXCs in automatic `list-lxc-targets` / `update-all` scope. It does not restrict explicit `forge update TARGET`. |
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
 | `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
 | `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |
@@ -272,10 +271,11 @@ The restore script then guides the remaining PVE recovery process. This is a man
 
 ## LXC update workflow
 
-For one running LXC, the current workflow is:
+For one explicitly selected LXC, the current workflow is:
 
 ```text
-validate configuration and resolve exact target
+validate configuration and resolve exact target/current state
+→ if stopped, start temporarily
 → read-only requirements
 → recovery backup
 → OS/package update
@@ -283,8 +283,11 @@ validate configuration and resolve exact target
 → target-specific custom scripts
 → health check
 → pct fstrim
+→ if originally stopped, stop again
 → success
 ```
+
+`UPDATE_RUNNING_LXC` applies only to automatic target discovery for `list-lxc-targets` and `update-all`. It does not block `forge update TARGET`.
 
 The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`.
 
@@ -364,7 +367,7 @@ The important guarantees are:
 
 If a required OS, application, custom-script or health stage fails and `ROLLBACK_ON_FAILURE=true`, Forge attempts recovery from the backup created for that same run.
 
-Recovery success does **not** convert the original update failure into success. The target remains failed, preserving the primary result, and `update-all` may continue with later targets.
+Recovery success does **not** convert the original update failure into success. The target remains failed, preserving the primary result, and `update-all` may continue with later targets. For an explicitly selected LXC that was originally stopped, Forge also attempts to restore that stopped state after success or failure/recovery.
 
 ## `update-all` failure model
 
@@ -480,7 +483,7 @@ Current implementation deliberately enforces these rules:
 - the standalone PVE restore utility is the sole internal exception and acquires the same global lock itself;
 - configuration and the effective LXC VMID scope are frozen before mutation, while each selected LXC's current existence, name, state and template flag are revalidated when its own update begins;
 - LXC templates are never update targets;
-- stopped LXCs are always left untouched;
+- stopped LXCs are excluded from automatic `update-all` scope; an explicitly selected stopped LXC is temporarily started for its update and returned to stopped state afterwards;
 - package managers run non-interactively;
 - mutating commands are not repeated merely to capture errors;
 - synchronous `vzdump` completion and the newly created recovery volume are both validated;

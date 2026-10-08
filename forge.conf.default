@@ -14,13 +14,13 @@
 # Update the local Proxmox host.
 UPDATE_HOST=true
 
-# Update LXC containers.
-UPDATE_LXC=true
-
-# Include running LXC containers in the effective update scope.
+# Include currently running LXC containers in the automatic list/update-all
+# scope. Explicit 'forge update TARGET' requests do not depend on this setting.
 UPDATE_RUNNING_LXC=true
 
-# Stopped LXC containers are not update targets. Forge leaves them untouched.
+# Stopped LXC containers are excluded from automatic list/update-all scope.
+# When explicitly targeted with 'forge update TARGET', a stopped LXC is started
+# temporarily, updated, then returned to stopped state.
 
 # Proxmox LXC templates are never update targets. They are clone/template
 # sources, not Community Scripts application-update helpers.

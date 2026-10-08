@@ -16,7 +16,7 @@ Implemented means the capability exists in the current `main` branch at the scop
 These are agreed behavioural requirements for the initial implementation. They do not remove broader capabilities from the catalogue below.
 
 - [x] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
-- [x] **Stopped LXC exclusion** — stopped containers are not update targets and are left completely untouched; Forge does not start them or track/restore their state.
+- [x] **Stopped LXC automatic-scope exclusion** — `update-all` never selects stopped containers automatically. An explicitly requested stopped LXC may be started temporarily for its update and is returned to stopped state afterwards.
 - [x] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
 - [x] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
 - [x] **Validate before mutation** — load and validate the complete configuration and determine the selected target identities/scope before the first mutating operation; mutable LXC properties such as current state and template status are revalidated when each guest update begins.
@@ -60,7 +60,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F026** `EXCLUDE` selection by ID/name.
 - [ ] **F027** Include/exclude using tags.
 - [ ] **F028** Filter by target type: host/LXC/VM/external.
-- [ ] **F029** Filter targets by running/stopped state.
+- [x] **F029** Filter automatic LXC scope by running state. `UPDATE_RUNNING_LXC` controls inclusion of currently running LXCs; stopped LXCs are never selected automatically.
 - [x] **F030** Skip templates automatically.
 - [ ] **F031** Separate filters for CHECK and UPDATE.
 - [ ] **F032** Select individual packages.
@@ -147,10 +147,10 @@ These are agreed behavioural requirements for the initial implementation. They d
 ## I. Guest lifecycle
 
 - [x] **F089** Detect original guest state.
-- [ ] **F090** Temporarily start a stopped guest when required.
+- [x] **F090** Temporarily start an explicitly selected stopped LXC for its update.
 - [ ] **F091** Wait for real readiness instead of using a blind fixed sleep.
 - [x] **F092** Update the guest.
-- [ ] **F093** Restore the original guest state afterwards.
+- [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt.
 - [ ] **F094** Detect reboot-required state.
 - [ ] **F095** Configurable reboot behaviour.
 - [ ] **F096** Restart services instead of rebooting when sufficient.

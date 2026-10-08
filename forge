@@ -151,12 +151,10 @@ main() {
     list-lxc-targets)
       [[ $# -eq 1 ]] || fail "list-lxc-targets does not accept additional arguments"
       [[ -r "$LXC_LIST_TARGETS_SCRIPT" ]] || fail "LXC target-list helper is not readable: $LXC_LIST_TARGETS_SCRIPT"
-      if [[ "${CONFIG[UPDATE_LXC]}" == true && "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+      if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
         ensure_lxc_environment
       fi
-      bash "$LXC_LIST_TARGETS_SCRIPT" \
-        "${CONFIG[UPDATE_LXC]}" \
-        "${CONFIG[UPDATE_RUNNING_LXC]}"
+      bash "$LXC_LIST_TARGETS_SCRIPT" "${CONFIG[UPDATE_RUNNING_LXC]}"
       ;;
     inspect-target)
       [[ $# -eq 2 ]] || fail "inspect-target requires exactly one VMID or name"
@@ -173,15 +171,13 @@ main() {
     update)
       [[ $# -eq 2 ]] || fail "update requires exactly one VMID or name"
       [[ -r "$LXC_UPDATE_SCRIPT" ]] || fail "LXC update workflow is not readable: $LXC_UPDATE_SCRIPT"
-      if [[ "${CONFIG[UPDATE_LXC]}" == true ]]; then
-        ensure_lxc_environment
-      fi
+      ensure_lxc_environment
       bash "$LXC_UPDATE_SCRIPT" "$2"
       ;;
     update-all)
       [[ $# -eq 1 ]] || fail "update-all does not accept additional arguments"
       [[ -r "$UPDATE_ALL_SCRIPT" ]] || fail "global update coordinator is not readable: $UPDATE_ALL_SCRIPT"
-      if [[ "${CONFIG[UPDATE_LXC]}" == true && "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+      if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
         ensure_lxc_environment
       fi
       bash "$UPDATE_ALL_SCRIPT"
