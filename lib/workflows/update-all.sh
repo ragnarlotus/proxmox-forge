@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Coordinates the complete local Forge update sequence, resolving the full LXC scope once before mutation, updating the Proxmox host first, then processing that exact LXC set serially.
+# Description: Coordinates the complete local Forge update sequence, freezing the effective LXC VMID scope before mutation, updating the Proxmox host first, then revalidating each selected LXC when its serial update begins.
 
 set -u
 
@@ -36,7 +36,7 @@ done
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
 
-# Resolve and freeze the complete effective LXC scope before the first mutating operation.
+# Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
   bash "$lxc_list_targets_script" \
     "${CONFIG[UPDATE_LXC]}" \

@@ -19,7 +19,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [x] **Stopped LXC exclusion** — stopped containers are not update targets and are left completely untouched; Forge does not start them or track/restore their state.
 - [x] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
 - [x] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
-- [x] **Validate before mutation** — load and validate the complete configuration and resolve the selected targets before the first mutating operation.
+- [x] **Validate before mutation** — load and validate the complete configuration and determine the selected target identities/scope before the first mutating operation; mutable LXC properties such as current state and template status are revalidated when each guest update begins.
 - [x] **Initial invocation model** — no scheduler, background job, daemon or Web UI. Every initial-scope run starts from an explicit user invocation.
 
 ---
