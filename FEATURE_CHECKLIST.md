@@ -147,10 +147,10 @@ These are agreed behavioural requirements for the initial implementation. They d
 ## I. Guest lifecycle
 
 - [x] **F089** Detect original guest state.
-- [x] **F090** Temporarily start an explicitly selected stopped LXC for its update.
+- [x] **F090** Temporarily start an explicitly selected stopped LXC for its update; automatic `update-all` scope never starts stopped guests.
 - [ ] **F091** Wait for real readiness instead of using a blind fixed sleep.
 - [x] **F092** Update the guest.
-- [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt.
+- [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt, including after eligible failure/recovery paths.
 - [ ] **F094** Detect reboot-required state.
 - [ ] **F095** Configurable reboot behaviour.
 - [ ] **F096** Restart services instead of rebooting when sufficient.
@@ -310,7 +310,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F213** Integration tests with mocks/fakes.
 - [ ] **F214** End-to-end tests on real Proxmox for critical paths.
 
-> The current critical path has been manually validated on a live Proxmox host, including a complete `update-all`, forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run and real `pct fstrim`. These validations are not yet a repeatable automated test suite, so F204–F214 remain unchecked.
+> The current critical path has been manually validated on a live Proxmox host, including a complete `update-all`, forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run, real `pct fstrim`, and an end-to-end explicit update of an initially stopped LXC that was temporarily started and returned to stopped state after success. These validations are not yet a repeatable automated test suite, so F204–F214 remain unchecked.
 
 ## U. Post-update maintenance and terminal behaviour
 

@@ -21,6 +21,7 @@ Forge currently supports:
 - Proxmox-native LXC recovery backups;
 - Forge-created host configuration backups;
 - automatic LXC rollback after eligible failures;
+- explicit updates of stopped LXCs with temporary startup and restoration of the original stopped state;
 - post-update health checks;
 - APT `autoremove` maintenance;
 - post-update LXC `fstrim`;
@@ -31,7 +32,6 @@ Not implemented yet:
 
 - QEMU VM updates;
 - external-host/SSH updates;
-- updating stopped LXCs;
 - cluster-wide orchestration;
 - package update preview/discovery, CVE reporting or package-level selection;
 - scheduling/background execution;
@@ -505,6 +505,7 @@ The current critical path has been manually exercised on a live Proxmox system, 
 - terminal scrollback preservation across Community Scripts screen clears;
 - host APT `autoremove` after simulation and boot-kernel validation;
 - LXC APT `autoremove` simulation;
-- real LXC `pct fstrim` execution.
+- real LXC `pct fstrim` execution;
+- end-to-end explicit update of an initially stopped LXC, including temporary startup, recovery backup, OS/application update, health check, `fstrim`, and restoration to `stopped` state.
 
 There is not yet a repeatable automated unit/integration/end-to-end test suite. That remains tracked in [`FEATURE_CHECKLIST.md`](FEATURE_CHECKLIST.md).
