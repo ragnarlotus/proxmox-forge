@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Coordinates the complete local Forge update sequence, freezing the resolved LXC target records before mutation, updating the Proxmox host first, then processing that exact target set serially.
+# Description: Coordinates the complete local Forge update sequence, resolving the full LXC scope once before mutation, updating the Proxmox host first, then processing that exact LXC set serially.
 
 set -u
 
@@ -43,7 +43,6 @@ targets_output="$(
     "${CONFIG[UPDATE_RUNNING_LXC]}"
 )" || fail "could not resolve effective LXC target set"
 
-target_records=()
 vmids=()
 while IFS= read -r target_record; do
   [[ -n "$target_record" ]] || continue
@@ -59,12 +58,10 @@ while IFS= read -r target_record; do
   [[ -n "$vmid" ]] || fail "target record returned no vmid: $target_record"
   [[ "$vmid" =~ ^[0-9]+$ ]] || fail "target record returned invalid vmid '$vmid'"
 
-  target_records+=("$target_record")
   vmids+=("$vmid")
 done <<< "$targets_output"
 
-lxc_targets="${#target_records[@]}"
-[[ "${#vmids[@]}" -eq "$lxc_targets" ]] || fail "resolved LXC target records are inconsistent"
+lxc_targets="${#vmids[@]}"
 
 printf 'update_all=start update_host=%s update_lxc=%s lxc_targets=%s\n' \
   "${CONFIG[UPDATE_HOST]}" "${CONFIG[UPDATE_LXC]}" "$lxc_targets"
@@ -90,13 +87,10 @@ if [[ "${CONFIG[UPDATE_LXC]}" == true ]]; then
 
   printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
 
-  for index in "${!target_records[@]}"; do
-    target_record="${target_records[$index]}"
-    vmid="${vmids[$index]}"
-
+  for vmid in "${vmids[@]}"; do
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
-    bash "$lxc_update_script" "$vmid" "$target_record"
+    bash "$lxc_update_script" "$vmid"
     target_result=$?
 
     if (( target_result == 0 )); then
