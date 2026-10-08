@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Orchestrates one protected LXC update, owns its single per-attempt log, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
+# Description: Orchestrates one protected LXC update, reusing an already-resolved target record when supplied, owns its single per-attempt log, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
 
 set -u
 
@@ -28,8 +28,9 @@ parse_record() {
 
 declare -A RECORD_FIELDS=()
 
-[[ $# -eq 1 ]] || fail "usage: update.sh VMID_OR_NAME"
+[[ $# -ge 1 && $# -le 2 ]] || fail "usage: update.sh VMID_OR_NAME [TARGET_RECORD]"
 target="$1"
+target_record="${2:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -74,16 +75,23 @@ config_get || fail "could not load effective Forge configuration"
 
 [[ "${CONFIG[UPDATE_LXC]}" == true ]] || fail "LXC updates are disabled by configuration"
 
-target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
+if [[ -z "$target_record" ]]; then
+  target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
+fi
+
 parse_record "$target_record"
+record_type="${RECORD_FIELDS[type]:-}"
 vmid="${RECORD_FIELDS[vmid]:-}"
 name="${RECORD_FIELDS[name]:-}"
 state="${RECORD_FIELDS[state]:-}"
 template="${RECORD_FIELDS[template]:-}"
+[[ "$record_type" == lxc ]] || fail "target record returned invalid type '$record_type'"
 [[ -n "$vmid" ]] || fail "target record returned no vmid"
 [[ -n "$name" ]] || fail "target record returned no name"
 [[ -n "$state" ]] || fail "target record returned no state"
 [[ -n "$template" ]] || fail "target record returned no template flag"
+[[ "$target" == "$vmid" || "$target" == "$name" ]] || \
+  fail "target record does not match requested target '$target'"
 
 [[ "$template" == false ]] || fail "LXC $vmid is a template and cannot be updated"
 
