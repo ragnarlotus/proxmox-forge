@@ -138,6 +138,39 @@ record_skipped_stage() {
     "reason=$reason" || fail "could not record skipped $stage_name stage"
 }
 
+wait_for_guest_exec() {
+  local timeout_seconds=30
+  local probe_timeout_seconds=2
+  local started_seconds="$SECONDS"
+  local elapsed_seconds
+
+  bash "$log_write_script" "$log_file" INFO lifecycle_readiness_wait \
+    "vmid=$vmid" \
+    "initial_state=$initial_state" \
+    "timeout_seconds=$timeout_seconds" || return 1
+
+  while (( SECONDS - started_seconds < timeout_seconds )); do
+    if timeout "$probe_timeout_seconds" pct exec "$vmid" -- sh -c ':' </dev/null >/dev/null 2>&1; then
+      elapsed_seconds=$((SECONDS - started_seconds))
+      bash "$log_write_script" "$log_file" INFO lifecycle_ready \
+        "vmid=$vmid" \
+        "transport=pct_exec" \
+        "wait_seconds=$elapsed_seconds" || return 1
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  elapsed_seconds=$((SECONDS - started_seconds))
+  bash "$log_write_script" "$log_file" ERROR lifecycle_readiness_timeout \
+    "vmid=$vmid" \
+    "transport=pct_exec" \
+    "timeout_seconds=$timeout_seconds" \
+    "wait_seconds=$elapsed_seconds" || true
+  return 1
+}
+
 restore_initial_state() {
   local current_state
   local restore_result
@@ -224,6 +257,9 @@ finish_failed() {
 }
 
 if [[ "$initial_state" == stopped ]]; then
+  command -v timeout >/dev/null 2>&1 || finish_failed lifecycle_readiness 1
+  command -v sleep >/dev/null 2>&1 || finish_failed lifecycle_readiness 1
+
   bash "$log_capture_script" "$log_file" lifecycle_start -- pct start "$vmid"
   stage_result=$?
   if (( stage_result != 0 )); then
@@ -236,6 +272,9 @@ if [[ "$initial_state" == stopped ]]; then
     finish_failed lifecycle_start "$stage_result"
   fi
   [[ "$state" == running ]] || finish_failed lifecycle_start 1
+
+  wait_for_guest_exec || finish_failed lifecycle_readiness 1
+
   target_record="type=lxc vmid=$vmid name=$name state=running template=false"
 fi
 

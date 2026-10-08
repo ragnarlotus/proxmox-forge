@@ -2,7 +2,7 @@
 
 **Reliable Update Orchestration for Proxmox VE**
 
-Forge is a Bash-based update orchestrator designed to run directly on a Proxmox VE host. Its current implementation updates the local Proxmox host and running LXC containers through a protected, deterministic workflow with configuration validation, Proxmox-native backups, application updates, custom per-target scripts, health checks, recovery, post-update maintenance and structured logging.
+Forge is a Bash-based update orchestrator designed to run directly on a Proxmox VE host. Its current implementation updates the local Proxmox host and LXC containers through a protected, deterministic workflow with configuration validation, Proxmox-native backups, application updates, custom per-target scripts, health checks, recovery, post-update maintenance and structured logging.
 
 Forge's responsibility is to **update and verify**, not to silently repair guest systems. When an eligible guest update fails and a same-run recovery artifact exists, Forge can restore that guest; otherwise it reports the real failure and leaves diagnosis or repair outside the updater.
 
@@ -13,7 +13,7 @@ The implementation status and broader roadmap are tracked in [`FEATURE_CHECKLIST
 Forge currently supports:
 
 - one local **Proxmox VE 9 / Debian 13** host;
-- local **running LXC containers** through `pct`;
+- local **LXC containers** through `pct`, with automatic scope limited to running guests and explicit stopped-target updates supported;
 - host updates through APT;
 - LXC OS updates through APT;
 - Proxmox Community Scripts applications exposing `/usr/bin/update`;
@@ -144,7 +144,7 @@ Runs the read-only LXC requirements workflow. It rejects unsupported package man
 
 ### `update TARGET`
 
-Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC`. If the explicitly selected LXC is stopped, Forge starts it temporarily, performs the update while it is running, and returns it to stopped state afterwards.
+Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC`. If the explicitly selected LXC is stopped, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe to succeed, performs the update while it is running, and returns it to stopped state afterwards. LXCs that were already running do not use this startup-readiness phase.
 
 ### `update-host`
 
@@ -276,6 +276,7 @@ For one explicitly selected LXC, the current workflow is:
 ```text
 validate configuration and resolve exact target/current state
 → if stopped, start temporarily
+→ if Forge started it, wait for pct exec readiness (bounded to 30 seconds)
 → read-only requirements
 → recovery backup
 → OS/package update
@@ -483,7 +484,7 @@ Current implementation deliberately enforces these rules:
 - the standalone PVE restore utility is the sole internal exception and acquires the same global lock itself;
 - configuration and the effective LXC VMID scope are frozen before mutation, while each selected LXC's current existence, name, state and template flag are revalidated when its own update begins;
 - LXC templates are never update targets;
-- stopped LXCs are excluded from automatic `update-all` scope; an explicitly selected stopped LXC is temporarily started for its update and returned to stopped state afterwards;
+- stopped LXCs are excluded from automatic `update-all` scope; an explicitly selected stopped LXC is temporarily started, must become reachable through `pct exec` within 30 seconds before requirements begin, and is returned to stopped state afterwards;
 - package managers run non-interactively;
 - mutating commands are not repeated merely to capture errors;
 - synchronous `vzdump` completion and the newly created recovery volume are both validated;

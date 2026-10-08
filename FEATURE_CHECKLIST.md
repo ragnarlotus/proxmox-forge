@@ -148,7 +148,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 
 - [x] **F089** Detect original guest state.
 - [x] **F090** Temporarily start an explicitly selected stopped LXC for its update; automatic `update-all` scope never starts stopped guests.
-- [ ] **F091** Wait for real readiness instead of using a blind fixed sleep.
+- [x] **F091** Wait for readiness after temporary startup — only when an explicitly selected LXC was initially stopped and Forge starts it, retry a minimal `pct exec` readiness probe for up to 30 seconds before requirements/update stages; LXCs that were already running skip this phase.
 - [x] **F092** Update the guest.
 - [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt, including after eligible failure/recovery paths.
 - [ ] **F094** Detect reboot-required state.
