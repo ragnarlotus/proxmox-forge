@@ -81,7 +81,6 @@ fi
 
 if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
   succeeded=0
-  skipped=0
   failed=0
 
   printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
@@ -92,32 +91,25 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     bash "$lxc_update_script" "$vmid" scope
     target_result=$?
 
-    case "$target_result" in
-      0)
-        succeeded=$((succeeded + 1))
-        printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
-        ;;
-      3)
-        skipped=$((skipped + 1))
-        printf 'update_all_target=skipped vmid=%s reason=stopped exit_code=3\n' "$vmid"
-        ;;
-      *)
-        failed=$((failed + 1))
-        printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
-        ;;
-    esac
+    if (( target_result == 0 )); then
+      succeeded=$((succeeded + 1))
+      printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
+    else
+      failed=$((failed + 1))
+      printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
+    fi
   done
 
   if (( failed != 0 )); then
-    printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s skipped=%s failed=%s exit_code=1\n' \
-      "$lxc_targets" "$succeeded" "$skipped" "$failed"
-    printf 'update_all=failed stage=lxc total=%s succeeded=%s skipped=%s failed=%s exit_code=1\n' \
-      "$lxc_targets" "$succeeded" "$skipped" "$failed"
+    printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+      "$lxc_targets" "$succeeded" "$failed"
+    printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+      "$lxc_targets" "$succeeded" "$failed"
     exit 1
   fi
 
-  printf 'update_all_stage=success stage=lxc total=%s succeeded=%s skipped=%s failed=0 exit_code=0\n' \
-    "$lxc_targets" "$succeeded" "$skipped"
+  printf 'update_all_stage=success stage=lxc total=%s succeeded=%s failed=0 exit_code=0\n' \
+    "$lxc_targets" "$succeeded"
 else
   printf 'update_all_stage=skipped stage=lxc reason=running_lxc_disabled\n'
 fi

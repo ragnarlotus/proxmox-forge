@@ -178,7 +178,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [x] **F112** A failed required step makes the target fail.
 - [x] **F113** A failed target remains failed even when later targets continue.
 - [x] **F114** `continue_on_error` means continue processing, never convert failure into success.
-- [x] **F115** Correctly aggregate the final run result.
+- [x] **F115** Correctly aggregate the final run result. Every nonzero LXC update exit code counts as failure; no special exit code is reserved for skipped containers.
 - [x] **F116** Distinguish primary failure from cleanup failure.
 - [ ] **F117** Explicit timeouts.
 - [ ] **F118** Retries only for operations that are safe to repeat.

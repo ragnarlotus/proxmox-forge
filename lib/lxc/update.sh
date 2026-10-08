@@ -97,10 +97,7 @@ case "$state" in
   running)
     ;;
   stopped)
-    if [[ "$selection_mode" == scope ]]; then
-      printf 'update=skipped vmid=%s reason=stopped\n' "$vmid"
-      exit 3
-    fi
+    [[ "$selection_mode" == explicit ]] || fail "LXC $vmid is stopped; automatic updates require running containers"
     ;;
   *)
     fail "unsupported LXC state '$state' for VMID $vmid"

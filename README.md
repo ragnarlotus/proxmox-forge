@@ -152,7 +152,7 @@ Runs the protected local Proxmox host update. Host rollback is intentionally uns
 
 ### `update-all`
 
-Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first, then updates those VMIDs serially. Each selected LXC is resolved again when its own turn begins; if it has become stopped meanwhile, `update-all` skips it instead of starting it.
+Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first, then updates those VMIDs serially. Automatic updates require a running LXC and never start a stopped container. Any failed target is counted as a failure, regardless of its exit code.
 
 If the host update fails, LXC processing does not start. If an individual LXC fails, Forge preserves that failure, attempts guest recovery when applicable, continues with later LXCs and returns a failed aggregate result at the end.
 
