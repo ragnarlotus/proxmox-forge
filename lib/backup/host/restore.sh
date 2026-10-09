@@ -116,7 +116,7 @@ Restore subjects:
    2  Network
    3  Storage & mounts
    4  APT repositories & custom configuration
-   5  Forge configuration
+   5  Forge configuration and custom scripts
    6  Custom services & schedules
    7  Host security
    8  System tuning
@@ -243,7 +243,7 @@ tar -xzf "$backup_file" -C "$workspace" || fail "could not extract backup"
 subject_name() {
   case "$1" in
     1) echo 'Proxmox configuration';; 2) echo 'Network';; 3) echo 'Storage & mounts';;
-    4) echo 'APT repositories & custom configuration';; 5) echo 'Forge configuration';;
+    4) echo 'APT repositories & custom configuration';; 5) echo 'Forge configuration and custom scripts';;
     6) echo 'Custom services & schedules';; 7) echo 'Host security';; 8) echo 'System tuning';;
     9) echo 'Local users & authentication';; 10) echo 'Root SSH & credentials';;
     11) echo 'Root shell & editor configuration';; 12) echo 'Root application configuration & state';;
@@ -264,7 +264,7 @@ What do you want to restore?
    [2] Network
    [3] Storage & mounts
    [4] APT repositories & custom configuration
-   [5] Forge configuration
+   [5] Forge configuration and custom scripts
    [6] Custom services & schedules
    [7] Host security
    [8] System tuning
@@ -374,7 +374,7 @@ for n in $(printf '%s\n' "${!SELECTED[@]}" | sort -n); do
   case "$n" in
     1) restore_proxmox;; 2) restore_network;;
     3) restore_paths 'Storage & mounts' etc/fstab etc/nfs.conf etc/nfs.conf.d etc/idmapd.conf etc/iscsi etc/lvm etc/zfs;;
-    4) restore_apt;; 5) restore_paths 'Forge configuration' etc/proxmox-forge;; 6) restore_custom_services;;
+    4) restore_apt;; 5) restore_paths 'Forge configuration and custom scripts' opt/proxmox-forge/forge.conf opt/proxmox-forge/scripts.d;; 6) restore_custom_services;;
     7) restore_paths 'Host security' etc/ssh etc/fail2ban etc/nftables.conf etc/ufw etc/hosts.allow etc/hosts.deny;;
     8) restore_paths 'System tuning' etc/sysctl.conf etc/sysctl.d etc/modprobe.d etc/modules etc/modules-load.d etc/hdparm.conf etc/default/grub; warn "review restored kernel/module/GRUB tuning before reboot";;
     9) restore_users;; 10) restore_root_credentials;;

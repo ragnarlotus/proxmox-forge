@@ -244,7 +244,10 @@ The mandatory base archive paths are:
 /root
 /var/lib/pve-cluster
 /usr/local/bin
+/opt/proxmox-forge/scripts.d/
 ```
+
+When present, the optional host-local `/opt/proxmox-forge/forge.conf` is also included automatically. Forge's versioned source files are not included by default and should be restored from Git.
 
 `HOST_BACKUP_EXTRA_PATHS` may append host-local files or directories to this set without replacing the mandatory paths. Its value is a comma-separated list of absolute paths, for example:
 
@@ -267,7 +270,7 @@ cd /opt/proxmox-forge
 bash lib/backup/host/restore.sh
 ```
 
-The restore script then guides the remaining PVE recovery process. This is a manual recovery procedure, not automatic host rollback. It is the only `lib/` script intended to be started directly and it participates in the same global Forge execution lock.
+The restore script then guides the remaining PVE recovery process. The **Forge configuration and custom scripts** restore subject copies the saved `forge.conf` (if present in the archive) and `scripts.d/` back into `/opt/proxmox-forge/` after cloning Forge. This is a manual recovery procedure, not automatic host rollback. It is the only `lib/` script intended to be started directly and it participates in the same global Forge execution lock.
 
 ## LXC update workflow
 

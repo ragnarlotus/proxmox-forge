@@ -72,7 +72,13 @@ include=(
   /root
   /var/lib/pve-cluster
   /usr/local/bin
+  /opt/proxmox-forge/scripts.d/
 )
+
+# Host-local Forge overrides are optional, unlike the scripts directory.
+if [[ -f /opt/proxmox-forge/forge.conf ]]; then
+  include+=(/opt/proxmox-forge/forge.conf)
+fi
 
 if [[ -n "$extra_paths_value" ]]; then
   if [[ "$extra_paths_value" == ,* || "$extra_paths_value" == *, || "$extra_paths_value" == *,,* ]]; then
