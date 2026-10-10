@@ -262,7 +262,7 @@ cd /opt/proxmox-forge
 bash lib/backup/host/restore.sh
 ```
 
-The restore script then guides the remaining PVE recovery process. The **Forge configuration and custom scripts** restore subject copies the saved `forge.conf` (if present in the archive) and `scripts.d/` back into `/opt/proxmox-forge/` after cloning Forge. This is a manual recovery procedure, not automatic host rollback. It is the only `lib/` script intended to be started directly and it participates in the same global Forge execution lock.
+The restore script then guides the remaining PVE recovery process. The **Forge configuration and custom scripts** restore subject copies the saved `forge.conf` (if present in the archive) and `scripts.d/` back into `/opt/proxmox-forge/` after cloning Forge. For path-based restore subjects, the summary marks a subject as skipped when none of its paths exist in the archive, and warns about individual absent paths when at least one path was restored. This is a manual recovery procedure, not automatic host rollback. It is the only `lib/` script intended to be started directly and it participates in the same global Forge execution lock.
 
 ## LXC update workflow
 

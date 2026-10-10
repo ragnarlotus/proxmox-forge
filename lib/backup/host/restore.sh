@@ -297,7 +297,31 @@ warn() { WARNINGS+=("$1"); printf 'WARNING: %s\n' "$1" >&2; }
 copy_file() { local s="$1" d="$2"; [[ -f "$s" || -L "$s" ]] || return; printf '  file: %s\n' "$d"; [[ "$dry_run" == true ]] && return; mkdir -p "$(dirname "$d")"; cp -a -- "$s" "$d" || fail "could not restore $d"; }
 copy_dir() { local s="$1" d="$2"; [[ -d "$s" ]] || return; printf '  directory: %s\n' "$d"; [[ "$dry_run" == true ]] && return; mkdir -p "$d"; rsync -a "$s"/ "$d"/ || fail "could not restore $d"; }
 copy_path() { [[ -d "$workspace/$1" ]] && copy_dir "$workspace/$1" "/$1" || copy_file "$workspace/$1" "/$1"; }
-restore_paths() { local label="$1"; shift; printf '\n== %s ==\n' "$label"; for p in "$@"; do copy_path "$p"; done; RESTORED+=("$label"); }
+restore_paths() {
+  local label="$1" path restored=0
+  local -a missing=()
+  shift
+
+  printf '\n== %s ==\n' "$label"
+  for path in "$@"; do
+    if [[ -d "$workspace/$path" || -f "$workspace/$path" || -L "$workspace/$path" ]]; then
+      copy_path "$path"
+      restored=$((restored + 1))
+    else
+      missing+=("/$path")
+    fi
+  done
+
+  if (( restored == 0 )); then
+    SKIPPED+=("$label (no matching paths in backup)")
+    printf '  skipped: no matching paths in backup\n'
+  else
+    RESTORED+=("$label")
+    if (( ${#missing[@]} > 0 )); then
+      warn "$label: paths absent from backup: ${missing[*]}"
+    fi
+  fi
+}
 
 restore_proxmox() {
   local src="$workspace/etc/pve" current backup_node; printf '\n== Proxmox configuration ==\n'
