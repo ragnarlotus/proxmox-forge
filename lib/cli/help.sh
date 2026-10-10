@@ -13,13 +13,11 @@ cat <<'EOF'
 Usage: forge COMMAND [ARGUMENTS]
 
 Commands:
-  validate-config             Load and validate the complete Forge configuration.
-  check-host-requirements     Check whether the local Proxmox VE host satisfies current update requirements.
-  update-host                 Update the local Proxmox VE host without guest-style rollback.
-  list-lxc-targets            List currently running LXCs included by the automatic Forge scope.
-  inspect-target TARGET       Read the complete available information for one running LXC.
-  check-requirements TARGET   Check whether one LXC satisfies current update requirements.
-  update TARGET               Explicitly update one LXC; a stopped target is started temporarily and restored to stopped.
-  update-all                  Update the local Proxmox host first, then all effective LXC targets serially.
+  validate-config             Validate the effective Forge configuration.
+  host update                 Update the local Proxmox VE host.
+  lxc list-targets            List running LXCs selected by UPDATE_RUNNING_LXC.
+  lxc update TARGET           Update one LXC; temporarily start it if stopped.
+  lxc update all              Update LXCs from lxc list-targets; do not update host.
+  update all                  Update the host first, then LXCs from lxc list-targets.
   help                        Show this help.
 EOF

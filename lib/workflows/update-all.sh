@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Coordinates the complete local Forge update sequence, freezing the effective LXC VMID scope before mutation, updating the Proxmox host first, then revalidating each selected LXC when its serial update begins.
+# Description: Coordinates full (host then LXC) or LXC-only update runs, selecting running guests before mutation and processing selected VMIDs serially.
 
 set -u
 
@@ -14,7 +14,12 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 0 ]] || fail "usage: update-all.sh"
+[[ $# -eq 1 ]] || fail "usage: update-all.sh all|lxc"
+mode="$1"
+case "$mode" in
+  all|lxc) ;;
+  *) fail "unsupported update mode '$mode'" ;;
+esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine workflow directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -60,11 +65,15 @@ while IFS= read -r target_record; do
 done <<< "$targets_output"
 
 lxc_targets="${#vmids[@]}"
+update_host=false
+if [[ "$mode" == all && "${CONFIG[UPDATE_HOST]}" == true ]]; then
+  update_host=true
+fi
 
-printf 'update_all=start update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
-  "${CONFIG[UPDATE_HOST]}" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
+  "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
 
-if [[ "${CONFIG[UPDATE_HOST]}" == true ]]; then
+if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
   bash "$host_update_script"
   host_result=$?
@@ -75,7 +84,7 @@ if [[ "${CONFIG[UPDATE_HOST]}" == true ]]; then
   fi
 
   printf 'update_all_stage=success stage=host exit_code=0\n'
-else
+elif [[ "$mode" == all ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
 fi
 
@@ -114,5 +123,5 @@ else
   printf 'update_all_stage=skipped stage=lxc reason=running_lxc_disabled\n'
 fi
 
-printf 'update_all=success update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
-  "${CONFIG[UPDATE_HOST]}" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
+  "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"

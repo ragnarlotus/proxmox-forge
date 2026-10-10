@@ -16,7 +16,7 @@ Implemented means the capability exists in the current `main` branch at the scop
 These are agreed behavioural requirements for the initial implementation. They do not remove broader capabilities from the catalogue below.
 
 - [x] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
-- [x] **Stopped LXC automatic-scope exclusion** — `update-all` never selects stopped containers automatically. An explicitly requested stopped LXC may be started temporarily for its update and is returned to stopped state afterwards.
+- [x] **Stopped LXC automatic-scope exclusion** — bulk updates never select stopped containers automatically. An explicitly requested stopped LXC may be started temporarily for its update and is returned to stopped state afterwards.
 - [x] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
 - [x] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
 - [x] **Validate before mutation** — load and validate the complete configuration and determine the selected target identities/scope before the first mutating operation; mutable LXC properties such as current state and template status are revalidated when each guest update begins.
@@ -147,7 +147,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 ## I. Guest lifecycle
 
 - [x] **F089** Detect original guest state.
-- [x] **F090** Temporarily start an explicitly selected stopped LXC for its update; automatic `update-all` scope never starts stopped guests.
+- [x] **F090** Temporarily start an explicitly selected stopped LXC for its update; automatic bulk-update scope never starts stopped guests.
 - [x] **F091** Wait for readiness after temporary startup — only when an explicitly selected LXC was initially stopped and Forge starts it, retry a minimal `pct exec` readiness probe for up to 30 seconds before requirements/update stages; LXCs that were already running skip this phase.
 - [x] **F092** Update the guest.
 - [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt, including after eligible failure/recovery paths.
@@ -310,7 +310,7 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F213** Integration tests with mocks/fakes.
 - [ ] **F214** End-to-end tests on real Proxmox for critical paths.
 
-> The current critical path has been manually validated on a live Proxmox host, including a complete `update-all`, forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run, real `pct fstrim`, and an end-to-end explicit update of an initially stopped LXC that was temporarily started and returned to stopped state after success. These validations are not yet a repeatable automated test suite, so F204–F214 remain unchecked.
+> The current critical path has been manually validated on a live Proxmox host, including a complete combined host/LXC update run (using the former `update-all` command), forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run, real `pct fstrim`, and an end-to-end explicit update of an initially stopped LXC that was temporarily started and returned to stopped state after success. These validations are not yet a repeatable automated test suite, so F204–F214 remain unchecked.
 
 ## U. Post-update maintenance and terminal behaviour
 
