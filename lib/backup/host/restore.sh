@@ -72,12 +72,12 @@ else
   fi
   standalone_lock=true
 
-  run_id="$(date '+%Y%m%dT%H%M%S')-$" || {
+  run_id="$(date '+%Y%m%dT%H%M%S')-$$" || {
     printf 'ERROR: could not create Forge restore run identifier\n' >&2
     exit 1
   }
   printf 'meta\tpid\t%s\nmeta\trun_id\t%s\nmeta\tcommand\t%s\n' \
-    "$" "$run_id" "host-restore" > "$lock_file" || {
+    "$$" "$run_id" "host-restore" > "$lock_file" || {
     printf 'ERROR: could not record Forge restore lock metadata\n' >&2
     exit 1
   }
