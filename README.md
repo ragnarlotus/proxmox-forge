@@ -87,16 +87,16 @@ ln -s /opt/proxmox-forge/forge /usr/local/bin/forge
 
 The top-level `forge` script locates the rest of the project relative to itself; only values such as `CUSTOM_SCRIPTS_DIR` remain configuration paths.
 
-## CLI
+## Documentation
 
-| Area | Documentation |
+| Section | Description |
 | --- | --- |
-| CLI commands and operations | [CLI](lib/cli/README.md) |
-| Configuration and available options | [Configuration](lib/config/README.md) |
-| Proxmox host update | [Host update](lib/host/README.md) |
-| LXC selection, updates and maintenance | [LXC](lib/lxc/README.md) |
-| Host/LXC backups, restore and recovery | [Backup and recovery](lib/backup/README.md) |
-| Complete and LXC-only update runs | [Workflows](lib/workflows/README.md) |
-| Logs and terminal output | [Logging](lib/logging/README.md) |
-| Single-run execution model and safety | [Runtime](lib/runtime/README.md) |
-| Per-LXC extension scripts | [Custom scripts](scripts.d/README.md) |
+| [CLI](lib/cli/README.md) | CLI commands and operations |
+| [Configuration](lib/config/README.md) | Configuration and available options |
+| [Host update](lib/host/README.md) | Proxmox host update |
+| [LXC](lib/lxc/README.md) | LXC selection, updates and maintenance |
+| [Backup and recovery](lib/backup/README.md) | Host/LXC backups, restore and recovery |
+| [Workflows](lib/workflows/README.md) | Complete and LXC-only update runs |
+| [Logging](lib/logging/README.md) | Logs and terminal output |
+| [Runtime](lib/runtime/README.md) | Single-run execution model and safety |
+| [Custom scripts](scripts.d/README.md) | Per-LXC extension scripts |
