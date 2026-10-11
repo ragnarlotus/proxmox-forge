@@ -54,6 +54,8 @@ Target-specific extensions live under:
 scripts.d/<VMID>/*.sh
 ```
 
+When `RUN_CUSTOM_SCRIPTS=true`, the LXC update workflow checks for eligible scripts before planning the recovery backup, independently of `CHECK_LXC_REQUIREMENTS`. The custom-script executor then selects and runs the scripts at the custom-script stage.
+
 Only regular files ending exactly in `.sh` are executed, in lexical order. Each script is streamed into the target container and run with Bash.
 
 A non-zero custom-script result fails the target and participates in the same recovery semantics as the normal update stages.

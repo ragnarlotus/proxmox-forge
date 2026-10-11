@@ -124,7 +124,7 @@ started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
 package_manager=""
 application_updater=""
-custom_script=false
+custom_scripts_planned=false
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -294,18 +294,17 @@ if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
   parse_record "$requirements_record"
   package_manager="${RECORD_FIELDS[package_manager]:-}"
   application_updater="${RECORD_FIELDS[application_updater]:-}"
-  custom_script="${RECORD_FIELDS[custom_script]:-}"
   [[ -n "$package_manager" ]] || finish_failed requirements 1
   [[ -n "$application_updater" ]] || finish_failed requirements 1
-  [[ "$custom_script" == true || "$custom_script" == false ]] || finish_failed requirements 1
 else
   record_skipped_stage requirements disabled
+fi
 
-  if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
-    && [[ -d "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" ]] \
-    && find "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" -maxdepth 1 -type f -name '*.sh' -print -quit 2>/dev/null | grep -q .; then
-    custom_script=true
-  fi
+# Discover local scripts independently of LXC requirements, before backup planning.
+if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
+  && [[ -d "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" ]] \
+  && find "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" -maxdepth 1 -type f -name '*.sh' -print -quit 2>/dev/null | grep -q .; then
+  custom_scripts_planned=true
 fi
 
 application_update_planned=false
@@ -318,7 +317,7 @@ fi
 mutation_planned=false
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]] \
   || [[ "$application_update_planned" == true ]] \
-  || { [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] && [[ "$custom_script" == true ]]; }; then
+  || [[ "$custom_scripts_planned" == true ]]; then
   mutation_planned=true
 fi
 
@@ -390,7 +389,7 @@ fi
 
 if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" != true ]]; then
   record_skipped_stage custom_scripts disabled
-elif [[ "$custom_script" != true ]]; then
+elif [[ "$custom_scripts_planned" != true ]]; then
   record_skipped_stage custom_scripts no_scripts
 else
   bash "$log_capture_script" "$log_file" custom_scripts -- \

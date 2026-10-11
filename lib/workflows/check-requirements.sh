@@ -48,7 +48,6 @@ package_manager="${info_fields[package_manager]:-}"
 dpkg_audit="${info_fields[dpkg_audit]:-}"
 package_process="${info_fields[package_process]:-}"
 application_updater="${info_fields[application_updater]:-}"
-custom_script="${info_fields[custom_script]:-}"
 
 [[ -n "$vmid" ]] || fail "LXC information returned no vmid"
 [[ -n "$name" ]] || fail "LXC information returned no name"
@@ -58,7 +57,6 @@ custom_script="${info_fields[custom_script]:-}"
 [[ -n "$dpkg_audit" ]] || fail "LXC information returned no dpkg_audit"
 [[ -n "$package_process" ]] || fail "LXC information returned no package_process"
 [[ -n "$application_updater" ]] || fail "LXC information returned no application_updater"
-[[ "$custom_script" == true || "$custom_script" == false ]] || fail "LXC information returned invalid custom_script"
 
 [[ "$package_manager" != unknown ]] || fail "LXC $vmid has no supported package manager"
 
@@ -69,5 +67,5 @@ esac
 
 [[ "$package_process" == none ]] || fail "LXC $vmid has an active package-manager process: $package_process"
 
-printf 'requirements=ok vmid=%s name=%s state=%s template=%s package_manager=%s application_updater=%s custom_script=%s\n' \
-  "$vmid" "$name" "$state" "$template" "$package_manager" "$application_updater" "$custom_script"
+printf 'requirements=ok vmid=%s name=%s state=%s template=%s package_manager=%s application_updater=%s\n' \
+  "$vmid" "$name" "$state" "$template" "$package_manager" "$application_updater"

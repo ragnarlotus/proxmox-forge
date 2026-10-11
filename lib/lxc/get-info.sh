@@ -37,13 +37,8 @@ target_record="${3:-}"
 [[ -z "$mode" || "$mode" == all ]] || fail "unsupported information mode '$mode'; expected 'all'"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
-lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 target_script="$script_dir/get-target.sh"
-config_get_script="$lib_dir/config/get.sh"
-
-for helper in "$target_script" "$config_get_script"; do
-  [[ -r "$helper" ]] || fail "LXC helper is not readable: $helper"
-done
+[[ -r "$target_script" ]] || fail "LXC target helper is not readable: $target_script"
 
 if [[ -z "$target_record" ]]; then
   target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
@@ -134,20 +129,9 @@ application_updater="${RECORD_FIELDS[application_updater]:-}"
 [[ -n "$package_process" ]] || fail "LXC inspection returned no package_process"
 [[ -n "$application_updater" ]] || fail "LXC inspection returned no application_updater"
 
-# shellcheck source=/dev/null
-source "$config_get_script" || fail "could not load config helpers"
-config_get || fail "could not load effective Forge configuration"
-custom_scripts_dir="${CONFIG[CUSTOM_SCRIPTS_DIR]}"
-
-custom_script=false
-if [[ -d "$custom_scripts_dir/$vmid" ]] &&
-   find "$custom_scripts_dir/$vmid" -maxdepth 1 -type f -name '*.sh' -print -quit 2>/dev/null | grep -q .; then
-  custom_script=true
-fi
-
 if [[ "$mode" != all ]]; then
-  printf 'type=lxc vmid=%s name=%s state=%s template=false package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s custom_script=%s\n' \
-    "$vmid" "$name" "$state" "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$custom_script"
+  printf 'type=lxc vmid=%s name=%s state=%s template=false package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s\n' \
+    "$vmid" "$name" "$state" "$package_manager" "$dpkg_audit" "$package_process" "$application_updater"
   exit 0
 fi
 
@@ -160,6 +144,6 @@ mem_available_kb="${RECORD_FIELDS[mem_available_kb]:-}"
 [[ -n "$root_free_kb" ]] || fail "LXC inspection returned no root_free_kb"
 [[ -n "$mem_available_kb" ]] || fail "LXC inspection returned no mem_available_kb"
 
-printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s custom_script=%s\n' \
+printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s\n' \
   "$vmid" "$name" "$state" "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb" \
-  "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$custom_script"
+  "$package_manager" "$dpkg_audit" "$package_process" "$application_updater"
