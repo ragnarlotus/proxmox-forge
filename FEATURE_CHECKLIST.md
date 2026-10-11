@@ -137,12 +137,12 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F084** Verify age/freshness of an existing backup.
 - [ ] **F085** Manual rollback.
 - [x] **F086** Configurable automatic rollback after failure.
-- [ ] **F087** Retention/cleanup policy for snapshots created by Forge.
+- [x] **F087** Retention/cleanup policy for snapshots created by Forge. Prunes only older `Update_*` LXC snapshots to the `keep-last` limit of the applicable Proxmox backup job, preserving manually named snapshots and retaining the new snapshot after success or rollback.
 - [x] **F088** Never remove the recovery artifact before the final result is known.
 
 > Guest rollback capabilities do not apply to the Proxmox host itself.
 >
-> Forge does not currently create `Update_*` snapshots. LXC recovery uses `vzdump` and Proxmox remains authoritative for the applicable job's storage, mode and retention/prune options.
+> Forge creates a persistent `Update_*` LXC snapshot before mutating an LXC, in addition to the `vzdump` recovery backup generated according to its applicable Proxmox job. Automatic failure recovery now uses `pct rollback` against the exact same-run snapshot rather than destructive `pct restore --force`. Forge uses that job's `keep-last` value to cap the number of Forge-created `Update_*` snapshots; this is Forge policy, since Proxmox backup pruning alone does not manage persistent snapshots. The snapshot is currently mandatory whenever an LXC mutation is planned, with no independent option to disable it, so F076 (optional snapshot policy) remains unchecked. F081 (fallback to backup) also remains unchecked.
 
 ## I. Guest lifecycle
 
@@ -308,9 +308,9 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F211** Result aggregation tests.
 - [ ] **F212** Golden-output regression tests where useful.
 - [ ] **F213** Integration tests with mocks/fakes.
-- [ ] **F214** End-to-end tests on real Proxmox for critical paths.
+- [x] **F214** End-to-end tests on real Proxmox for critical paths. Manually verified on live LXC 110: snapshot creation and preservation, `vzdump` backup, automatic `pct rollback` after a controlled custom-script failure (exit 42), removal of a post-snapshot filesystem marker, restoration of the original stopped state, and `keep-last=3` snapshot pruning.
 
-> The current critical path has been manually validated on a live Proxmox host, including a complete combined host/LXC update run (using the former `update-all` command), forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run, real `pct fstrim`, and an end-to-end explicit update of an initially stopped LXC that was temporarily started and returned to stopped state after success. These validations are not yet a repeatable automated test suite, so F204–F214 remain unchecked.
+> The critical paths have been manually validated on a live Proxmox host, including a complete combined host/LXC update run (using the former `update-all` command), forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run, real `pct fstrim`, and explicit updates of an initially stopped LXC. The October 11, 2026 LXC 110 tests additionally verified persistent snapshots, controlled-failure automatic rollback, restored filesystem content, original lifecycle state and snapshot retention. F214 is checked for these real end-to-end validations; no repeatable automated test suite has yet been added, so F204–F213 remain unchecked.
 
 ## U. Post-update maintenance and terminal behaviour
 
