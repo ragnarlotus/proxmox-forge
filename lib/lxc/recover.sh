@@ -31,6 +31,7 @@ primary_result="$7"
 [[ "$primary_result" =~ ^[0-9]+$ ]] || fail "PRIMARY_EXIT_CODE must be numeric"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
+lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 
 state_script="$script_dir/get-state.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
