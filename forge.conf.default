@@ -84,9 +84,7 @@ CUSTOM_SCRIPTS_DIR="/opt/proxmox-forge/scripts.d"
 # selected targets before performing any mutating operation. Invalid or unknown
 # required configuration must fail before the first target is changed.
 
-# Check the requirements that must be satisfied before an LXC update can start.
-# These checks are read-only and do not create backups or mutate the target.
-CHECK_LXC_REQUIREMENTS=true
+# LXC requirements are always checked before creating a backup or updating.
 
 # Create a Proxmox host configuration backup immediately before a host update.
 # Forge derives the destination from the single backup storage used by enabled

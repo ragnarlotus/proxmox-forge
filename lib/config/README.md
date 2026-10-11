@@ -34,6 +34,8 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 
 ## Current configuration keys
 
+LXC requirements checks are mandatory before backup or mutation and cannot be disabled.
+
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
@@ -42,7 +44,6 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 | `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
 | `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |
 | `CUSTOM_SCRIPTS_DIR` | Absolute path | Absolute directory containing per-target custom scripts. |
-| `CHECK_LXC_REQUIREMENTS` | Boolean: `true` or `false` | Run read-only LXC requirements before mutation. |
 | `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Boolean: `true` or `false` | Create and validate a host configuration backup before host package changes. |
 | `HOST_BACKUP_EXTRA_PATHS` | Empty string or comma-separated absolute paths | Optional paths appended to the fixed host-backup path set. Example: `/opt/custom,/srv/config`. |
 | `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Boolean: `true` or `false` | Create a Proxmox recovery backup before LXC mutation. |

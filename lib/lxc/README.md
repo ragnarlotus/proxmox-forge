@@ -20,6 +20,8 @@ validate configuration and resolve exact target/current state
 
 `UPDATE_RUNNING_LXC` applies only to automatic target discovery for `forge lxc list-targets` and both bulk update commands. It does not block `forge lxc update TARGET`.
 
+LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
+
 The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`.
 
 ## Package-manager update strategies
@@ -54,7 +56,7 @@ Target-specific extensions live under:
 scripts.d/<VMID>/*.sh
 ```
 
-When `RUN_CUSTOM_SCRIPTS=true`, the LXC update workflow checks for eligible scripts before planning the recovery backup, independently of `CHECK_LXC_REQUIREMENTS`. The custom-script executor then selects and runs the scripts at the custom-script stage.
+When `RUN_CUSTOM_SCRIPTS=true`, the LXC update workflow checks for eligible scripts before planning the recovery backup. The custom-script executor then selects and runs the scripts at the custom-script stage.
 
 Only regular files ending exactly in `.sh` are executed, in lexical order. Each script is streamed into the target container and run with Bash.
 

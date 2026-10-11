@@ -275,30 +275,26 @@ if [[ "$initial_state" == stopped ]]; then
   target_record="type=lxc vmid=$vmid name=$name state=running template=false"
 fi
 
-if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" == true ]]; then
-  requirements_output_file="$(mktemp)" || finish_failed requirements 1
+requirements_output_file="$(mktemp)" || finish_failed requirements 1
 
-  bash "$log_capture_script" "$log_file" requirements -- \
-    bash -o pipefail -c 'bash "$1" "$2" "$3" | tee "$4"' \
-      _ "$requirements_script" "$vmid" "$target_record" "$requirements_output_file"
-  stage_result=$?
+bash "$log_capture_script" "$log_file" requirements -- \
+  bash -o pipefail -c 'bash "$1" "$2" "$3" | tee "$4"' \
+    _ "$requirements_script" "$vmid" "$target_record" "$requirements_output_file"
+stage_result=$?
 
-  if (( stage_result != 0 )); then
-    rm -f "$requirements_output_file"
-    finish_failed requirements "$stage_result"
-  fi
-
-  requirements_record="$(grep '^requirements=ok ' "$requirements_output_file" | tail -n 1)"
+if (( stage_result != 0 )); then
   rm -f "$requirements_output_file"
-
-  parse_record "$requirements_record"
-  package_manager="${RECORD_FIELDS[package_manager]:-}"
-  application_updater="${RECORD_FIELDS[application_updater]:-}"
-  [[ -n "$package_manager" ]] || finish_failed requirements 1
-  [[ -n "$application_updater" ]] || finish_failed requirements 1
-else
-  record_skipped_stage requirements disabled
+  finish_failed requirements "$stage_result"
 fi
+
+requirements_record="$(grep '^requirements=ok ' "$requirements_output_file" | tail -n 1)"
+rm -f "$requirements_output_file"
+
+parse_record "$requirements_record"
+package_manager="${RECORD_FIELDS[package_manager]:-}"
+application_updater="${RECORD_FIELDS[application_updater]:-}"
+[[ -n "$package_manager" ]] || finish_failed requirements 1
+[[ -n "$application_updater" ]] || finish_failed requirements 1
 
 # Discover local scripts independently of LXC requirements, before backup planning.
 if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
@@ -308,10 +304,8 @@ if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
 fi
 
 application_update_planned=false
-if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
-  if [[ "${CONFIG[CHECK_LXC_REQUIREMENTS]}" != true || "$application_updater" != none ]]; then
-    application_update_planned=true
-  fi
+if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true && "$application_updater" != none ]]; then
+  application_update_planned=true
 fi
 
 mutation_planned=false
