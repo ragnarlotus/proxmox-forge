@@ -8,7 +8,8 @@ validate configuration and resolve exact target/current state
 → if stopped, start temporarily
 → if Forge started it, wait for pct exec readiness (bounded to 30 seconds)
 → read-only requirements
-→ recovery backup
+→ recovery backup according to the configured Proxmox job
+→ persistent Update_* snapshot with keep-last retention from that job
 → OS/package update
 → application update
 → target-specific custom scripts
@@ -22,7 +23,7 @@ validate configuration and resolve exact target/current state
 
 LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
 
-The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`.
+The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`. Before mutation, Forge also creates a persistent Proxmox `Update_*` snapshot of the LXC. It reads `keep-last` from the single applicable enabled Proxmox backup job, prunes only the oldest `Update_*` snapshots **before** creating a new one, and leaves manually named snapshots untouched. Successful updates retain the new snapshot; failures roll back to that same-run snapshot using `pct rollback`. If no safe snapshot/retention plan is possible, mutation does not begin.
 
 ## Package-manager update strategies
 

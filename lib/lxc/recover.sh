@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Performs same-run recovery for one failed LXC update, restoring its exact recovery backup and returning the guest to running state so the caller can restore any original stopped state.
+# Description: Recovers one failed LXC update using its same-run persistent Proxmox snapshot, preserving older snapshots and returning the guest to running state.
 
 set -u
 
@@ -14,13 +14,14 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 6 ]] || fail "usage: recover.sh VMID BACKUP_VOLUME LOG_FILE ROLLBACK_ENABLED FAILED_STAGE PRIMARY_EXIT_CODE"
+[[ $# -eq 7 ]] || fail "usage: recover.sh VMID BACKUP_VOLUME SNAPSHOT_NAME LOG_FILE ROLLBACK_ENABLED FAILED_STAGE PRIMARY_EXIT_CODE"
 vmid="$1"
 backup_volume="$2"
-log_file="$3"
-rollback_enabled="$4"
-failed_stage="$5"
-primary_result="$6"
+snapshot_name="$3"
+log_file="$4"
+rollback_enabled="$5"
+failed_stage="$6"
+primary_result="$7"
 
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 [[ -f "$log_file" ]] || fail "log file does not exist: $log_file"
@@ -30,16 +31,13 @@ primary_result="$6"
 [[ "$primary_result" =~ ^[0-9]+$ ]] || fail "PRIMARY_EXIT_CODE must be numeric"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
-lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 
 state_script="$script_dir/get-state.sh"
-backup_restore_script="$lib_dir/backup/lxc/restore.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 
 for helper in \
   "$state_script" \
-  "$backup_restore_script" \
   "$log_capture_script" \
   "$log_write_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
@@ -57,12 +55,12 @@ if [[ "$rollback_enabled" != true ]]; then
   exit 0
 fi
 
-if [[ -z "$backup_volume" ]]; then
+if [[ -z "$snapshot_name" ]]; then
   bash "$log_write_script" "$log_file" WARN recovery_skipped \
     "vmid=$vmid" \
     "failed_stage=$failed_stage" \
     "primary_exit_code=$primary_result" \
-    "reason=no_recovery_artifact" || \
+    "reason=no_recovery_snapshot" || \
     printf 'ERROR: could not record unavailable recovery in %s\n' "$log_file" >&2
   exit 0
 fi
@@ -71,7 +69,8 @@ bash "$log_write_script" "$log_file" WARN recovery_start \
   "vmid=$vmid" \
   "failed_stage=$failed_stage" \
   "primary_exit_code=$primary_result" \
-  "backup=$backup_volume" || \
+  "backup=$backup_volume" \
+  "snapshot=$snapshot_name" || \
   printf 'ERROR: could not record recovery start in %s\n' "$log_file" >&2
 
 current_state="$(bash "$state_script" "$vmid")"
@@ -118,14 +117,14 @@ case "$current_state" in
     ;;
 esac
 
-bash "$log_capture_script" "$log_file" recovery_restore -- \
-  bash "$backup_restore_script" "$vmid" "$backup_volume"
+bash "$log_capture_script" "$log_file" recovery_rollback -- \
+  pct rollback "$vmid" "$snapshot_name"
 recovery_result=$?
 if (( recovery_result != 0 )); then
   bash "$log_write_script" "$log_file" ERROR recovery_end \
     "vmid=$vmid" \
     "status=failed" \
-    "step=restore" \
+    "step=rollback" \
     "exit_code=$recovery_result" \
     "backup=$backup_volume" || true
   exit "$recovery_result"
@@ -148,7 +147,8 @@ fi
 bash "$log_write_script" "$log_file" INFO recovery_end \
   "vmid=$vmid" \
   "status=success" \
-  "backup=$backup_volume" || \
+  "backup=$backup_volume" \
+  "snapshot=$snapshot_name" || \
   printf 'ERROR: could not record successful recovery in %s\n' "$log_file" >&2
 
 exit 0

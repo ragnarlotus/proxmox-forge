@@ -45,6 +45,7 @@ target_script="$script_dir/get-target.sh"
 state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
 backup_create_script="$lib_dir/backup/lxc/create.sh"
+snapshot_create_script="$lib_dir/backup/lxc/snapshot.sh"
 recovery_script="$script_dir/recover.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
@@ -61,6 +62,7 @@ for helper in \
   "$state_script" \
   "$requirements_script" \
   "$backup_create_script" \
+  "$snapshot_create_script" \
   "$recovery_script" \
   "$os_update_script" \
   "$application_update_script" \
@@ -122,6 +124,7 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
+snapshot_name=""
 package_manager=""
 application_updater=""
 custom_scripts_planned=false
@@ -351,6 +354,32 @@ else
   record_skipped_stage backup no_mutating_stages
 fi
 
+if [[ "$mutation_planned" == true ]]; then
+  snapshot_output_file="$(mktemp)" || finish_failed snapshot 1
+  bash "$log_capture_script" "$log_file" snapshot -- \
+    bash -o pipefail -c 'bash "$1" "$2" | tee "$3"' \
+      _ "$snapshot_create_script" "$vmid" "$snapshot_output_file"
+  stage_result=$?
+
+  if (( stage_result != 0 )); then
+    rm -f "$snapshot_output_file"
+    finish_failed snapshot "$stage_result"
+  fi
+
+  snapshot_record="$(grep '^snapshot=success ' "$snapshot_output_file" | tail -n 1)"
+  rm -f "$snapshot_output_file"
+  parse_record "$snapshot_record"
+  snapshot_name="${RECORD_FIELDS[name]:-}"
+
+  if [[ -z "$snapshot_name" ]]; then
+    bash "$log_write_script" "$log_file" ERROR snapshot_artifact_error \
+      "vmid=$vmid" "reason=missing_name" || true
+    finish_failed snapshot 1
+  fi
+else
+  record_skipped_stage snapshot no_mutating_stages
+fi
+
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
   bash "$log_capture_script" "$log_file" os_update -- \
     bash "$os_update_script" "$vmid" "$package_manager"
@@ -358,7 +387,7 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
 
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
       os_update "$stage_result" || true
     finish_failed os_update "$stage_result"
   fi
@@ -373,7 +402,7 @@ if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
 
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
       application_update "$stage_result" || true
     finish_failed application_update "$stage_result"
   fi
@@ -392,7 +421,7 @@ else
 
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
       custom_scripts "$stage_result" || true
     finish_failed custom_scripts "$stage_result"
   fi
@@ -405,7 +434,7 @@ if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
 
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
       health "$stage_result" || true
     finish_failed health "$stage_result"
   fi
