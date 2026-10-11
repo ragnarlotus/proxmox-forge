@@ -46,20 +46,6 @@ In either bulk command, any failed LXC is recorded as failed regardless of its e
 
 Target inspection, host requirements and LXC requirements are internal workflows, not public CLI commands.
 
-## Updating Forge itself
-
-Forge does not yet implement a self-update command. Update the checkout explicitly:
-
-```bash
-cd /opt/proxmox-forge
-git pull --ff-only
-./forge validate-config
-```
-
-Because `forge.conf` and target-specific `scripts.d/` contents are ignored by Git, normal fast-forward source updates preserve local host configuration and local target extensions.
-
-Do not pull new code into the checkout while any Forge execution is in progress: child stages in the active run must continue using the same source revision from start to finish.
-
 ## Operational checks
 
 Useful read-only public CLI commands before an update:

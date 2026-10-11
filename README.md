@@ -87,6 +87,20 @@ ln -s /opt/proxmox-forge/forge /usr/local/bin/forge
 
 The top-level `forge` script locates the rest of the project relative to itself; only values such as `CUSTOM_SCRIPTS_DIR` remain configuration paths.
 
+## Updating Forge itself
+
+Forge does not yet implement a self-update command. Update the checkout explicitly:
+
+```bash
+cd /opt/proxmox-forge
+git pull --ff-only
+./forge validate-config
+```
+
+Because `forge.conf` and target-specific `scripts.d/` contents are ignored by Git, normal fast-forward source updates preserve local host configuration and local target extensions.
+
+Do not pull new code into the checkout while any Forge execution is in progress: child stages in the active run must continue using the same source revision from start to finish.
+
 ## Documentation
 
 | Section | Description |
