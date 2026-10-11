@@ -1,8 +1,8 @@
 # Forge — Feature Checklist
 
-Tracking document for the capabilities identified during the initial requirements survey.
+Practical capability checklist for Forge's Proxmox host and LXC updater, plus a small set of relevant future improvements (including possible VM support).
 
-This is a catalogue, not a commitment to implement every item. Items stay here even when they are outside the initial scope so they can be evaluated later.
+Speculative features, duplicate entries, incompatible policies and unrelated platform/tooling proposals have been removed. Existing feature IDs are intentionally preserved for historical traceability, so gaps are expected. Unchecked items are candidates, not commitments.
 
 Implemented means the capability exists in the current `main` branch at the scope described. Partial plumbing, collected-but-unused data, or behaviour that only happens incidentally is not marked as implemented.
 
@@ -13,7 +13,7 @@ Implemented means the capability exists in the current `main` branch at the scop
 
 ## Initial scope constraints
 
-These are agreed behavioural requirements for the initial implementation. They do not remove broader capabilities from the catalogue below.
+These are the agreed behavioural requirements of the current implementation.
 
 - [x] **Exact target resolution** — a guest may be selected by exact Proxmox VMID or exact guest name only. Partial, prefix or fuzzy name matching is forbidden. No exact match must fail; an ambiguous exact name must also fail.
 - [x] **Stopped LXC automatic-scope exclusion** — bulk updates never select stopped containers automatically. An explicitly requested stopped LXC may be started temporarily for its update and is returned to stopped state afterwards.
@@ -29,15 +29,9 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [x] **F001** Detect the local Proxmox host automatically.
 - [x] **F002** Discover all LXC containers.
 - [ ] **F003** Discover all virtual machines.
-- [ ] **F004** Discover Proxmox cluster nodes.
-- [ ] **F005** Manage external hosts over SSH.
 - [x] **F006** Detect target state: running, stopped, template, etc.
 - [x] **F007** Detect target OS, distribution and version.
-- [ ] **F008** Detect available transport: local, `pct`, QGA, SSH.
-- [ ] **F009** Inventory installed packages.
 - [x] **F010** Inventory available application/special updater mechanisms.
-- [ ] **F011** Support target tags/groups.
-- [ ] **F012** Optional persistent inventory in addition to dynamic discovery.
 
 ## B. Update discovery
 
@@ -47,102 +41,62 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [ ] **F016** Report the exact list of affected packages.
 - [ ] **F017** Report installed version → candidate version.
 - [ ] **F018** Distinguish security updates.
-- [ ] **F019** Distinguish bugfix/enhancement updates where supported.
-- [ ] **F020** Show package changelog/advisory information where available.
-- [ ] **F021** Associate CVE/advisory information where reliable data exists.
 - [ ] **F022** Detect held packages.
 - [ ] **F023** Provide a completely read-only preview/check mode.
 - [ ] **F024** Generate an exact update plan before execution.
 
 ## C. Selection and policies
 
-- [ ] **F025** `ONLY` selection by ID/name.
 - [ ] **F026** `EXCLUDE` selection by ID/name.
-- [ ] **F027** Include/exclude using tags.
-- [ ] **F028** Filter by target type: host/LXC/VM/external.
 - [x] **F029** Filter automatic LXC scope by running state. `UPDATE_RUNNING_LXC` controls inclusion of currently running LXCs; stopped LXCs are never selected automatically.
 - [x] **F030** Skip templates automatically.
-- [ ] **F031** Separate filters for CHECK and UPDATE.
-- [ ] **F032** Select individual packages.
-- [ ] **F033** Exclude individual packages.
-- [ ] **F034** Security-only policy.
-- [ ] **F035** Policies by target/group/tag.
-- [ ] **F036** Per-target policy overrides.
 
-## D. Execution modes
+## D. Update execution
 
-- [x] **F037** Interactive/manual execution mode.
-- [ ] **F038** Persistently configurable automatic/non-interactive mode.
-- [ ] **F039** Native terminal behaviour and real prompts in interactive mode.
-- [x] **F040** No prompts in automatic mode.
+- [x] **F040** No interactive prompts during update execution.
 - [x] **F041** Execute each mutating operation exactly once.
-- [x] **F042** Deterministic output capture in automatic mode.
-- [ ] **F043** Global execution mode configuration.
-- [ ] **F044** Temporary execution-mode override from CLI.
-- [ ] **F045** Allow execution behaviour to vary by operation class where required.
+- [x] **F042** Deterministic terminal output capture during updates.
 
 ## E. Operating systems and package managers
 
 - [x] **F046** Debian/Ubuntu updates through APT.
-- [ ] **F047** Fedora/RHEL/Rocky/Alma updates through DNF/YUM.
-- [ ] **F048** Arch updates through Pacman.
-- [ ] **F049** Alpine updates through APK.
-- [ ] **F050** Devuan support.
-- [ ] **F051** Mint/Kali/Neon and other Debian derivatives.
-- [ ] **F052** FreeBSD updates through `pkg`.
-- [ ] **F053** Extensible/future Windows Update support.
 - [x] **F054** Automatically detect the supported update strategy.
-- [ ] **F055** Configurable package-manager-specific arguments.
 
-> The current LXC update scope is APT-only. F054 currently means detecting APT as supported and rejecting any unsupported package manager; it does not imply that DNF/YUM, Pacman or APK adapters exist.
+> The current LXC update scope is APT-only. F054 means detecting APT as supported and rejecting unsupported package managers.
 
 ## F. Application updates and custom scripts
 
 - [x] **F056** Update applications installed through Proxmox Community Scripts.
 - [x] **F057** Detect `/usr/bin/update` or another known application updater.
-- [ ] **F058** Application-specific updater adapters/plugins.
 - [x] **F059** Per-target custom scripts.
-- [ ] **F060** Global custom scripts.
-- [ ] **F061** Pre-update hooks.
-- [ ] **F062** Post-update hooks.
 - [x] **F063** Every plugin/script returns an authoritative result.
 
 ## G. Preflight
 
 - [ ] **F064** Check free filesystem space.
-- [ ] **F065** Estimate/check space required for the update.
 - [ ] **F066** Check available memory.
-- [ ] **F067** Check CPU/resources when an application updater requires them.
 - [ ] **F068** Check real LVM-thin `Data%` / `Meta%` usage.
 - [ ] **F069** Check storage required for snapshots/backups.
-- [ ] **F070** Verify repositories are valid and reachable.
 - [x] **F071** Detect package-manager locks/conflicting processes.
-- [ ] **F072** Verify required network connectivity.
-- [ ] **F073** Verify QGA/SSH/`pct` transport before mutation.
-- [ ] **F074** Custom preflight hook support.
 - [x] **F075** A failed mandatory preflight blocks the update.
 
 > Forge currently collects root free-space and available-memory values during LXC inspection, but they are not yet policy-enforced preflight checks; therefore F064/F066 remain unchecked.
 
 ## H. Snapshot, backup and rollback
 
-- [ ] **F076** Optional pre-update snapshot.
 - [x] **F077** Optional pre-update backup.
 - [x] **F078** Require snapshot/backup according to policy.
 - [x] **F079** Select backup storage. Current implementation derives it from the authoritative Proxmox backup configuration instead of maintaining a second Forge storage policy.
 - [x] **F080** Support applicable backup modes: snapshot/suspend/stop. Current LXC backup execution inherits supported options from the applicable Proxmox backup job.
-- [ ] **F081** Fallback from snapshot to backup when snapshot is not viable.
 - [x] **F082** Verify snapshot/backup actually completed successfully.
 - [x] **F083** Record the exact recovery artifact identifier.
-- [ ] **F084** Verify age/freshness of an existing backup.
-- [ ] **F085** Manual rollback.
 - [x] **F086** Configurable automatic rollback after failure.
 - [x] **F087** Retention/cleanup policy for snapshots created by Forge. Prunes only older `Update_*` LXC snapshots to the `keep-last` limit of the applicable Proxmox backup job, preserving manually named snapshots and retaining the new snapshot after success or rollback.
 - [x] **F088** Never remove the recovery artifact before the final result is known.
 
 > Guest rollback capabilities do not apply to the Proxmox host itself.
 >
-> Forge creates a persistent `Update_*` LXC snapshot before mutating an LXC, in addition to the `vzdump` recovery backup generated according to its applicable Proxmox job. Automatic failure recovery now uses `pct rollback` against the exact same-run snapshot rather than destructive `pct restore --force`. Forge uses that job's `keep-last` value to cap the number of Forge-created `Update_*` snapshots; this is Forge policy, since Proxmox backup pruning alone does not manage persistent snapshots. The snapshot is currently mandatory whenever an LXC mutation is planned, with no independent option to disable it, so F076 (optional snapshot policy) remains unchecked. F081 (fallback to backup) also remains unchecked.
+> For LXC mutations, Forge requires a persistent `Update_*` snapshot as well as the `vzdump` backup from the applicable Proxmox job. Automatic recovery uses `pct rollback` to the same-run snapshot, never an automatic destructive `pct restore --force` fallback. Forge applies the job's `keep-last` value to its own `Update_*` snapshots; Proxmox backup pruning does not manage persistent snapshots. The snapshot is required, not an optional extra.
 
 ## I. Guest lifecycle
 
@@ -152,20 +106,12 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [x] **F092** Update the guest.
 - [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt, including after eligible failure/recovery paths.
 - [ ] **F094** Detect reboot-required state.
-- [ ] **F095** Configurable reboot behaviour.
-- [ ] **F096** Restart services instead of rebooting when sufficient.
-- [ ] **F097** Wait for readiness after reboot.
 
 ## J. Health and recovery
 
-- [ ] **F098** Capture a health baseline before mutation.
 - [x] **F099** Run health checks after updating.
 - [x] **F100** Check relevant systemd services.
 - [ ] **F101** Configurable functional health checks.
-- [ ] **F102** Compare pre-update and post-update health.
-- [ ] **F103** Structured health states such as healthy/degraded/unverified/failed.
-- [ ] **F104** Bounded retries when a service needs time to become ready.
-- [ ] **F105** Configurable recovery action.
 - [x] **F106** Roll back when a mandatory health check does not recover.
 - [ ] **F107** Verify health again after rollback.
 
@@ -180,50 +126,26 @@ These are agreed behavioural requirements for the initial implementation. They d
 - [x] **F114** `continue_on_error` means continue processing, never convert failure into success.
 - [x] **F115** Correctly aggregate the final run result. Every nonzero LXC update exit code counts as failure; no special exit code is reserved for skipped containers.
 - [x] **F116** Distinguish primary failure from cleanup failure.
-- [ ] **F117** Explicit timeouts.
-- [ ] **F118** Retries only for operations that are safe to repeat.
 - [x] **F119** Structured result per step, target and run.
 
 ## L. Scheduling and orchestration
 
 - [x] **F120** Immediate manual execution.
 - [ ] **F121** Scheduling through systemd timers.
-- [ ] **F122** Daily/weekly/custom schedules.
-- [ ] **F123** Schedule by target/group.
-- [ ] **F124** Maintenance windows.
-- [ ] **F125** Stagger/jitter to avoid updating everything simultaneously.
-- [ ] **F126** Canary/pilot group before production rollout.
 - [x] **F127** Serial updates.
-- [ ] **F128** Configurable limited parallelism.
 - [x] **F129** Global lock for incompatible simultaneous runs. Forge currently uses a stricter single-run policy: every `forge` invocation acquires one global non-blocking lock, so a second Forge execution is rejected until the first exits. The standalone PVE restore utility participates in the same lock.
-- [ ] **F130** Per-target locking.
 - [ ] **F131** Jobs survive SSH/session disconnection.
-- [ ] **F132** History of scheduled runs.
 
-> The current concurrency policy deliberately serializes the whole Forge CLI rather than individual targets. All `lib/**/*.sh` components are internal and require the runtime context inherited from `forge`; the only independent exception is `lib/backup/host/restore.sh`, which acquires the same global lock and creates that context itself for disaster recovery. Per-target locks are therefore not required by the current execution model.
-
-## M. Content lifecycle and version safety
-
-- [ ] **F133** Version pinning.
-- [ ] **F134** Custom repositories/mirrors.
-- [ ] **F135** Repository snapshots.
-- [ ] **F136** Dev → Test → Production promotion.
-- [ ] **F137** Update only to previously approved versions.
-- [ ] **F138** Target a specific advisory/CVE.
-- [ ] **F139** Globally exclude a problematic package/version.
-- [ ] **F140** Ring-based rollout.
+> Forge serializes the whole CLI using one global lock. All `lib/**/*.sh` components are internal, except `lib/backup/host/restore.sh`, which acquires the same lock for disaster recovery.
 
 ## N. Logging, history and reporting
 
 - [ ] **F141** General log per run.
 - [x] **F142** Independent log per target.
-- [ ] **F143** Independent log per step.
 - [x] **F144** Precise timestamps.
 - [x] **F145** Persist exit codes.
 - [ ] **F146** Record duration per step/target/run.
 - [ ] **F147** Human-readable final summary.
-- [ ] **F148** Structured JSON result.
-- [ ] **F149** Queryable execution history.
 - [x] **F150** Configurable log/history retention. Current `LOG_KEEP` retention applies to timestamped per-LXC logs.
 - [x] **F151** Distinguish warnings from errors.
 - [x] **F152** Audit what was attempted and its result.
@@ -232,89 +154,42 @@ These are agreed behavioural requirements for the initial implementation. They d
 
 - [ ] **F153** Email notifications.
 - [ ] **F154** Notify only on errors.
-- [ ] **F155** Notify only about security updates.
-- [ ] **F156** Notify when updates are available without installing them.
 - [ ] **F157** Final success/failure/partial notification.
-- [ ] **F158** Future webhook/notification extensions.
 - [ ] **F159** Summary with failed targets and causes.
-
-## P. Security and access
-
-- [ ] **F160** Dedicated SSH identity for Forge.
-- [ ] **F161** SSH `BatchMode` for automation.
-- [ ] **F162** SSH timeouts.
-- [ ] **F163** Configurable known-host verification without silent insecure defaults.
-- [ ] **F164** Minimum privileges where practical.
-- [ ] **F165** Separate credentials from non-secret configuration.
-- [ ] **F166** Verify downloaded scripts/artifacts.
-- [ ] **F167** Avoid executing unvalidated downloaded remote code where possible.
-- [ ] **F168** Audit privileged actions.
-- [ ] **F169** RBAC only if Forge ever becomes multi-user.
 
 ## Q. Configuration
 
 - [x] **F170** One coherent configuration model/schema.
 - [x] **F171** Explicit defaults.
 - [x] **F172** Global configuration.
-- [ ] **F173** Overrides by group/tag.
-- [ ] **F174** Per-target overrides.
-- [ ] **F175** Temporary CLI overrides.
 - [x] **F176** Validate the complete configuration before execution.
 - [x] **F177** Defined policy for unknown/invalid configuration values.
-- [ ] **F178** Configuration migration between versions.
 - [x] **F179** Preserve custom configuration across upgrades.
 - [ ] **F180** Print the effective configuration.
 - [x] **F181** Validate configuration without updating anything.
-- [ ] **F182** Keep behaviour in configuration rather than scattered hard-coded exceptions.
 
 > Configuration is now layered like a defaults/local model: versioned `forge.conf.default` is always loaded first and optional Git-ignored `forge.conf` is loaded afterwards as host-local overrides. Duplicate keys inside one file and unknown keys are errors.
 
 ## R. Extensibility and architecture
 
-- [ ] **F183** Core/orchestrator independent from transports.
 - [x] **F184** Local transport.
 - [x] **F185** `pct` transport.
-- [ ] **F186** SSH transport.
 - [ ] **F187** QGA transport.
-- [ ] **F188** Package-manager adapters.
-- [ ] **F189** Application updater adapters.
 - [x] **F190** Hooks/plugins without modifying the core. Current implementation is target-local `scripts.d/<VMID>/*.sh` execution.
-- [ ] **F191** Common result model independent of transport/updater.
-- [ ] **F192** Capability detection instead of scattered hard-coded branches.
-- [ ] **F193** Idempotency where applicable.
 - [x] **F194** Components testable in isolation.
-- [x] **F195** No dependency on a Web UI.
-- [ ] **F196** Any future UI consumes the same core/API/CLI instead of redefining execution.
-
-## S. Forge self-management
-
-- [ ] **F197** Report Forge version.
-- [ ] **F198** Check for a newer Forge version.
-- [ ] **F199** Controlled self-update.
-- [ ] **F200** Stable/development channels if ever required.
-- [ ] **F201** Validate a new Forge version before replacing the current version.
-- [ ] **F202** Preserve configuration and data during Forge updates.
-- [ ] **F203** Roll back Forge itself if its own update fails.
 
 ## T. Tests and quality
 
-- [ ] **F204** Unit tests for adapters.
-- [ ] **F205** Transport tests.
 - [ ] **F206** Exit-code propagation tests.
 - [ ] **F207** Tests proving each mutating operation executes only once.
-- [ ] **F208** Package-manager parsing tests.
 - [ ] **F209** Configuration tests.
-- [ ] **F210** Configuration migration tests.
 - [ ] **F211** Result aggregation tests.
-- [ ] **F212** Golden-output regression tests where useful.
 - [ ] **F213** Integration tests with mocks/fakes.
 - [x] **F214** End-to-end tests on real Proxmox for critical paths. Manually verified on live LXC 110: snapshot creation and preservation, `vzdump` backup, automatic `pct rollback` after a controlled custom-script failure (exit 42), removal of a post-snapshot filesystem marker, restoration of the original stopped state, and `keep-last=3` snapshot pruning.
 
-> The critical paths have been manually validated on a live Proxmox host, including a complete combined host/LXC update run (using the former `update-all` command), forced LXC health failure/recovery, output/CR sanitization, scrollback preservation, host `autoremove`, LXC `autoremove` dry-run, real `pct fstrim`, and explicit updates of an initially stopped LXC. The October 11, 2026 LXC 110 tests additionally verified persistent snapshots, controlled-failure automatic rollback, restored filesystem content, original lifecycle state and snapshot retention. F214 is checked for these real end-to-end validations; no repeatable automated test suite has yet been added, so F204–F213 remain unchecked.
+> Live Proxmox validations include a combined host/LXC update, guest failure recovery, terminal output handling, APT maintenance, `pct fstrim` and an explicit update of an initially stopped LXC. On October 11, 2026, LXC 110 tests additionally verified persistent snapshots, rollback after a controlled failure, restored filesystem content, original lifecycle state and retention. F214 represents these manual end-to-end tests; repeatable automated tests remain pending.
 
 ## U. Post-update maintenance and terminal behaviour
-
-These capabilities were added after the original requirements survey and therefore start at F215.
 
 - [x] **F215** Run `apt-get -y autoremove` after successful APT package upgrades on the Proxmox host and APT-based LXCs, preserving the real failure result if autoremove fails.
 - [x] **F216** Run `pct fstrim <VMID>` as explicit post-update maintenance for successfully updated LXCs. A trim failure is reported as a warning and does not trigger destructive rollback of an otherwise successful update.
@@ -334,7 +209,7 @@ These capabilities were added after the original requirements survey and therefo
 
 Forge is organised conceptually around six major capabilities:
 
-- [x] **DISCOVER** — determine which systems exist and what needs updating. Current implementation covers the local Proxmox host and LXCs.
+- [x] **DISCOVER** — determine which update targets exist. Current implementation covers the local Proxmox host and LXCs.
 - [ ] **PLAN** — determine exactly what will be done and under which policy.
 - [x] **PROTECT** — run preflight checks and establish a recovery point/state before mutation.
 - [x] **EXECUTE** — perform the update exactly once using the correct mechanism.
