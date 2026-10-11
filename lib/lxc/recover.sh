@@ -34,11 +34,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 
 state_script="$script_dir/get-state.sh"
+health_script="$script_dir/health.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 
 for helper in \
   "$state_script" \
+  "$health_script" \
   "$log_capture_script" \
   "$log_write_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
@@ -142,6 +144,35 @@ if (( recovery_result != 0 )); then
     "step=start" \
     "exit_code=$recovery_result" \
     "backup=$backup_volume" || true
+  exit "$recovery_result"
+fi
+
+# Wait for the restored guest to accept commands, then reuse the normal health check.
+ready=false
+deadline=$((SECONDS + 30))
+while (( SECONDS < deadline )); do
+  if timeout 2 pct exec "$vmid" -- true </dev/null >/dev/null 2>&1; then
+    ready=true
+    break
+  fi
+  sleep 1
+done
+
+if [[ "$ready" == true ]]; then
+  bash "$log_capture_script" "$log_file" recovery_health -- bash "$health_script" "$vmid"
+  recovery_result=$?
+else
+  printf 'ERROR: LXC %s did not become ready after rollback\n' "$vmid" >&2
+  recovery_result=1
+fi
+
+if (( recovery_result != 0 )); then
+  bash "$log_write_script" "$log_file" ERROR recovery_end \
+    "vmid=$vmid" \
+    "status=failed" \
+    "step=health" \
+    "exit_code=$recovery_result" \
+    "snapshot=$snapshot_name" || true
   exit "$recovery_result"
 fi
 

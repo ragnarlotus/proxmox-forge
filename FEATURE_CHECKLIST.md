@@ -113,7 +113,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **F100** Check relevant systemd services.
 - [ ] **F101** Configurable functional health checks.
 - [x] **F106** Roll back when a mandatory health check does not recover.
-- [ ] **F107** Verify health again after rollback.
+- [x] **F107** Verify health again after rollback, using the existing LXC health check after the guest is restarted and responds to `pct exec`; record recovery as failed if the check fails.
 
 ## K. Correct error semantics
 

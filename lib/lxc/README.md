@@ -73,7 +73,7 @@ The current generic post-update LXC health check verifies that:
 - `pct exec` succeeds;
 - when systemd is active inside the LXC, there are no failed systemd service units.
 
-A mandatory health failure is an update failure and can trigger rollback when configured.
+A mandatory health failure is an update failure and can trigger rollback when configured. After rollback and guest restart, Forge waits up to 30 seconds for `pct exec` readiness and reuses the same `health.sh` check before declaring recovery successful. A failed recovery check is reported separately; the original update failure remains authoritative.
 
 ## Post-update filesystem trim
 
