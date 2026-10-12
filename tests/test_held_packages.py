@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""F022: exercise real APT held-package detector with harmless package fakes."""
+"""F022: verify only held APT packages with available upgrades are reported."""
 
 import os
 import subprocess
@@ -12,20 +12,38 @@ ROOT = Path(__file__).resolve().parents[1]
 
 APT = r"""#!/bin/sh
 [ "$#" -eq 1 ] && [ "$1" = showhold ] || exit 94
-printf 'apt-mark showhold\n' >> "$FORGE_TEST_CALLS"
+printf 'apt-mark\n' >> "$FORGE_TEST_CALLS"
 printf '%s' "$FORGE_TEST_HOLDS"
 exit "$FORGE_TEST_APT_CODE"
 """
 
-PCT = r"""#!/bin/sh
-[ "$#" -eq 7 ] || exit 95
-[ "$1" = exec ] && [ "$2" = 111 ] && [ "$3" = -- ] && \
-  [ "$4" = env ] && [ "$5" = LC_ALL=C ] && \
-  [ "$6" = apt-mark ] && [ "$7" = showhold ] || exit 96
+CACHE = r"""#!/bin/sh
+[ "$#" -eq 2 ] && [ "$1" = policy ] || exit 95
+printf 'apt-cache %s\n' "$2" >> "$FORGE_TEST_CALLS"
+[ "$FORGE_TEST_CACHE_CODE" = 0 ] || exit "$FORGE_TEST_CACHE_CODE"
+candidate=1.0
+case ",$FORGE_TEST_OUTDATED," in
+  *,"$2",*) candidate=2.0 ;;
+esac
+printf '%s\n' "$2:"
+printf '  Installed: 1.0\n'
+printf '  Candidate: %s\n' "$candidate"
+"""
+
+DPKG = r"""#!/bin/sh
+[ "$#" -eq 4 ] && [ "$1" = --compare-versions ] || exit 96
+printf 'dpkg %s\n' "$2" >> "$FORGE_TEST_CALLS"
+exec /usr/bin/dpkg "$@"
+"""
+
+PCT = r"""#!/bin/bash
+[[ $# -eq 8 && "$1" == exec && "$2" == 111 && "$3" == -- &&
+   "$4" == bash && "$5" == -c && "$7" == _ && "$8" == 111 ]] || exit 97
 printf 'pct exec 111\n' >> "$FORGE_TEST_CALLS"
-[ ! -t 0 ] || exit 97
-printf '%s' "$FORGE_TEST_HOLDS"
-exit "$FORGE_TEST_PCT_CODE"
+[[ ! -t 0 ]] || exit 98
+shift 3
+[[ "$FORGE_TEST_PCT_CODE" == 0 ]] || exit "$FORGE_TEST_PCT_CODE"
+exec "$@"
 """
 
 
@@ -36,9 +54,14 @@ class HeldPackagesTests(unittest.TestCase):
         self.base = Path(self.temp.name)
         bin_dir = self.base / "bin"
         bin_dir.mkdir()
-        for name, source in (("apt-mark", APT), ("pct", PCT)):
+        for name, content in (
+            ("apt-mark", APT),
+            ("apt-cache", CACHE),
+            ("dpkg", DPKG),
+            ("pct", PCT),
+        ):
             target = bin_dir / name
-            target.write_text(source, encoding="utf-8")
+            target.write_text(content, encoding="utf-8")
             target.chmod(0o755)
         guard = self.base / "guard.sh"
         guard.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
@@ -49,7 +72,9 @@ class HeldPackagesTests(unittest.TestCase):
             "FORGE_RUNTIME_GUARD": str(guard),
             "FORGE_TEST_CALLS": str(self.calls_path),
             "FORGE_TEST_HOLDS": "",
+            "FORGE_TEST_OUTDATED": "",
             "FORGE_TEST_APT_CODE": "0",
+            "FORGE_TEST_CACHE_CODE": "0",
             "FORGE_TEST_PCT_CODE": "0",
         }
 
@@ -61,44 +86,64 @@ class HeldPackagesTests(unittest.TestCase):
             input="", capture_output=True, text=True, check=False,
         )
 
-    def test_host_no_holds_reports_zero_without_notice(self):
+    def calls(self):
+        return self.calls_path.read_text(encoding="utf-8").splitlines()
+
+    def test_no_holds_is_silent(self):
         result = self.invoke("host")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "held_packages=0 type=host\n")
-        self.assertEqual(self.calls_path.read_text(), "apt-mark showhold\n")
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(self.calls(), ["apt-mark"])
 
-    def test_host_holds_report_every_name_count_and_notice(self):
+    def test_held_package_with_no_upgrade_is_silent(self):
+        result = self.invoke("host", FORGE_TEST_HOLDS="alpha\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(self.calls(), ["apt-mark", "apt-cache alpha", "dpkg 1.0"])
+
+    def test_host_warns_only_for_outdated_holds(self):
         result = self.invoke(
-            "host", FORGE_TEST_HOLDS="zeta\nalpha:amd64\nzeta\nlibssl3t64\n",
+            "host", FORGE_TEST_HOLDS="zeta\nalpha:amd64\nzeta\nstable\n",
+            FORGE_TEST_OUTDATED="zeta,alpha:amd64",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("held_package=alpha:amd64 type=host\n", result.stdout)
-        self.assertIn("held_package=libssl3t64 type=host\n", result.stdout)
-        self.assertIn("held_package=zeta type=host\n", result.stdout)
-        self.assertIn("held_packages=3 type=host\n", result.stdout)
-        self.assertLess(result.stdout.index("alpha"), result.stdout.index("zeta"))
-        self.assertIn("NOTICE: Proxmox host has 3 explicitly held", result.stdout)
-        self.assertEqual(self.calls_path.read_text(), "apt-mark showhold\n")
+        self.assertIn("held_upgrade_pending=alpha:amd64 installed=1.0 candidate=2.0 type=host\n",
+                      result.stdout)
+        self.assertIn("held_upgrade_pending=zeta installed=1.0 candidate=2.0 type=host\n",
+                      result.stdout)
+        self.assertNotIn("held_upgrade_pending=stable", result.stdout)
+        self.assertIn("held_upgrades_pending=2 type=host", result.stdout)
+        self.assertIn("WARNING: 2 explicitly held", result.stdout)
+        self.assertEqual(self.calls().count("apt-cache zeta"), 1)
 
-    def test_guest_checks_inside_lxc_without_update(self):
-        result = self.invoke("111", FORGE_TEST_HOLDS="hold-me\n")
+    def test_guest_runs_inside_lxc_once(self):
+        result = self.invoke(
+            "111", FORGE_TEST_HOLDS="bar\n", FORGE_TEST_OUTDATED="bar",
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("held_package=hold-me type=lxc vmid=111\n", result.stdout)
-        self.assertIn("held_packages=1 type=lxc vmid=111\n", result.stdout)
-        self.assertIn("NOTICE: LXC 111 has 1 explicitly held", result.stdout)
-        self.assertEqual(self.calls_path.read_text(), "pct exec 111\n")
+        self.assertIn("held_upgrade_pending=bar installed=1.0 candidate=2.0 type=lxc vmid=111",
+                      result.stdout)
+        self.assertIn("held_upgrades_pending=1 type=lxc vmid=111", result.stdout)
+        self.assertEqual(self.calls().count("pct exec 111"), 1)
 
-    def test_host_failure_never_claims_zero_holds(self):
+    def test_hold_read_failure_is_error_not_clean(self):
         result = self.invoke("host", FORGE_TEST_APT_CODE="42")
-        self.assertEqual(result.returncode, 42, result.stderr)
-        self.assertIn("could not inspect held APT packages", result.stderr)
-        self.assertNotIn("held_packages=0", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("could not inspect pending held APT upgrades", result.stderr)
+        self.assertEqual(result.stdout, "")
 
-    def test_guest_failure_never_claims_zero_holds(self):
+    def test_policy_failure_is_error(self):
+        result = self.invoke("host", FORGE_TEST_HOLDS="foo\n",
+                             FORGE_TEST_CACHE_CODE="42")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("could not inspect pending held APT upgrades", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_guest_failure_never_reports_clean(self):
         result = self.invoke("111", FORGE_TEST_PCT_CODE="43")
         self.assertEqual(result.returncode, 43, result.stderr)
         self.assertIn("exit code 43", result.stderr)
-        self.assertNotIn("held_packages=0", result.stdout)
+        self.assertEqual(result.stdout, "")
 
     def test_invalid_target_is_rejected_before_inspection(self):
         result = self.invoke("guest11;unsafe")
@@ -106,11 +151,11 @@ class HeldPackagesTests(unittest.TestCase):
         self.assertIn("numeric VMID", result.stderr)
         self.assertFalse(self.calls_path.exists())
 
-    def test_unexpected_package_name_fails_closed(self):
-        result = self.invoke("host", FORGE_TEST_HOLDS="valid\nbad package\n")
+    def test_invalid_held_package_fails_closed(self):
+        result = self.invoke("host", FORGE_TEST_HOLDS="bad package\n")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unexpected package name", result.stderr)
-        self.assertNotIn("held_packages=0", result.stdout)
+        self.assertIn("invalid held APT package name", result.stderr)
+        self.assertNotIn("held_upgrades_pending", result.stdout)
 
 
 if __name__ == "__main__":
