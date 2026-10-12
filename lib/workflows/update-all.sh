@@ -11,6 +11,11 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
+  if [[ "${final_notification_ready:-false}" == true ]]; then
+    printf '\nForge final notification preview (email not sent):\n'
+    bash "$final_notification_script" preflight failed "$mode" "$*" || \
+      printf 'WARNING: could not render failed preflight notification\n' >&2
+  fi
   exit 1
 }
 
@@ -48,6 +53,7 @@ done
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
+final_notification_ready=true
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
