@@ -47,7 +47,7 @@ LXC requirements checks are mandatory before backup or mutation and cannot be di
 | `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Boolean: `true` or `false` | Create and validate a host configuration backup before host package changes. |
 | `HOST_BACKUP_EXTRA_PATHS` | Empty string or comma-separated absolute paths | Optional paths appended to the fixed host-backup path set. Example: `/opt/custom,/srv/config`. |
 | `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Boolean: `true` or `false` | Create a Proxmox recovery backup before LXC mutation. |
-| `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE` | Boolean: `true` or `false` | Default `false`; when enabled and safe, use the existing same-run `vzdump` backup instead of a persistent snapshot for unsupported LXCs. |
+| `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE` | Boolean: `true` or `false` | Default `true`; when safe, use the same-run `vzdump` backup instead of a persistent snapshot for unsupported LXCs. Set `false` to require persistent snapshots and block snapshot-incompatible targets. |
 | `ROLLBACK_ON_FAILURE` | Boolean: `true` or `false` | Attempt same-run guest recovery after eligible update/health failures. |
 | `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation. |
 | `LOG_DIR` | Absolute path | Base Forge log directory. |

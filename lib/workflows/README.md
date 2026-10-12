@@ -28,7 +28,7 @@ update LXCs serially
 aggregate final result
 ```
 
-This means `continue after guest failure` never means `convert failure into success`. The centralized read-only conflict checker runs once for the complete selected scope before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false` blocks unsupported persistent snapshots; enabling it permits a backup-only path only when its preflight safety requirements pass. Stopped LXCs are excluded from bulk scope.
+This means `continue after guest failure` never means `convert failure into success`. The centralized read-only conflict checker runs once for the complete selected scope before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` permits backup-only recovery for snapshot-incompatible LXCs only when preflight safety requirements pass; setting it to `false` blocks those LXCs. Stopped LXCs are excluded from bulk scope.
 
 ## Validation status
 

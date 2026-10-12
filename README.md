@@ -89,15 +89,15 @@ The top-level `forge` script locates the rest of the project relative to itself;
 
 ## LXC recovery policy
 
-`BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false` is the default. Forge requires a persistent Proxmox snapshot for selected LXCs before updating them. The read-only `forge validate-config` command reports snapshot/backup-policy conflicts among running LXCs selected for bulk updates and blocks unsafe runs before any host or guest mutation.
+`BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` is the default. Forge uses a persistent Proxmox `Update_*` snapshot for snapshot-capable LXCs and, when safe, the same-run Proxmox `vzdump` backup for snapshot-incompatible LXCs. The read-only `forge validate-config` command reports snapshot/backup-policy conflicts among running LXCs selected for bulk updates and blocks unsafe runs before any host or guest mutation.
 
-For a snapshot-incompatible LXC, an optional local override can enable recovery using its same-run Proxmox `vzdump` backup:
+To require persistent snapshots for every selected LXC and block snapshot-incompatible targets, set the optional local override:
 
 ```bash
-BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true
+BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false
 ```
 
-This requires `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`, a valid applicable Proxmox backup job, and **no existing persistent snapshots that a forced restore could destroy**. The advanced restore helper preserves excluded storage-backed volumes and checks for persistent snapshots again before restoring. Running LXCs remain the only automatic targets; stopped LXCs are checked only when explicitly requested. See [Configuration](lib/config/README.md) and [Backup and recovery](lib/backup/README.md).
+The backup-only recovery fallback requires `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`, a valid applicable Proxmox backup job, and **no existing persistent snapshots that a forced restore could destroy**. The advanced restore helper preserves excluded storage-backed volumes and checks for persistent snapshots again before restoring. Running LXCs remain the only automatic targets; stopped LXCs are checked only when explicitly requested. See [Configuration](lib/config/README.md) and [Backup and recovery](lib/backup/README.md).
 
 ## Updating Forge itself
 
