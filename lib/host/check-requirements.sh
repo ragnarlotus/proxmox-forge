@@ -16,6 +16,13 @@ fail() {
 
 [[ $# -eq 0 ]] || fail "check-requirements.sh does not accept arguments"
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine requirements directory"
+lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
+source "$lib_dir/config/get.sh" || fail "could not load config"
+config_get || fail "could not load effective configuration"
+root_space_script="$lib_dir/preflight/root-space.sh"
+[[ -r "$root_space_script" ]] || fail "root-space helper is not readable"
+
 for command_name in pveversion hostname uname dpkg ps df awk; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is not available: $command_name"
 done
@@ -35,6 +42,7 @@ root_free_kb="$(df -Pk / | awk 'NR == 2 { print $4; exit }')" || fail "could not
 [[ -n "$os_id" ]] || fail "operating-system ID is empty"
 [[ -n "$os_version" ]] || fail "operating-system version is empty"
 [[ "$root_free_kb" =~ ^[0-9]+$ ]] || fail "root filesystem free-space value is invalid"
+bash "$root_space_script" host "${CONFIG[MIN_ROOT_FREE_MB]}" "$root_free_kb" || fail "host root space preflight failed"
 
 pve_major="${pve_version%%.*}"
 [[ "$pve_major" == 9 ]] || fail "unsupported Proxmox VE major version '$pve_major'"
