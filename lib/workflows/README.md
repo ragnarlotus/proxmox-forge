@@ -30,6 +30,12 @@ aggregate final result
 
 This means `continue after guest failure` never means `convert failure into success`. The centralized read-only conflict checker runs once for the complete selected scope before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` permits backup-only recovery for snapshot-incompatible LXCs only when preflight safety requirements pass; setting it to `false` blocks those LXCs. Stopped LXCs are excluded from bulk scope.
 
+## Final result summary
+
+Forge prints a human-readable summary after individual host or LXC updates and after bulk runs. Bulk summaries include host status, selected/succeeded/failed LXC counts, and individual failed VMIDs with their exit codes. If the host update fails, the summary states that LXC updates did not start. Disabled scopes are distinguished from failed updates.
+
+The readable summary is additional terminal output; existing structured `update=...` and `update_all=...` records, log records, failure aggregation and exit codes retain their previous semantics.
+
 ## Validation status
 
 The current critical path has been manually exercised on a live Proxmox system, including:

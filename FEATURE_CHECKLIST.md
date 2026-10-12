@@ -145,7 +145,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **F144** Precise timestamps.
 - [x] **F145** Persist exit codes.
 - [ ] **F146** Record duration per step/target/run.
-- [ ] **F147** Human-readable final summary.
+- [x] **F147** Human-readable final summary. The CLI prints a readable final outcome for individual host/LXC updates and bulk runs, including success/failure counts, failed LXC IDs and exit codes, host failures before guest updates, and disabled scopes; existing structured result lines, recovery behaviour and exit codes are unchanged.
 - [x] **F150** Configurable log/history retention. Current `LOG_KEEP` retention applies to timestamped per-LXC logs.
 - [x] **F151** Distinguish warnings from errors.
 - [x] **F152** Audit what was attempted and its result.
