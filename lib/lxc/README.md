@@ -108,3 +108,8 @@ pct fstrim <VMID>
 This is storage maintenance, not backup pruning. It returns filesystem blocks that are no longer in use to the underlying storage where supported.
 
 A `fstrim` failure is logged and reported as a **warning**. Forge deliberately does not restore an otherwise healthy guest merely because trim failed.
+
+
+## Final notification draft (F157)
+
+After an individual LXC update, Forge displays one reusable plain-text notification preview with subject, SUCCESS/FAILED status, VMID and either required restart status or the failing stage and exit code. It does **not** send email yet. When a guest is updated within a bulk run, only the bulk notification is shown. This presentation never changes the original update or rollback result.
