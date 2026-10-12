@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   tests:
-    name: Configuration, integration and exit codes (F206/F209/F213)
+    name: Configuration, integration and execution safety (F206/F207/F209/F213)
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
