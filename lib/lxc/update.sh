@@ -271,11 +271,16 @@ finish_failed() {
       "$vmid" "$state_restore_result" >&2
   fi
 
+  if [[ -n "${FORGE_NOTIFICATION_DETAIL_DIR:-}" ]]; then
+    printf 'stage=%s\nlog=%s\n' "$failed_stage" "$log_file" > "$FORGE_NOTIFICATION_DETAIL_DIR/lxc-$vmid" ||
+      printf 'WARNING: could not record LXC %s notification failure details\n' "$vmid" >&2
+  fi
+
   printf 'update=failed vmid=%s stage=%s exit_code=%s log=%s\n' \
     "$vmid" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
-  show_final_notification failed "$vmid" "$failed_stage" "$primary_result" unknown
+  show_final_notification failed "$vmid" "$failed_stage" "$primary_result" unknown "$log_file"
   exit "$primary_result"
 }
 
