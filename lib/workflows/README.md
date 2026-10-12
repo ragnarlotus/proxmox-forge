@@ -51,3 +51,10 @@ The current critical path has been manually exercised on a live Proxmox system, 
 - end-to-end explicit update of an initially stopped LXC, including temporary startup, recovery backup, OS/application update, health check, `fstrim`, and restoration to `stopped` state.
 
 There is not yet a repeatable automated unit/integration/end-to-end test suite. That remains tracked in [`FEATURE_CHECKLIST.md`](../../FEATURE_CHECKLIST.md).
+
+
+## Final notification preview (F157)
+
+After a bulk run, Forge renders a single plain-text final notification draft: `Subject:`, `Status:`, operation, optional host status, selected/succeeded/failed LXC counts and failed VMIDs/exit codes. The status is `SUCCESS` when all attempted updates succeed, `FAILED` when none succeed and a failure occurs, or `PARTIAL` when successful and failed updates coexist (a successful host update counts as success even if every guest fails). If a bulk preflight blocks all updates, its reason is reported as `FAILED` without starting mutations. Individual host/LXC drafts are suppressed inside bulk runs to prevent duplicate email messages.
+
+The draft is currently displayed as `Forge final notification preview (email not sent)`. No mail is sent until F153 is implemented. These drafts are separate from and do not replace the existing F147 terminal summary or change exit codes. Detailed per-target causes beyond stage/exit code remain in F159.

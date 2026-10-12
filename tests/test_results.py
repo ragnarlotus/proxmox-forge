@@ -86,12 +86,13 @@ class ResultAggregationTests(unittest.TestCase):
             "preflight/root-space.sh": "space",
             "preflight/memory.sh": "memory",
             "lxc/update.sh": "lxc",
+            "notifications/final.sh": None,
         }
         for path, kind in paths.items():
             dest = lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             if kind is None:
-                dest.symlink_to(ROOT / "lib/workflows/update-all.sh")
+                dest.symlink_to(ROOT / "lib" / path)
             elif kind == "config":
                 dest.write_text(
                     'config_get() {\n'
@@ -163,6 +164,8 @@ class ResultAggregationTests(unittest.TestCase):
             ("lxc", ["115", "scope"]),
         ])
         self.assertIn("update_all_stage=success stage=lxc total=3 succeeded=3 failed=0", result.stdout)
+        self.assertEqual(result.stdout.count("Forge final notification preview (email not sent):"), 1)
+        self.assertIn("Status: SUCCESS", result.stdout)
         self.assertIn("update_all=success mode=lxc", result.stdout)
         self.assertIn("Forge update summary: 3 LXCs selected, 3 succeeded, 0 failed; overall SUCCESS.", result.stdout)
 
@@ -179,6 +182,8 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertNotIn("update_all=success", result.stdout)
         self.assertIn("Forge update summary: 3 LXCs selected, 2 succeeded, 1 failed; overall FAILED.", result.stdout)
         self.assertIn("Failed LXC: 111 (exit code 42)", result.stdout)
+        self.assertIn("Status: PARTIAL", result.stdout)
+        self.assertEqual(result.stdout.count("Forge final notification preview (email not sent):"), 1)
 
     def test_multiple_guest_failures_are_all_counted(self):
         result, calls = self.invoke(
@@ -197,6 +202,16 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(len([c for c in calls if c["kind"] == "lxc"]), 3)
         self.assertIn("update_all=failed stage=lxc total=3 succeeded=0 failed=3 exit_code=1",
                       result.stdout)
+        self.assertIn("Status: FAILED", result.stdout)
+
+    def test_host_success_and_all_guests_failed_is_partial(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_LXC_CODES=json.dumps({"100": 3, "111": 5, "115": 7})
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Status: PARTIAL", result.stdout)
+        self.assertIn("Host: SUCCESS", result.stdout)
+        self.assertIn("LXCs succeeded: 0", result.stdout)
 
     def test_host_failure_preserves_code_and_stops_guest_updates(self):
         result, calls = self.invoke(
@@ -217,6 +232,9 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertIn("update_all=failed stage=host exit_code=42 lxc_started=false",
                       result.stdout)
         self.assertIn("Forge update summary: host FAILED (exit code 42); LXC updates not started (3 selected).", result.stdout)
+        self.assertIn("Status: FAILED", result.stdout)
+        self.assertIn("Host: FAILED", result.stdout)
+        self.assertEqual(result.stdout.count("Forge final notification preview (email not sent):"), 1)
 
     def test_successful_host_then_partial_lxc_failure(self):
         result, calls = self.invoke(
@@ -226,6 +244,8 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual([c["kind"] for c in calls],
                          ["list", "space", "space", "space", "memory", "memory", "memory", "preflight", "host", "lxc", "lxc", "lxc"])
         self.assertIn("update_all_stage=success stage=host exit_code=0", result.stdout)
+        self.assertIn("Host: SUCCESS", result.stdout)
+        self.assertIn("Status: PARTIAL", result.stdout)
         self.assertIn("update_all=failed stage=lxc total=3 succeeded=2 failed=1 exit_code=1",
                       result.stdout)
 
@@ -234,6 +254,8 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual([c["kind"] for c in calls], ["list", "space", "space", "space", "memory", "memory", "memory", "preflight"])
         self.assertIn("CONFLICT: LXC 111:", result.stderr)
+        self.assertIn("Phase: preflight", result.stdout)
+        self.assertIn("Status: FAILED", result.stdout)
 
     def test_low_space_blocks_host_and_all_guests(self):
         result, calls = self.invoke("all", FORGE_TEST_LOW_SPACE_VMID="111")

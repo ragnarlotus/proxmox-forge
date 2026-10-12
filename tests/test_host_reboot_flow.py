@@ -59,6 +59,7 @@ class HostRebootFlowTests(unittest.TestCase):
         self.base = Path(self.temp.name)
         paths = {
             "host/update.sh": None,
+            "notifications/final.sh": None,
             "config/get.sh": "config",
             "host/check-requirements.sh": "requirements",
             "backup/host/create.sh": "backup",
@@ -73,7 +74,7 @@ class HostRebootFlowTests(unittest.TestCase):
             dest = self.base / "lib" / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             if kind is None:
-                dest.symlink_to(ROOT / "lib/host/update.sh")
+                dest.symlink_to(ROOT / "lib" / path)
             elif kind == "config":
                 dest.write_text(
                     'config_get() { declare -gA CONFIG=(\n'
@@ -131,6 +132,8 @@ class HostRebootFlowTests(unittest.TestCase):
         result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("reboot_required=yes", result.stdout)
+        self.assertIn("Forge final notification preview (email not sent):", result.stdout)
+        self.assertIn("Subject: [Proxmox Forge] SUCCESS - Host bv.deulo.com", result.stdout)
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
         self.assertEqual([c["kind"] for c in calls].count("held"), 1)
@@ -164,6 +167,8 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertNotIn("reboot", [c["kind"] for c in calls])
         self.assertIn("held", [c["kind"] for c in calls])
         self.assertIn("update=failed type=host", result.stdout)
+        self.assertIn("Subject: [Proxmox Forge] FAILED - Host bv.deulo.com", result.stdout)
+        self.assertIn("Failed stage: os_update", result.stdout)
 
 
 if __name__ == "__main__":
