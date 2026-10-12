@@ -180,7 +180,7 @@ These are the agreed behavioural requirements of the current implementation.
 
 ## T. Tests and quality
 
-- [ ] **F206** Exit-code propagation tests.
+- [x] **F206** Exit-code propagation tests. Eight automated test cases use the real stage-output capture and LXC OS/application/custom-script helpers with fake `pct` commands to verify success/failure exit codes (including controlled exit 42), stdout/stderr preservation, APT-stage failure isolation, and stopping subsequent custom scripts after failure. GitHub Actions runs them alongside F209/F213 without accessing Proxmox.
 - [ ] **F207** Tests proving each mutating operation executes only once.
 - [x] **F209** Configuration tests. Twelve automated cases exercise the real defaults/local-override loader and validator (valid configuration, precedence, invalid syntax, duplicate/unknown/missing keys, booleans, paths and retention). GitHub Actions runs them and checks Bash syntax on pushes to `main` and pull requests, without contacting Proxmox.
 - [ ] **F211** Result aggregation tests.
