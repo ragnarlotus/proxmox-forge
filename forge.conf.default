@@ -88,6 +88,10 @@ CUSTOM_SCRIPTS_DIR="/opt/proxmox-forge/scripts.d"
 # A local override may change this threshold.
 MIN_ROOT_FREE_MB=1024
 
+# Require at least this many MiB of MemAvailable before host/LXC updates.
+# Local overrides can adjust the minimum for the installed workloads.
+MIN_MEM_AVAILABLE_MB=128
+
 # LXC requirements are always checked before creating a backup or updating.
 
 # Create a Proxmox host configuration backup immediately before a host update.

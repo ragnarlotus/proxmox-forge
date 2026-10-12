@@ -29,6 +29,7 @@ class LxcInspectionTests(unittest.TestCase):
             "lxc/get-info.sh",
             "workflows/check-requirements.sh",
             "preflight/root-space.sh",
+            "preflight/memory.sh",
         )
         for path in paths:
             dest = self.lib / path
@@ -43,7 +44,7 @@ class LxcInspectionTests(unittest.TestCase):
         get_config = self.lib / "config/get.sh"
         get_config.parent.mkdir(parents=True, exist_ok=True)
         get_config.write_text(
-            'config_get() { declare -gA CONFIG=([MIN_ROOT_FREE_MB]=1024); }\n',
+            'config_get() { declare -gA CONFIG=([MIN_ROOT_FREE_MB]=1024 [MIN_MEM_AVAILABLE_MB]=128); }\n',
             encoding="utf-8",
         )
 
@@ -65,6 +66,14 @@ printf 'df\n' >> "$FORGE_TEST_CALL_LOG"
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
 printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
 """)
+        self.make_command("awk", r"""#!/bin/bash
+if [[ "$#" -eq 2 && "$2" == /proc/meminfo ]]; then
+  printf 'mem\n' >> "$FORGE_TEST_CALL_LOG"
+  printf '%s\n' "$FORGE_TEST_MEM_AVAILABLE_KB"
+else
+  exec /usr/bin/awk "$@"
+fi
+""")
         self.make_command("dpkg", '#!/bin/bash\n[[ "$1" == --audit ]] || exit 90\n')
         self.make_command("apt-get", "#!/bin/bash\nexit 0\n")
         self.make_command("ps", '#!/bin/bash\n[[ "$1" == -eo && "$2" == comm= ]] || exit 90\n')
@@ -76,6 +85,7 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
             "FORGE_RUNTIME_GUARD": str(guard),
             "FORGE_TEST_TARGET_RECORD": TARGET,
             "FORGE_TEST_ROOT_FREE_KB": "2097152",
+            "FORGE_TEST_MEM_AVAILABLE_KB": "262144",
             "FORGE_TEST_CALL_LOG": str(self.calls),
         }
 
@@ -84,9 +94,10 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
         command.write_text(content, encoding="utf-8")
         command.chmod(0o755)
 
-    def invoke(self, script, *args, free_kb="2097152"):
+    def invoke(self, script, *args, free_kb="2097152", mem_kb="262144"):
         self.calls.unlink(missing_ok=True)
-        env = {**self.env, "FORGE_TEST_ROOT_FREE_KB": free_kb}
+        env = {**self.env, "FORGE_TEST_ROOT_FREE_KB": free_kb,
+               "FORGE_TEST_MEM_AVAILABLE_KB": mem_kb}
         return subprocess.run(
             ["bash", str(self.lib / script), *args],
             env=env, capture_output=True, text=True, check=False,
@@ -94,7 +105,7 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
 
     def assert_one_df_call(self):
         self.assertEqual(self.calls.read_text(encoding="utf-8").splitlines(),
-                         ["df"])
+                         ["df", "mem"])
 
     def test_basic_info_reports_root_space_once(self):
         result = self.invoke("lxc/get-info.sh", "111", "", TARGET)
@@ -102,7 +113,8 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
         self.assertEqual(result.stdout.count("root_free_kb="), 1)
         self.assertIn("root_free_kb=2097152", result.stdout)
         self.assertIn("package_manager=apt", result.stdout)
-        self.assertNotIn("mem_available_kb=", result.stdout)
+        self.assertEqual(result.stdout.count("mem_available_kb="), 1)
+        self.assertIn("mem_available_kb=262144", result.stdout)
         self.assert_one_df_call()
 
     def test_full_info_reports_root_space_once(self):
@@ -110,7 +122,8 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count("root_free_kb="), 1)
         self.assertIn("root_free_kb=2097152", result.stdout)
-        self.assertIn("mem_available_kb=", result.stdout)
+        self.assertEqual(result.stdout.count("mem_available_kb="), 1)
+        self.assertIn("mem_available_kb=262144", result.stdout)
         self.assertIn("os_id=", result.stdout)
         self.assert_one_df_call()
 
@@ -125,6 +138,7 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("requirements=ok", result.stdout)
         self.assertIn("space=ok", result.stdout)
+        self.assertIn("memory=ok", result.stdout)
         self.assert_one_df_call()
 
     def test_real_requirements_reject_low_space(self):
@@ -132,6 +146,22 @@ printf '/dev/root 5000000 2902848 %s 59%% /\n' "$FORGE_TEST_ROOT_FREE_KB"
                              free_kb="1048575")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("insufficient free space", result.stderr)
+        self.assertNotIn("requirements=ok", result.stdout)
+        self.assert_one_df_call()
+
+    def test_real_requirements_reject_low_memory(self):
+        result = self.invoke("workflows/check-requirements.sh", "111", TARGET,
+                             mem_kb="131071")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("insufficient available memory", result.stderr)
+        self.assertNotIn("requirements=ok", result.stdout)
+        self.assert_one_df_call()
+
+    def test_real_requirements_reject_invalid_memory(self):
+        result = self.invoke("workflows/check-requirements.sh", "111", TARGET,
+                             mem_kb="unknown")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid available-memory value", result.stderr)
         self.assertNotIn("requirements=ok", result.stdout)
         self.assert_one_df_call()
 

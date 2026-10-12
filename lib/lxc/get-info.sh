@@ -96,8 +96,11 @@ info_record="$(pct exec "$vmid" -- env FORGE_INFO_MODE="$mode" sh -c '
   root_free_kb=$(df -Pk / | awk "NR==2 {print \$4}")
   [ -n "$root_free_kb" ] || root_free_kb=unknown
 
-  printf "package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s root_free_kb=%s" \
-    "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$root_free_kb"
+  mem_available_kb=$(awk "/^MemAvailable:/ {print \$2; exit}" /proc/meminfo 2>/dev/null)
+  [ -n "$mem_available_kb" ] || mem_available_kb=unknown
+
+  printf "package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s root_free_kb=%s mem_available_kb=%s" \
+    "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$root_free_kb" "$mem_available_kb"
 
   if [ "${FORGE_INFO_MODE:-}" = all ]; then
     os_id=unknown
@@ -109,11 +112,8 @@ info_record="$(pct exec "$vmid" -- env FORGE_INFO_MODE="$mode" sh -c '
       os_version=${VERSION_ID:-unknown}
     fi
 
-    mem_available_kb=$(awk "/^MemAvailable:/ {print \$2; exit}" /proc/meminfo 2>/dev/null)
-    [ -n "$mem_available_kb" ] || mem_available_kb=unknown
-
-    printf " os_id=%s os_version=%s mem_available_kb=%s" \
-      "$os_id" "$os_version" "$mem_available_kb"
+    printf " os_id=%s os_version=%s" \
+      "$os_id" "$os_version"
   fi
 
   printf "\n"
@@ -125,26 +125,24 @@ dpkg_audit="${RECORD_FIELDS[dpkg_audit]:-}"
 package_process="${RECORD_FIELDS[package_process]:-}"
 application_updater="${RECORD_FIELDS[application_updater]:-}"
 root_free_kb="${RECORD_FIELDS[root_free_kb]:-}"
+mem_available_kb="${RECORD_FIELDS[mem_available_kb]:-}"
 [[ -n "$root_free_kb" ]] || fail "LXC inspection returned no root_free_kb"
+[[ -n "$mem_available_kb" ]] || fail "LXC inspection returned no mem_available_kb"
 [[ -n "$package_manager" ]] || fail "LXC inspection returned no package_manager"
 [[ -n "$dpkg_audit" ]] || fail "LXC inspection returned no dpkg_audit"
 [[ -n "$package_process" ]] || fail "LXC inspection returned no package_process"
 [[ -n "$application_updater" ]] || fail "LXC inspection returned no application_updater"
 
 if [[ "$mode" != all ]]; then
-  printf 'type=lxc vmid=%s name=%s state=%s template=false package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s root_free_kb=%s\n' \
-    "$vmid" "$name" "$state" "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$root_free_kb"
+  printf 'type=lxc vmid=%s name=%s state=%s template=false package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s root_free_kb=%s mem_available_kb=%s\n' \
+    "$vmid" "$name" "$state" "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$root_free_kb" "$mem_available_kb"
   exit 0
 fi
 
 os_id="${RECORD_FIELDS[os_id]:-}"
 os_version="${RECORD_FIELDS[os_version]:-}"
-mem_available_kb="${RECORD_FIELDS[mem_available_kb]:-}"
 [[ -n "$os_id" ]] || fail "LXC inspection returned no os_id"
 [[ -n "$os_version" ]] || fail "LXC inspection returned no os_version"
-[[ -n "$root_free_kb" ]] || fail "LXC inspection returned no root_free_kb"
-[[ -n "$mem_available_kb" ]] || fail "LXC inspection returned no mem_available_kb"
-
 printf 'type=lxc vmid=%s name=%s state=%s template=false os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s\n' \
   "$vmid" "$name" "$state" "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb" \
   "$package_manager" "$dpkg_audit" "$package_process" "$application_updater"
