@@ -35,9 +35,9 @@ The recovery backup is created whenever at least one mutating LXC stage is enabl
 
 ## Explicitly held APT packages (F022)
 
-Once LXC requirements pass, Forge checks `apt-mark showhold` within the running guest, before backup and mutation. It reports each explicitly held package and a count in the terminal and target log. This also applies to explicitly updated stopped LXCs while they are temporarily running. The check never removes holds or changes update selection. A failure to query is reported as a nonfatal warning, not silently treated as zero holds.
+After the LXC APT update stage, Forge queries `apt-mark showhold` inside the guest, checks installed versus APT candidate versions with `apt-cache policy` and `dpkg --compare-versions`, and warns **only** when a held package has a newer candidate. Successful `apt-get update` refreshes the candidate data. If the APT stage fails, results are diagnostic context (the package lists might be stale); Forge retains the original update failure and rollback policy. If OS updates are disabled but an application updater is enabled, Forge checks against the current cached APT lists before the application stage. No additional hold check runs when neither OS nor application updates are enabled.
 
-This is not a report of every package that could be "kept back" by APT dependency resolution; it specifically detects administrative holds.
+This also works for explicitly selected stopped LXCs during their temporary running state. It never removes holds or modifies update selection. The existence of a held package with a pending upgrade **does not establish that it caused a Community Scripts application updater failure**; the updater's own output remains authoritative. Holds without newer candidates are silent. This does not identify all packages kept back by dependency resolution.
 
 ## Package-manager update strategies
 
