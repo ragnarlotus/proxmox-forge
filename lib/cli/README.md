@@ -28,11 +28,11 @@ Runs the protected local Proxmox host update when `UPDATE_HOST=true`. Host rollb
 
 ## `forge lxc list-targets`
 
-Lists the automatic LXC scope controlled by `UPDATE_RUNNING_LXC`: currently running non-template containers only. When this setting is `false`, the list is empty. Stopped containers are never selected automatically.
+Lists the automatic LXC scope controlled by `UPDATE_RUNNING_LXC`: currently running non-template containers only, excluding those specified in `EXCLUDE`. When this setting is `false`, the list is empty. Stopped containers are never selected automatically.
 
 ## `forge lxc update TARGET`
 
-Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC`, checking its recovery compatibility before starting or changing that LXC. If the explicitly selected LXC is stopped, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe to succeed, performs the update while it is running, and returns it to stopped state afterwards. LXCs that were already running do not use this startup-readiness phase.
+Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC` and `EXCLUDE`, checking its recovery compatibility before starting or changing that LXC. If the explicitly selected LXC is stopped, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe to succeed, performs the update while it is running, and returns it to stopped state afterwards. LXCs that were already running do not use this startup-readiness phase.
 
 ## `forge lxc update all`
 
@@ -41,6 +41,8 @@ Updates the LXC targets selected by `forge lxc list-targets` serially, without u
 ## `forge update all`
 
 Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first if `UPDATE_HOST=true`, then updates those VMIDs serially. Automatic updates require a running LXC and never start a stopped container.
+
+Both bulk commands apply `EXCLUDE` by exact VMID or hostname during automatic selection, before any preflight, backup or guest update. The Proxmox host is not affected by `EXCLUDE`.
 
 Both bulk commands check the entire selected running-LXC scope for free root filesystem space, available memory and recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` (default), snapshot-incompatible LXCs use a `vzdump` recovery fallback only when preflight approves it; setting `false` blocks those LXCs.
 

@@ -12,6 +12,7 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 CONFIG_REQUIRED_KEYS=(
   UPDATE_HOST
   UPDATE_RUNNING_LXC
+  EXCLUDE
   UPDATE_LXC_OS
   UPDATE_LXC_APPLICATION
   RUN_CUSTOM_SCRIPTS
@@ -104,6 +105,27 @@ config_validate_host_backup_extra_paths() {
   done
 }
 
+config_validate_exclude() {
+  local value="${CONFIG[EXCLUDE]}" entry
+  local -a entries=()
+
+  [[ -z "$value" ]] && return 0
+
+  if [[ "$value" == ,* || "$value" == *, || "$value" == *,,* ]]; then
+    config_validate_fail "EXCLUDE contains an empty comma-separated entry"
+    return 1
+  fi
+
+  IFS=',' read -r -a entries <<< "$value"
+  for entry in "${entries[@]}"; do
+    entry="$(config_trim_value "$entry")"
+    [[ "$entry" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
+      config_validate_fail "EXCLUDE contains an invalid VMID/name: '$entry'"
+      return 1
+    }
+  done
+}
+
 config_validate() {
   local key
 
@@ -136,6 +158,7 @@ config_validate() {
   }
 
   config_validate_host_backup_extra_paths || return 1
+  config_validate_exclude || return 1
 
   [[ "${CONFIG[LOG_DIR]}" == /* ]] || {
     config_validate_fail "LOG_DIR must be an absolute path"

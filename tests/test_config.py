@@ -19,6 +19,7 @@ source "$1/lib/config/get.sh" || exit 1
 config_get_files "$2" "$3" || exit 1
 printf 'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=%s\n' "${CONFIG[BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE]}"
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
+printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
 printf 'MIN_ROOT_FREE_MB=%s\n' "${CONFIG[MIN_ROOT_FREE_MB]}"
 printf 'MIN_MEM_AVAILABLE_MB=%s\n' "${CONFIG[MIN_MEM_AVAILABLE_MB]}"
 printf 'LOG_KEEP=%s\n' "${CONFIG[LOG_KEEP]}"
@@ -66,6 +67,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true\n", result.stdout)
         self.assertIn("UPDATE_HOST=true\n", result.stdout)
+        self.assertIn("EXCLUDE=\n", result.stdout)
         self.assertIn("MIN_ROOT_FREE_MB=1024\n", result.stdout)
         self.assertIn("MIN_MEM_AVAILABLE_MB=128\n", result.stdout)
         self.assertIn("LOG_KEEP=8\n", result.stdout)
@@ -95,6 +97,19 @@ class ConfigurationTests(unittest.TestCase):
         for invalid in ("0", "-1", "1.5", "abc", "1048577"):
             with self.subTest(invalid=invalid):
                 self.assert_invalid(f"MIN_MEM_AVAILABLE_MB={invalid}\n", "MIN_MEM_AVAILABLE_MB")
+
+    def test_exclusions_allow_exact_ids_and_names(self):
+        result = self.load('EXCLUDE=" 108, share, web.service-1 "\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("EXCLUDE= 108, share, web.service-1 \n", result.stdout)
+        empty = self.load('EXCLUDE=""\n')
+        self.assertEqual(empty.returncode, 0, empty.stderr)
+
+    def test_exclusions_reject_invalid_entries(self):
+        for value in ("100,", ",100", "100,,111", "100,   ,111",
+                      "*", "share*", "bad name", "111;rm", "100/101"):
+            with self.subTest(value=value):
+                self.assert_invalid(f'EXCLUDE="{value}"\n', "EXCLUDE")
 
     def test_quoted_valid_values(self):
         result = self.load(

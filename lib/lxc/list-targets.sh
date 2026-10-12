@@ -14,8 +14,15 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: list-targets.sh UPDATE_RUNNING_LXC"
+[[ $# -eq 2 ]] || fail "usage: list-targets.sh UPDATE_RUNNING_LXC EXCLUDE"
 update_running="$1"
+exclusions="$2"
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
+exclude_helper="$script_dir/exclusions.sh"
+[[ -r "$exclude_helper" ]] || fail "LXC exclusion helper is not readable: $exclude_helper"
+# shellcheck source=/dev/null
+source "$exclude_helper" || fail "could not load LXC exclusion helper"
 
 case "$update_running" in
   true|false) ;;
@@ -52,6 +59,7 @@ for config_file in "${config_files[@]}"; do
   fi
 
   [[ "$state" == stopped ]] && continue
+  lxc_is_excluded "$vmid" "$name" "$exclusions" && continue
 
   printf 'type=lxc vmid=%s name=%s state=running template=false\n' "$vmid" "$name"
 done

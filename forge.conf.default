@@ -36,6 +36,10 @@ UPDATE_RUNNING_LXC=true
 # If an exact name is ambiguous, target resolution must also fail.
 # This is a runtime argument, not persistent configuration.
 
+# Exclude running LXCs from automatic selection by exact VMID or hostname.
+# Comma-separated entries, e.g. EXCLUDE="108,share". Explicit updates ignore it.
+EXCLUDE=""
+
 
 # -----------------------------------------------------------------------------
 # Execution and failure semantics

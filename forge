@@ -163,7 +163,7 @@ check_running_lxc_conflicts() {
 
   [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]] || return 0
   ensure_lxc_environment
-  records="$(bash "$LXC_LIST_TARGETS_SCRIPT" true)" || fail "could not select running LXCs"
+  records="$(bash "$LXC_LIST_TARGETS_SCRIPT" true "${CONFIG[EXCLUDE]}")" || fail "could not select running LXCs"
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     [[ "$line" =~ (^|[[:space:]])vmid=([0-9]+) ]] || fail "invalid target record: $line"
@@ -198,7 +198,7 @@ main() {
           if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
             ensure_lxc_environment
           fi
-          bash "$LXC_LIST_TARGETS_SCRIPT" "${CONFIG[UPDATE_RUNNING_LXC]}"
+          bash "$LXC_LIST_TARGETS_SCRIPT" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}"
           ;;
         update)
           [[ $# -eq 3 ]] || fail "usage: forge lxc update TARGET|all"
