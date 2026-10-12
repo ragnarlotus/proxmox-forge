@@ -84,6 +84,10 @@ CUSTOM_SCRIPTS_DIR="/opt/proxmox-forge/scripts.d"
 # selected targets before performing any mutating operation. Invalid or unknown
 # required configuration must fail before the first target is changed.
 
+# Require this much free space (MiB) on / before host and LXC updates.
+# A local override may change this threshold.
+MIN_ROOT_FREE_MB=1024
+
 # LXC requirements are always checked before creating a backup or updating.
 
 # Create a Proxmox host configuration backup immediately before a host update.

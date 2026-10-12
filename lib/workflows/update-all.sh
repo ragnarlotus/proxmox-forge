@@ -28,6 +28,7 @@ config_get_script="$lib_dir/config/get.sh"
 host_update_script="$lib_dir/host/update.sh"
 lxc_list_targets_script="$lib_dir/lxc/list-targets.sh"
 conflicts_script="$lib_dir/config/conflicts.sh"
+root_space_script="$lib_dir/preflight/root-space.sh"
 lxc_update_script="$lib_dir/lxc/update.sh"
 
 for helper in \
@@ -35,6 +36,7 @@ for helper in \
   "$host_update_script" \
   "$lxc_list_targets_script" \
   "$conflicts_script" \
+  "$root_space_script" \
   "$lxc_update_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
@@ -65,6 +67,11 @@ while IFS= read -r target_record; do
 
   vmids+=("$vmid")
 done <<< "$targets_output"
+
+# Verify all selected running LXCs before updating the host or any guest.
+for vmid in "${vmids[@]}"; do
+  bash "$root_space_script" "$vmid" "${CONFIG[MIN_ROOT_FREE_MB]}" || fail "LXC $vmid root space preflight failed; no updates started"
+done
 
 # All recovery conflicts must be resolved before the host or any LXC changes.
 recovery_plan="$(bash "$conflicts_script" "${vmids[@]}")" || \

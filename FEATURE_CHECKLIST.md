@@ -73,14 +73,14 @@ These are the agreed behavioural requirements of the current implementation.
 
 ## G. Preflight
 
-- [ ] **F064** Check free filesystem space.
+- [x] **F064** Check free filesystem space. `MIN_ROOT_FREE_MB` (default 1024 MiB) enforces free space on `/` for host/LXC updates. Bulk runs check all selected running LXCs before host/guest changes, and individual target requirements check before mutation.
 - [ ] **F066** Check available memory.
 - [ ] **F068** Check real LVM-thin `Data%` / `Meta%` usage.
 - [ ] **F069** Check storage required for snapshots/backups.
 - [x] **F071** Detect package-manager locks/conflicting processes.
 - [x] **F075** A failed mandatory preflight blocks the update.
 
-> Forge currently collects root free-space and available-memory values during LXC inspection, but they are not yet policy-enforced preflight checks; therefore F064/F066 remain unchecked.
+> Root space is policy-enforced (F064). Available memory is still collected for inspection but not policy-enforced (F066).
 
 ## H. Snapshot, backup and rollback
 

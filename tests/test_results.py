@@ -34,6 +34,12 @@ if kind == "list":
         else:
             for vmid in filter(None, os.environ["FORGE_TEST_VMIDS"].split(",")):
                 print(f"type=lxc vmid={vmid} name=guest{vmid} state=running template=false")
+elif kind == "space":
+    if len(args) != 2 or args[1] != "1024":
+        sys.exit("unexpected space threshold")
+    if args[0] == os.environ.get("FORGE_TEST_LOW_SPACE_VMID"):
+        print("ERROR: insufficient root space", file=sys.stderr)
+        sys.exit(1)
 elif kind == "preflight":
     if os.environ.get("FORGE_TEST_CONFLICT") == "true":
         print("CONFLICT: LXC 111: unsafe restore", file=sys.stderr)
@@ -68,6 +74,7 @@ class ResultAggregationTests(unittest.TestCase):
             "host/update.sh": "host",
             "lxc/list-targets.sh": "list",
             "config/conflicts.sh": "preflight",
+            "preflight/root-space.sh": "space",
             "lxc/update.sh": "lxc",
         }
         for path, kind in paths.items():
@@ -81,6 +88,7 @@ class ResultAggregationTests(unittest.TestCase):
                     '  declare -gA CONFIG=(\n'
                     '    [UPDATE_HOST]="$FORGE_TEST_UPDATE_HOST"\n'
                     '    [UPDATE_RUNNING_LXC]="$FORGE_TEST_RUNNING_LXC"\n'
+                    '    [MIN_ROOT_FREE_MB]=1024\n'
                     '  )\n'
                     '}\n', encoding="utf-8",
                 )
@@ -106,7 +114,7 @@ class ResultAggregationTests(unittest.TestCase):
         })
         for key in ("FORGE_TEST_HOST_CODE", "FORGE_TEST_LXC_CODES",
                     "FORGE_TEST_CONFLICT", "FORGE_TEST_FALLBACK",
-                    "FORGE_TEST_MALFORMED_TARGET"):
+                    "FORGE_TEST_MALFORMED_TARGET", "FORGE_TEST_LOW_SPACE_VMID"):
             self.env.pop(key, None)
 
     def invoke(self, mode="lxc", **overrides):
@@ -130,6 +138,9 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_calls(calls, [
             ("list", ["true"]),
+            ("space", ["100", "1024"]),
+            ("space", ["111", "1024"]),
+            ("space", ["115", "1024"]),
             ("preflight", ["100", "111", "115"]),
             ("lxc", ["100", "scope"]),
             ("lxc", ["111", "scope"]),
@@ -178,6 +189,9 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42)
         self.assert_calls(calls, [
             ("list", ["true"]),
+            ("space", ["100", "1024"]),
+            ("space", ["111", "1024"]),
+            ("space", ["115", "1024"]),
             ("preflight", ["100", "111", "115"]),
             ("host", []),
         ])
@@ -191,7 +205,7 @@ class ResultAggregationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertEqual([c["kind"] for c in calls],
-                         ["list", "preflight", "host", "lxc", "lxc", "lxc"])
+                         ["list", "space", "space", "space", "preflight", "host", "lxc", "lxc", "lxc"])
         self.assertIn("update_all_stage=success stage=host exit_code=0", result.stdout)
         self.assertIn("update_all=failed stage=lxc total=3 succeeded=2 failed=1 exit_code=1",
                       result.stdout)
@@ -199,8 +213,14 @@ class ResultAggregationTests(unittest.TestCase):
     def test_preflight_failure_blocks_every_mutating_target(self):
         result, calls = self.invoke("all", FORGE_TEST_CONFLICT="true")
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual([c["kind"] for c in calls], ["list", "preflight"])
+        self.assertEqual([c["kind"] for c in calls], ["list", "space", "space", "space", "preflight"])
         self.assertIn("CONFLICT: LXC 111:", result.stderr)
+
+    def test_low_space_blocks_host_and_all_guests(self):
+        result, calls = self.invoke("all", FORGE_TEST_LOW_SPACE_VMID="111")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([c["kind"] for c in calls], ["list", "space", "space"])
+        self.assertIn("space preflight failed", result.stderr)
 
     def test_no_running_guests_still_reports_success(self):
         result, calls = self.invoke(FORGE_TEST_VMIDS="")
@@ -227,7 +247,7 @@ class ResultAggregationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([c["kind"] for c in calls],
-                         ["list", "preflight", "lxc", "lxc", "lxc"])
+                         ["list", "space", "space", "space", "preflight", "lxc", "lxc", "lxc"])
         self.assertIn("update_all_stage=skipped stage=host reason=disabled",
                       result.stdout)
 
