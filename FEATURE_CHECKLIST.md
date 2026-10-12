@@ -182,7 +182,7 @@ These are the agreed behavioural requirements of the current implementation.
 
 - [ ] **F206** Exit-code propagation tests.
 - [ ] **F207** Tests proving each mutating operation executes only once.
-- [ ] **F209** Configuration tests.
+- [x] **F209** Configuration tests. Twelve automated cases exercise the real defaults/local-override loader and validator (valid configuration, precedence, invalid syntax, duplicate/unknown/missing keys, booleans, paths and retention). GitHub Actions runs them and checks Bash syntax on pushes to `main` and pull requests, without contacting Proxmox.
 - [ ] **F211** Result aggregation tests.
 - [ ] **F213** Integration tests with mocks/fakes.
 - [x] **F214** End-to-end tests on real Proxmox for critical paths. Manually verified on live LXC 110: snapshot creation and preservation, `vzdump` backup, automatic `pct rollback` after a controlled custom-script failure (exit 42), removal of a post-snapshot filesystem marker, restoration of the original stopped state, and `keep-last=3` snapshot pruning. On October 12, 2026, live LXC 111 additionally verified snapshot-incompatible backup-only recovery: a same-run `vzdump` backup, controlled custom-script failure (exit 42), automatic `pct restore --force`, preserved external `mp0` bind-mount configuration, successful guest restart and health check, functional SnowShare web UI after restoration, and preservation of the original failure exit code.
