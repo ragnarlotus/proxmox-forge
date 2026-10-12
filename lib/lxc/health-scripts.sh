@@ -30,6 +30,8 @@ fi
 [[ -d "$target_dir" ]] || fail "functional health path is not a directory: $target_dir"
 [[ -r "$target_dir" && -x "$target_dir" ]] || fail "functional health directory is inaccessible: $target_dir"
 
+# Match lexical script order independently of host locale.
+export LC_ALL=C
 shopt -s nullglob
 scripts=("$target_dir"/*.sh)
 shopt -u nullglob
