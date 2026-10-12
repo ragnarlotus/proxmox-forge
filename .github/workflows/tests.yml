@@ -15,6 +15,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Check public CLI executable permission
+        run: |
+          test -x forge || { echo 'ERROR: forge must be executable (Git mode 100755)'; exit 1; }
       - name: Check shell syntax
         run: |
           bash -n forge
