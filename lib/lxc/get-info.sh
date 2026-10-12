@@ -93,11 +93,11 @@ info_record="$(pct exec "$vmid" -- env FORGE_INFO_MODE="$mode" sh -c '
     application_updater=none
   fi
 
-  printf "package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s root_free_kb=%s" \
-    "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$root_free_kb"
-
   root_free_kb=$(df -Pk / | awk "NR==2 {print \$4}")
   [ -n "$root_free_kb" ] || root_free_kb=unknown
+
+  printf "package_manager=%s dpkg_audit=%s package_process=%s application_updater=%s root_free_kb=%s" \
+    "$package_manager" "$dpkg_audit" "$package_process" "$application_updater" "$root_free_kb"
 
   if [ "${FORGE_INFO_MODE:-}" = all ]; then
     os_id=unknown
@@ -112,8 +112,8 @@ info_record="$(pct exec "$vmid" -- env FORGE_INFO_MODE="$mode" sh -c '
     mem_available_kb=$(awk "/^MemAvailable:/ {print \$2; exit}" /proc/meminfo 2>/dev/null)
     [ -n "$mem_available_kb" ] || mem_available_kb=unknown
 
-    printf " os_id=%s os_version=%s root_free_kb=%s mem_available_kb=%s" \
-      "$os_id" "$os_version" "$root_free_kb" "$mem_available_kb"
+    printf " os_id=%s os_version=%s mem_available_kb=%s" \
+      "$os_id" "$os_version" "$mem_available_kb"
   fi
 
   printf "\n"
