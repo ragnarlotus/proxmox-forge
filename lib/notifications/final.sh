@@ -15,6 +15,41 @@ fail() {
   exit 1
 }
 
+
+# Extract only explicitly marked errors from the failed stage in the exact
+# update log, never from unrelated earlier stages or later rollback output.
+show_diagnostic() {
+  local stage="$1" logfile="$2" message=""
+  [[ -n "$logfile" && "$logfile" != none ]] || return 0
+  printf 'Log: %s\n' "$logfile"
+  [[ -r "$logfile" && "$stage" =~ ^[a-z][a-z0-9_]*$ ]] || return 0
+  message="$(LC_ALL=C awk -v wanted="$stage" '
+    /event=stage_start / && index($0, "stage=" wanted) { inside=1; last=""; next }
+    inside && /event=stage_end / && index($0, "stage=" wanted) { inside=0; next }
+    inside && /(^|[[:space:]])(ERROR:|FATAL:)/ {
+      if (tolower($0) ~ /(password|passwd|token|authorization|secret|api.?key)/) {
+        last="[potentially sensitive error redacted; inspect log]"
+      } else { last=substr($0, 1, 240) }
+    }
+    END { if (last != "") print last }
+  ' "$logfile")" || return 0
+  [[ -n "$message" ]] && printf 'Last error message: %s\n' "$message"
+  return 0
+}
+
+read_failure_details() {
+  local detail_file="$1" line
+  detail_stage="" detail_log=""
+  [[ -r "$detail_file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      stage=*) detail_stage="${line#stage=}" ;;
+      log=*) detail_log="${line#log=}" ;;
+    esac
+  done < "$detail_file"
+  [[ "$detail_stage" =~ ^[a-z][a-z0-9_]*$ && -n "$detail_log" ]]
+}
+
 [[ $# -ge 2 ]] || fail "usage: final.sh host|lxc|bulk STATUS ..."
 scope="$1"
 status="$2"
@@ -41,7 +76,7 @@ case "$scope" in
     printf 'Phase: preflight\nReason: %s\nNo updates started.\n' "$reason"
     ;;
   host)
-    [[ $# -eq 4 ]] || fail "usage: final.sh host STATUS HOSTNAME STAGE EXIT_CODE REBOOT"
+    [[ $# -ge 4 && $# -le 5 ]] || fail "usage: final.sh host STATUS HOSTNAME STAGE EXIT_CODE REBOOT [LOG]"
     hostname="$1"; stage="$2"; exit_code="$3"; reboot="$4"
     [[ "$hostname" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || fail "invalid host"
     [[ "$stage" =~ ^[a-z_]+$ ]] || fail "invalid stage"
@@ -53,12 +88,13 @@ case "$scope" in
     printf 'Status: %s\nOperation: forge host update\nTarget: %s\n' "${status^^}" "$hostname"
     if [[ "$status" == failed ]]; then
       printf 'Failed stage: %s\nExit code: %s\n' "$stage" "$exit_code"
+      show_diagnostic "$stage" "${5:-}"
     else
       printf 'Host update: completed\nRestart required: %s\n' "$reboot"
     fi
     ;;
   lxc)
-    [[ $# -eq 4 ]] || fail "usage: final.sh lxc STATUS VMID STAGE EXIT_CODE REBOOT"
+    [[ $# -ge 4 && $# -le 5 ]] || fail "usage: final.sh lxc STATUS VMID STAGE EXIT_CODE REBOOT [LOG]"
     vmid="$1"; stage="$2"; exit_code="$3"; reboot="$4"
     [[ "$vmid" =~ ^[0-9]+$ ]] || fail "invalid VMID"
     [[ "$stage" =~ ^[a-z_]+$ ]] || fail "invalid stage"
@@ -70,6 +106,7 @@ case "$scope" in
     printf 'Status: %s\nOperation: forge lxc update\nTarget: LXC %s\n' "${status^^}" "$vmid"
     if [[ "$status" == failed ]]; then
       printf 'Failed stage: %s\nExit code: %s\n' "$stage" "$exit_code"
+      show_diagnostic "$stage" "${5:-}"
     else
       printf 'LXC update: completed\nRestart required: %s\n' "$reboot"
     fi
@@ -92,13 +129,25 @@ case "$scope" in
     printf 'Subject: [Proxmox Forge] %s - %s update\n' "${status^^}" "$mode"
     if [[ "$mode" == all ]]; then
       printf 'Status: %s\nOperation: forge update all\nHost: %s\n' "${status^^}" "${host_status^^}"
+      if [[ "$host_status" == failed ]]; then
+        printf 'Host exit code: %s\n' "${FORGE_NOTIFICATION_HOST_EXIT:-unknown}"
+        if read_failure_details "${FORGE_NOTIFICATION_DETAIL_DIR:-/nonexistent}/host"; then
+          printf 'Host failed stage: %s\n' "$detail_stage"
+          show_diagnostic "$detail_stage" "$detail_log"
+        fi
+      fi
     else
       printf 'Status: %s\nOperation: forge lxc update all\n' "${status^^}"
     fi
     printf 'LXCs selected: %s\nLXCs succeeded: %s\nLXCs failed: %s\n' \
       "$total" "$succeeded" "$failed"
     for target in "$@"; do
-      printf 'Failed LXC: %s (exit code %s)\n' "${target%%:*}" "${target#*:}"
+      vmid="${target%%:*}"
+      printf 'Failed LXC: %s (exit code %s)\n' "$vmid" "${target#*:}"
+      if read_failure_details "${FORGE_NOTIFICATION_DETAIL_DIR:-/nonexistent}/lxc-$vmid"; then
+        printf 'Failed stage: %s\n' "$detail_stage"
+        show_diagnostic "$detail_stage" "$detail_log"
+      fi
     done
     ;;
   *)
