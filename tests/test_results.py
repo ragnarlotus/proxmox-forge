@@ -64,6 +64,14 @@ elif kind == "lxc":
     if len(args) != 2 or args[1] != "scope":
         sys.exit("unexpected LXC invocation")
     code = int(json.loads(os.environ.get("FORGE_TEST_LXC_CODES", "{}")).get(args[0], 0))
+    if code and os.environ.get("FORGE_NOTIFICATION_DETAIL_DIR"):
+        log = Path(os.environ["FORGE_TEST_CALLS"]).parent / f"error-{args[0]}.log"
+        log.write_text("level=INFO event=stage_start stage=application_update\n"
+                       "ERROR: application updater exited unsuccessfully\n"
+                       "level=ERROR event=stage_end stage=application_update status=failed\n")
+        (Path(os.environ["FORGE_NOTIFICATION_DETAIL_DIR"]) / f"lxc-{args[0]}").write_text(
+            f"stage=application_update\nlog={log}\n"
+        )
     print(f"update={'success' if code == 0 else 'failed'} vmid={args[0]}")
     sys.exit(code)
 else:
@@ -183,6 +191,8 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertIn("Forge update summary: 3 LXCs selected, 2 succeeded, 1 failed; overall FAILED.", result.stdout)
         self.assertIn("Failed LXC: 111 (exit code 42)", result.stdout)
         self.assertIn("Status: PARTIAL", result.stdout)
+        self.assertIn("Failed stage: application_update", result.stdout)
+        self.assertIn("Last error message: ERROR: application updater exited unsuccessfully", result.stdout)
         self.assertEqual(result.stdout.count("Forge final notification preview (email not sent):"), 1)
 
     def test_multiple_guest_failures_are_all_counted(self):

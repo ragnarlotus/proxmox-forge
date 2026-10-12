@@ -27,3 +27,5 @@ After the host APT update stage (successful or failed), Forge checks `apt-mark s
 ## Final notification draft (F157)
 
 After an individual host update, Forge displays one reusable plain-text notification preview with subject, SUCCESS/FAILED status, hostname and either required restart status or the failing stage and exit code. It does **not** send email yet. When the host is being updated within a bulk run, only the bulk notification is shown. This presentation never changes the original update result.
+
+F159 adds the actual failed stage, exact log location and explicit failed-stage error diagnostic to host notification previews when available; it does not infer missing causes.

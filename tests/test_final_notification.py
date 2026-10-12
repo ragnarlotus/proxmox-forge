@@ -74,6 +74,81 @@ class FinalNotificationTests(unittest.TestCase):
         self.assertIn("Reason: LXC protection conflicts", result.stdout)
         self.assertIn("No updates started.", result.stdout)
 
+    def test_stage_specific_error_message_and_exact_log(self):
+        log = Path(self.tmp.name) / "run.log"
+        log.write_text(
+            "2026-10-12 level=INFO event=stage_start stage=os_update\n"
+            "ERROR: old unrelated package failure\n"
+            "2026-10-12 level=ERROR event=stage_end stage=os_update status=failed\n"
+            "2026-10-12 level=INFO event=stage_start stage=application_update\n"
+            "ERROR: actual application failure\n"
+            "2026-10-12 level=ERROR event=stage_end stage=application_update status=failed\n"
+            "ERROR: later cleanup problem\n",
+            encoding="utf-8",
+        )
+        result = self.render(
+            "lxc", "failed", "111", "application_update", "42", "unknown", str(log)
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"Log: {log}", result.stdout)
+        self.assertIn("Last error message: ERROR: actual application failure", result.stdout)
+        self.assertNotIn("old unrelated", result.stdout)
+        self.assertNotIn("later cleanup problem", result.stdout)
+
+    def test_no_diagnostic_does_not_invent_cause(self):
+        log = Path(self.tmp.name) / "run.log"
+        log.write_text(
+            "2026-10-12 level=INFO event=stage_start stage=health\n"
+            "health=failed\n"
+            "2026-10-12 level=ERROR event=stage_end stage=health status=failed\n",
+            encoding="utf-8",
+        )
+        result = self.render(
+            "lxc", "failed", "111", "health", "23", "unknown", str(log)
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"Log: {log}", result.stdout)
+        self.assertNotIn("Last error message:", result.stdout)
+
+    def test_sensitive_error_diagnostic_is_redacted(self):
+        log = Path(self.tmp.name) / "run.log"
+        log.write_text(
+            "level=INFO event=stage_start stage=application_update\n"
+            "ERROR: token=very-sensitive-value\n"
+            "level=ERROR event=stage_end stage=application_update status=failed\n",
+            encoding="utf-8",
+        )
+        result = self.render(
+            "lxc", "failed", "111", "application_update", "17", "unknown", str(log)
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("error redacted; inspect log", result.stdout)
+        self.assertNotIn("very-sensitive-value", result.stdout)
+
+    def test_bulk_reads_failure_metadata_when_available(self):
+        detail_dir = Path(self.tmp.name) / "details"
+        detail_dir.mkdir()
+        log = Path(self.tmp.name) / "failed.log"
+        log.write_text(
+            "level=INFO event=stage_start stage=os_update\n"
+            "ERROR: blocked upgrade transaction\n"
+            "level=ERROR event=stage_end stage=os_update status=failed\n",
+            encoding="utf-8",
+        )
+        (detail_dir / "lxc-111").write_text(
+            f"stage=os_update\nlog={log}\n", encoding="utf-8"
+        )
+        old_env = self.env
+        self.env = {**old_env, "FORGE_NOTIFICATION_DETAIL_DIR": str(detail_dir)}
+        try:
+            result = self.render("bulk", "partial", "all", "success", "3", "2", "1", "111:42")
+        finally:
+            self.env = old_env
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Failed stage: os_update", result.stdout)
+        self.assertIn(f"Log: {log}", result.stdout)
+        self.assertIn("Last error message: ERROR: blocked upgrade transaction", result.stdout)
+
     def test_bad_counts_rejected(self):
         result = self.render("bulk", "partial", "lxc", "skipped", "2", "2", "1", "111:42")
         self.assertNotEqual(result.returncode, 0)

@@ -103,6 +103,15 @@ while IFS= read -r record; do
 done <<<"$recovery_plan"
 export FORGE_LXC_BACKUP_ONLY_VMIDS
 
+# Private per-run records contain only failed stage and log location.
+notification_detail_dir="$(mktemp -d)" || fail "could not create notification detail directory"
+export FORGE_NOTIFICATION_DETAIL_DIR="$notification_detail_dir"
+cleanup_notification_details() {
+  rm -f -- "$notification_detail_dir"/host "$notification_detail_dir"/lxc-*
+  rmdir -- "$notification_detail_dir"
+}
+trap cleanup_notification_details EXIT
+
 show_bulk_notification() {
   local status="$1" host_state="$2" succeeded_count="$3" failed_count="$4"
   shift 4
@@ -130,7 +139,7 @@ if [[ "$update_host" == true ]]; then
     printf 'update_all=failed stage=host exit_code=%s lxc_started=false\n' "$host_result"
     printf '\nForge update summary: host FAILED (exit code %s); LXC updates not started (%s selected).\n' \
       "$host_result" "$lxc_targets"
-    show_bulk_notification failed failed 0 0
+    FORGE_NOTIFICATION_HOST_EXIT="$host_result" show_bulk_notification failed failed 0 0
     exit "$host_result"
   fi
 

@@ -155,7 +155,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [ ] **F153** Email notifications.
 - [ ] **F154** Notify only on errors.
 - [x] **F157** Final success/failure/partial notification preview. A reusable plain-text renderer produces the subject and message body for individual host/LXC updates and bulk runs: SUCCESS, FAILED or PARTIAL (some operations succeeded, others failed), target counts, failed VMIDs/exit codes, host state and the failing stage on individual runs. The final preview is printed once for a completed public update, without sending email or changing exit codes; nested host/LXC updates suppress individual previews in bulk mode. Bulk preflight blockers also render FAILED with the reason and no updates started. This is the message template to be consumed later by F153; delivery remains pending. Regression tests cover rendering, aggregation, failure and duplicate suppression.
-- [ ] **F159** Summary with failed targets and causes.
+- [x] **F159** Failed-target diagnostics in notification previews. Individual failed host/LXC updates show their failed stage, authoritative exit code, exact log path and (when present) the last explicit ERROR/FATAL line from that stage. Bulk runs carry these facts through private per-run metadata files for each failed target and failed host. Error excerpts are bounded and redacted for sensitive-looking lines. Where no explicit error exists Forge shows the stage/log without guessing the root cause. No changes to update, recovery, or exit semantics; regression tests cover the formatter and real orchestration.
 
 ## Q. Configuration
 
