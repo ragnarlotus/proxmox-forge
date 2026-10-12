@@ -23,6 +23,7 @@ CONFIG_REQUIRED_KEYS=(
   ROLLBACK_ON_FAILURE
   HEALTH_CHECK
   MIN_ROOT_FREE_MB
+  MIN_MEM_AVAILABLE_MB
   LOG_DIR
   LOG_KEEP
 )
@@ -147,6 +148,15 @@ config_validate() {
   }
   (( ${#CONFIG[MIN_ROOT_FREE_MB]} <= 7 && CONFIG[MIN_ROOT_FREE_MB] <= 1048576 )) || {
     config_validate_fail "MIN_ROOT_FREE_MB must not exceed 1048576 MiB"
+    return 1
+  }
+
+  [[ "${CONFIG[MIN_MEM_AVAILABLE_MB]}" =~ ^[1-9][0-9]*$ ]] || {
+    config_validate_fail "MIN_MEM_AVAILABLE_MB must be a positive integer (MiB)"
+    return 1
+  }
+  (( ${#CONFIG[MIN_MEM_AVAILABLE_MB]} <= 7 && CONFIG[MIN_MEM_AVAILABLE_MB] <= 1048576 )) || {
+    config_validate_fail "MIN_MEM_AVAILABLE_MB must not exceed 1048576 MiB"
     return 1
   }
 
