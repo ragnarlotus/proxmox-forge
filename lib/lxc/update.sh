@@ -52,6 +52,7 @@ application_update_script="$script_dir/update/application.sh"
 custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
 fstrim_script="$script_dir/update/fstrim.sh"
 health_script="$script_dir/health.sh"
+reboot_script="$lib_dir/postflight/reboot-required.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
@@ -69,6 +70,7 @@ for helper in \
   "$custom_scripts_update_script" \
   "$fstrim_script" \
   "$health_script" \
+  "$reboot_script" \
   "$log_init_script" \
   "$log_capture_script" \
   "$log_write_script"; do
@@ -474,6 +476,22 @@ else
   record_skipped_stage fstrim no_mutating_stages
 fi
 
+# Inspect while still running, before restoring an originally stopped guest.
+reboot_required=unknown
+reboot_record="$(bash "$reboot_script" "$vmid")"
+reboot_check_result=$?
+if (( reboot_check_result == 0 )) && [[ "$reboot_record" =~ ^reboot_required=(yes|no|unknown)[[:space:]]type=lxc[[:space:]]vmid=$vmid[[:space:]] ]]; then
+  reboot_required="${BASH_REMATCH[1]}"
+  printf '%s\n' "$reboot_record"
+  bash "$log_write_script" "$log_file" INFO reboot_status \
+    "vmid=$vmid" "reboot_required=$reboot_required" || fail "could not log LXC reboot status"
+else
+  printf 'WARNING: could not determine reboot requirement for LXC %s (exit code %s)\n' "$vmid" "$reboot_check_result" >&2
+  bash "$log_write_script" "$log_file" WARN reboot_status \
+    "vmid=$vmid" "reboot_required=unknown" "check_exit_code=$reboot_check_result" || \
+    printf 'ERROR: could not log LXC reboot check warning\n' >&2
+fi
+
 restore_initial_state
 stage_result=$?
 if (( stage_result != 0 )); then
@@ -486,11 +504,17 @@ duration_seconds=$((finished_at - started_at))
 bash "$log_write_script" "$log_file" INFO target_update_end \
   "vmid=$vmid" \
   "status=success" \
+  "reboot_required=$reboot_required" \
   "initial_state=$initial_state" \
   "final_state=$initial_state" \
   "duration_seconds=$duration_seconds" || fail "could not record successful update result"
 
-printf 'update=success vmid=%s initial_state=%s final_state=%s log=%s\n' \
-  "$vmid" "$initial_state" "$initial_state" "$log_file"
+printf 'update=success vmid=%s initial_state=%s final_state=%s reboot_required=%s log=%s\n' \
+  "$vmid" "$initial_state" "$initial_state" "$reboot_required" "$log_file"
 printf 'Forge update summary: LXC %s SUCCESS (final state: %s).\n' \
   "$vmid" "$initial_state"
+if [[ "$reboot_required" == yes ]]; then
+  printf 'NOTICE: LXC %s signals a restart is required; Forge will not restart it automatically.\n' "$vmid"
+elif [[ "$reboot_required" == unknown ]]; then
+  printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
+fi

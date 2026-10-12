@@ -23,6 +23,7 @@ config_get_script="$lib_dir/config/get.sh"
 requirements_script="$script_dir/check-requirements.sh"
 backup_create_script="$lib_dir/backup/host/create.sh"
 os_update_script="$script_dir/update/os.sh"
+reboot_script="$lib_dir/postflight/reboot-required.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
@@ -32,6 +33,7 @@ for helper in \
   "$requirements_script" \
   "$backup_create_script" \
   "$os_update_script" \
+  "$reboot_script" \
   "$log_init_script" \
   "$log_capture_script" \
   "$log_write_script"; do
@@ -161,6 +163,22 @@ else
   record_skipped_stage health disabled
 fi
 
+# A failed reboot-indicator check is informational, never a failed update.
+reboot_required=unknown
+reboot_record="$(bash "$reboot_script" host)"
+reboot_check_result=$?
+if (( reboot_check_result == 0 )) && [[ "$reboot_record" =~ ^reboot_required=(yes|no|unknown)[[:space:]]type=host[[:space:]] ]]; then
+  reboot_required="${BASH_REMATCH[1]}"
+  printf '%s\n' "$reboot_record"
+  bash "$log_write_script" "$log_file" INFO reboot_status \
+    "type=host" "reboot_required=$reboot_required" || fail "could not log host reboot status"
+else
+  printf 'WARNING: could not determine host reboot requirement (exit code %s)\n' "$reboot_check_result" >&2
+  bash "$log_write_script" "$log_file" WARN reboot_status \
+    "type=host" "reboot_required=unknown" "check_exit_code=$reboot_check_result" || \
+    printf 'ERROR: could not log host reboot check warning\n' >&2
+fi
+
 finished_at="$(date +%s)" || finished_at="$started_at"
 duration_seconds=$((finished_at - started_at))
 
@@ -168,9 +186,15 @@ bash "$log_write_script" "$log_file" INFO target_update_end \
   "type=host" \
   "hostname=$hostname_fqdn" \
   "status=success" \
+  "reboot_required=$reboot_required" \
   "backup=${backup_file:-none}" \
   "duration_seconds=$duration_seconds" || fail "could not record successful host update result"
 
-printf 'update=success type=host hostname=%s backup=%s log=%s\n' \
-  "$hostname_fqdn" "${backup_file:-none}" "$log_file"
+printf 'update=success type=host hostname=%s backup=%s reboot_required=%s log=%s\n' \
+  "$hostname_fqdn" "${backup_file:-none}" "$reboot_required" "$log_file"
 printf 'Forge update summary: host %s SUCCESS.\n' "$hostname_fqdn"
+if [[ "$reboot_required" == yes ]]; then
+  printf 'NOTICE: Proxmox host reboot is indicated; Forge will not reboot automatically.\n'
+elif [[ "$reboot_required" == unknown ]]; then
+  printf 'WARNING: Proxmox host reboot requirement could not be determined.\n' >&2
+fi

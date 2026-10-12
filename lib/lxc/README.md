@@ -15,6 +15,7 @@ validate configuration and resolve exact target/current state
 → target-specific custom scripts
 → health check
 → pct fstrim
+→ inspect /run/reboot-required inside the running LXC
 → if originally stopped, stop again
 → success
 ```
@@ -22,6 +23,8 @@ validate configuration and resolve exact target/current state
 `UPDATE_RUNNING_LXC` and `EXCLUDE` apply only to automatic target discovery for `forge lxc list-targets` and both bulk update commands. `EXCLUDE` accepts comma-separated, case-sensitive exact VMIDs or hostnames, filters before preflights and mutation, and never blocks `forge lxc update TARGET`.
 
 `lib/config/conflicts.sh` checks Proxmox backup-job policy and snapshot compatibility for the selected LXCs before mutation. Bulk updates check every selected running LXC before the host update; `forge validate-config` checks the automatic running LXC scope. Stopped LXCs are included only when explicitly selected. Conflicts stop the entire operation before any changes.
+
+F094 reports `reboot_required=yes|no|unknown` after successful updates by checking the Debian `/run/reboot-required` marker inside the guest before restoring its original stopped state. Forge never restarts a guest automatically. The guest shares the Proxmox host kernel, so restarting a container cannot activate a new host kernel. A missing marker is not proof that no restart could ever be useful. Failed detection is a nonfatal warning.
 
 LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
 

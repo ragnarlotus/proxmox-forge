@@ -105,7 +105,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **F091** Wait for readiness after temporary startup — only when an explicitly selected LXC was initially stopped and Forge starts it, retry a minimal `pct exec` readiness probe for up to 30 seconds before requirements/update stages; LXCs that were already running skip this phase.
 - [x] **F092** Update the guest.
 - [x] **F093** Restore an explicitly selected originally-stopped LXC to stopped state after the update attempt, including after eligible failure/recovery paths.
-- [ ] **F094** Detect reboot-required state.
+- [x] **F094** Detect reboot-required state. After successful host/LXC updates, report `reboot_required=yes|no|unknown` in terminal and logs, with a notice when a restart is indicated; never reboot automatically. Host detection combines Debian's `/run/reboot-required` marker with installed-versus-running Proxmox kernel comparison; LXC detection reads the guest marker while running, before restoring a stopped guest's state. Detection failure is a nonfatal warning, never an update failure, rollback or repeated mutation. Automated tests cover the real detector and actual host/LXC orchestration.
 
 ## J. Health and recovery
 

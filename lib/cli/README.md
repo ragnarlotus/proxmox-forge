@@ -42,6 +42,8 @@ Updates the LXC targets selected by `forge lxc list-targets` serially, without u
 
 Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first if `UPDATE_HOST=true`, then updates those VMIDs serially. Automatic updates require a running LXC and never start a stopped container.
 
+Successful host/LXC updates include `reboot_required=yes|no|unknown` in structured results and logs. Forge does not automatically reboot hosts or restart guests. The host check covers the Debian marker and newer installed Proxmox kernels.
+
 Both bulk commands apply `EXCLUDE` by exact VMID or hostname during automatic selection, before any preflight, backup or guest update. The Proxmox host is not affected by `EXCLUDE`.
 
 Both bulk commands check the entire selected running-LXC scope for free root filesystem space, available memory and recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` (default), snapshot-incompatible LXCs use a `vzdump` recovery fallback only when preflight approves it; setting `false` blocks those LXCs.
