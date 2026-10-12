@@ -66,6 +66,19 @@ If a required OS, application, custom-script or health stage fails and `ROLLBACK
 
 Recovery success does **not** convert the original update failure into success. The target remains failed, preserving the primary result, and either bulk update command may continue with later targets. For an explicitly selected LXC that was originally stopped, Forge also attempts to restore that stopped state after success or failure/recovery.
 
+## Snapshot eligibility, mount points and external data
+
+Forge determines whether a given LXC supports a **persistent Proxmox snapshot** by querying the installed Proxmox API (`/nodes/<node>/lxc/<VMID>/feature` with `feature=snapshot`). It does **not** assume that every mount point makes snapshots impossible:
+
+- A Proxmox-defined `mp0`, `mp1`, etc. can refer either to a storage-managed volume or to a host-directory bind mount. Snapshot eligibility depends on the actual mount/storage configuration. A `backup=0` option does not make a non-snapshot-capable mount snapshot-capable.
+- A low-level `lxc.mount.entry` bind is outside Proxmox's managed mount-point definitions. Proxmox may still report `hasFeature=1` for the guest's managed storage; the externally mounted files are **not** included in that rootfs snapshot. A successful snapshot or rollback therefore says nothing about the contents of the external path.
+
+Observed on the Proxmox host on 2026-10-12: LXCs **111 (share), 113 (soulsync), 117 (soultomasz)** have host-path `mp0` bindings and report `hasFeature=0`; **102 (plex)** has multiple external `lxc.mount.entry` bindings and reports `hasFeature=1`. This is a description of that verified configuration, not a rule based solely on the presence of the `mp0` key.
+
+When `hasFeature=1`, Forge uses its new same-run `Update_*` snapshot for automatic rollback. When `hasFeature=0`, Forge permits backup-only recovery **only** if `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, backup creation is enabled, the rootfs is storage-backed, an applicable backup policy exists, and no persistent snapshots would be lost. In both cases, a normal mutating update creates a fresh `vzdump` backup if enabled. The `validate-config` message `will use the existing vzdump backup for recovery` identifies the planned recovery **method**, not a backup already made by validation; the wording is imprecise. `validate-config` examines only selected running LXCs, so stopped 113 and 117 do not appear in its automatic-scope output.
+
+**External bind-mounted data is outside the rollback boundary:** neither a snapshot of the LXC's managed storage nor the LXC's `vzdump` backup restores changes to those host paths. Their data needs a separate backup if recovery is required.
+
 ## Filesystem trim vs backup retention
 
 These are separate operations:

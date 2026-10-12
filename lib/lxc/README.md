@@ -25,6 +25,8 @@ validate configuration and resolve exact target/current state
 
 `lib/config/conflicts.sh` checks Proxmox backup-job policy and snapshot compatibility for the selected LXCs before mutation. Bulk updates check every selected running LXC before the host update; `forge validate-config` checks the automatic running LXC scope. Stopped LXCs are included only when explicitly selected. Conflicts stop the entire operation before any changes.
 
+Forge uses Proxmox's `hasFeature` response for `snapshot`, not a homegrown mount-point count. In the verified host configuration, the bind-mount `mp0` entries on LXCs 111, 113 and 117 return `hasFeature=0`; lower-level `lxc.mount.entry` binds on other LXCs can coexist with `hasFeature=1`. See [Snapshot eligibility, mount points and external data](../backup/README.md#snapshot-eligibility-mount-points-and-external-data) for recovery implications.
+
 F094 reports `reboot_required=yes|no|unknown` after successful updates by checking the Debian `/run/reboot-required` marker inside the guest before restoring its original stopped state. Forge never restarts a guest automatically. The guest shares the Proxmox host kernel, so restarting a container cannot activate a new host kernel. A missing marker is not proof that no restart could ever be useful. Failed detection is a nonfatal warning.
 
 LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
