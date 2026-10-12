@@ -65,12 +65,12 @@ elif kind == "lxc":
         sys.exit("unexpected LXC invocation")
     code = int(json.loads(os.environ.get("FORGE_TEST_LXC_CODES", "{}")).get(args[0], 0))
     if code and os.environ.get("FORGE_NOTIFICATION_DETAIL_DIR"):
-        log = Path(os.environ["FORGE_NOTIFICATION_DETAIL_DIR"]) / f"error-{args[0]}.log"
-        log.write_text("level=INFO event=stage_start stage=application_update\\n"
-                       "ERROR: application updater exited unsuccessfully\\n"
-                       "level=ERROR event=stage_end stage=application_update status=failed\\n")
+        log = Path(os.environ["FORGE_TEST_CALLS"]).parent / f"error-{args[0]}.log"
+        log.write_text("level=INFO event=stage_start stage=application_update\n"
+                       "ERROR: application updater exited unsuccessfully\n"
+                       "level=ERROR event=stage_end stage=application_update status=failed\n")
         (Path(os.environ["FORGE_NOTIFICATION_DETAIL_DIR"]) / f"lxc-{args[0]}").write_text(
-            f"stage=application_update\\nlog={log}\\n"
+            f"stage=application_update\nlog={log}\n"
         )
     print(f"update={'success' if code == 0 else 'failed'} vmid={args[0]}")
     sys.exit(code)
