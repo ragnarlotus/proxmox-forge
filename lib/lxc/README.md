@@ -13,7 +13,8 @@ validate configuration and resolve exact target/current state
 → OS/package update
 → application update
 → target-specific custom scripts
-→ health check
+→ generic health check
+→ optional health.d/<VMID>/*.sh functional checks
 → pct fstrim
 → inspect /run/reboot-required inside the running LXC
 → if originally stopped, stop again
@@ -79,6 +80,14 @@ The current generic post-update LXC health check verifies that:
 - when systemd is active inside the LXC, there are no failed systemd service units.
 
 A mandatory health failure is an update failure and can trigger rollback when configured. After rollback and guest restart, Forge waits up to 30 seconds for `pct exec` readiness and reuses the same `health.sh` check before declaring recovery successful. A failed recovery check is reported separately; the original update failure remains authoritative.
+
+## Functional health checks (F101)
+
+Forge always performs its existing generic checks first. When `HEALTH_CHECK=true` (default), it then runs ordinary regular `.sh` files from `HEALTH_SCRIPTS_DIR/<VMID>/` inside that LXC in lexicographical order, using `pct exec VMID -- bash -s --` with each script streamed from the host. The directory defaults to `/opt/proxmox-forge/health.d` and is optional per VMID; with no checks, the existing generic behavior is preserved. `HEALTH_CHECK=false` skips the post-update health stage entirely.
+
+The first nonzero exit code or unreadable check fails the `health` stage and participates in the existing same-run rollback policy. Checks are rerun through the same `health.sh` during post-rollback verification; a failed recovery check cannot convert the failed update into success. For an explicitly updated stopped LXC, checks run while the guest is temporarily started. This feature does not restart containers automatically.
+
+Scripts should **only inspect application functionality**, never mutate files, databases, processes, or services. Forge cannot enforce that policy on arbitrary shell code. Tests should be repeatable, bounded (for HTTP requests, use a timeout) and reliably return nonzero when the check fails. See [health.d](../../health.d/README.md).
 
 ## Post-update filesystem trim
 

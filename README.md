@@ -22,7 +22,7 @@ Forge currently supports:
 - Forge-created host configuration backups;
 - automatic LXC rollback after eligible failures;
 - explicit updates of stopped LXCs with temporary startup and restoration of the original stopped state;
-- post-update health checks;
+- post-update generic health checks and optional per-LXC functional checks (`health.d/<VMID>/*.sh`);
 - APT `autoremove` maintenance;
 - post-update LXC `fstrim`;
 - per-target logging and deterministic terminal capture;
@@ -62,6 +62,8 @@ proxmox-forge/
 └── scripts.d/
     ├── README.md
     └── <VMID>/*.sh             # Local target-specific custom scripts
+└── health.d/
+    └── <VMID>/*.sh             # Optional guest functional health checks
 ```
 
 The project is currently run directly from its checkout. There is no installer, daemon or service layer.

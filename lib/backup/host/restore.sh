@@ -398,7 +398,7 @@ for n in $(printf '%s\n' "${!SELECTED[@]}" | sort -n); do
   case "$n" in
     1) restore_proxmox;; 2) restore_network;;
     3) restore_paths 'Storage & mounts' etc/fstab etc/nfs.conf etc/nfs.conf.d etc/idmapd.conf etc/iscsi etc/lvm etc/zfs;;
-    4) restore_apt;; 5) restore_paths 'Forge configuration and custom scripts' opt/proxmox-forge/forge.conf opt/proxmox-forge/scripts.d;; 6) restore_custom_services;;
+    4) restore_apt;; 5) restore_paths 'Forge configuration and custom scripts' opt/proxmox-forge/forge.conf opt/proxmox-forge/scripts.d opt/proxmox-forge/health.d;; 6) restore_custom_services;;
     7) restore_paths 'Host security' etc/ssh etc/fail2ban etc/nftables.conf etc/ufw etc/hosts.allow etc/hosts.deny;;
     8) restore_paths 'System tuning' etc/sysctl.conf etc/sysctl.d etc/modprobe.d etc/modules etc/modules-load.d etc/hdparm.conf etc/default/grub; warn "review restored kernel/module/GRUB tuning before reboot";;
     9) restore_users;; 10) restore_root_credentials;;

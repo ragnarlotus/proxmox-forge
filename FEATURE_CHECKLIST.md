@@ -111,7 +111,7 @@ These are the agreed behavioural requirements of the current implementation.
 
 - [x] **F099** Run health checks after updating.
 - [x] **F100** Check relevant systemd services.
-- [ ] **F101** Configurable functional health checks.
+- [x] **F101** Configurable functional health checks. `health.d/<VMID>/*.sh` scripts (default `HEALTH_SCRIPTS_DIR=/opt/proxmox-forge/health.d`) run inside the LXC in lexical order after generic health checks; missing directories or scripts preserve generic-only behavior. Failures are authoritative health-stage failures and invoke the existing rollback policy. The same checks also run after rollback because the recovery path reuses `health.sh`. The configuration and effective per-target behavior are regression-tested; host-local scripts are Git-ignored and included in Forge host configuration backups.
 - [x] **F106** Roll back when a mandatory health check does not recover.
 - [x] **F107** Verify health again after rollback, using the existing LXC health check after the guest is restarted and responds to `pct exec`; record recovery as failed if the check fails.
 

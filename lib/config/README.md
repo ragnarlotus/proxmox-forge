@@ -26,13 +26,13 @@ Rules:
 - unknown keys are errors;
 - required keys must exist in the merged configuration;
 - booleans must be exactly `true` or `false`;
-- `CUSTOM_SCRIPTS_DIR` and `LOG_DIR` must be absolute paths;
+- `CUSTOM_SCRIPTS_DIR`, `HEALTH_SCRIPTS_DIR` and `LOG_DIR` must be absolute paths;
 - each non-empty `HOST_BACKUP_EXTRA_PATHS` entry must be an absolute path;
 - `EXCLUDE` must be empty or comma-separated exact VMIDs/hostnames. Spaces around entries are accepted; empty entries, wildcards and spaces inside names are rejected;
 - `LOG_KEEP` must be a positive integer;
 - `MIN_ROOT_FREE_MB` and `MIN_MEM_AVAILABLE_MB` must each be integers from 1 to 1048576 MiB.
 
-Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not replace local overrides. Target-specific contents below `scripts.d/` are also ignored except for `scripts.d/README.md`.
+Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not replace local overrides. Target-specific contents below `scripts.d/` and `health.d/` are also ignored except for their README files.
 
 ## Current configuration keys
 
@@ -52,7 +52,8 @@ LXC requirements checks are mandatory before backup or mutation and cannot be di
 | `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Boolean: `true` or `false` | Create a Proxmox recovery backup before LXC mutation. |
 | `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE` | Boolean: `true` or `false` | Default `true`; when safe, use the same-run `vzdump` backup instead of a persistent snapshot for unsupported LXCs. Set `false` to require persistent snapshots and block snapshot-incompatible targets. |
 | `ROLLBACK_ON_FAILURE` | Boolean: `true` or `false` | Attempt same-run guest recovery after eligible update/health failures. |
-| `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation. |
+| `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation, including optional functional scripts. |
+| `HEALTH_SCRIPTS_DIR` | Absolute path | Directory containing optional `<VMID>/*.sh` guest functional checks (default `/opt/proxmox-forge/health.d`). Missing per-target directory means generic health checks only. |
 | `MIN_ROOT_FREE_MB` | Integer from 1 to 1048576, default 1024 | Minimum free space on `/` before updating host or LXC. |
 | `MIN_MEM_AVAILABLE_MB` | Integer from 1 to 1048576, default 128 | Minimum `MemAvailable` in MiB before host or LXC updates; fail closed when unavailable. |
 | `LOG_DIR` | Absolute path | Base Forge log directory. |
