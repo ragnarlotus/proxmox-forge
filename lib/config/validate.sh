@@ -23,6 +23,7 @@ CONFIG_REQUIRED_KEYS=(
   BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE
   ROLLBACK_ON_FAILURE
   HEALTH_CHECK
+  HEALTH_SCRIPTS_DIR
   MIN_ROOT_FREE_MB
   MIN_MEM_AVAILABLE_MB
   LOG_DIR
@@ -154,6 +155,11 @@ config_validate() {
 
   [[ "${CONFIG[CUSTOM_SCRIPTS_DIR]}" == /* ]] || {
     config_validate_fail "CUSTOM_SCRIPTS_DIR must be an absolute path"
+    return 1
+  }
+
+  [[ "${CONFIG[HEALTH_SCRIPTS_DIR]}" == /* ]] || {
+    config_validate_fail "HEALTH_SCRIPTS_DIR must be an absolute path"
     return 1
   }
 

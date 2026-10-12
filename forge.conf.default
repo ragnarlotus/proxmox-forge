@@ -135,6 +135,12 @@ ROLLBACK_ON_FAILURE=true
 # Validate target health after mutation before declaring success.
 HEALTH_CHECK=true
 
+# Optional per-LXC functional checks (health.d/<VMID>/*.sh).
+# They run inside the guest after generic health checks and again after rollback.
+# A missing target directory means no additional checks. HEALTH_CHECK=false
+# disables both generic and functional checks during a normal update.
+HEALTH_SCRIPTS_DIR="/opt/proxmox-forge/health.d"
+
 
 # -----------------------------------------------------------------------------
 # Logging

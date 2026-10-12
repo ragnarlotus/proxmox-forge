@@ -22,7 +22,11 @@ command -v pct >/dev/null 2>&1 || fail "pct is not available"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
 state_script="$script_dir/get-state.sh"
-[[ -r "$state_script" ]] || fail "LXC state helper is not readable: $state_script"
+functional_script="$script_dir/health-scripts.sh"
+config_get_script="$script_dir/../config/get.sh"
+for helper in "$state_script" "$functional_script" "$config_get_script"; do
+  [[ -r "$helper" ]] || fail "LXC health helper is not readable: $helper"
+done
 
 state="$(bash "$state_script" "$vmid")" || fail "could not read state for LXC $vmid"
 [[ "$state" == running ]] || fail "LXC $vmid is $state after update"
@@ -69,6 +73,15 @@ if [[ "$init_system" == systemd ]]; then
 
   systemd_services="clean"
 fi
+
+# The same health.sh is reused after rollback, so checks also validate the
+# recovered application's behavior, not only its systemd state.
+# shellcheck source=/dev/null
+source "$config_get_script" || fail "could not load configuration helper"
+config_get || fail "could not load effective Forge configuration"
+bash "$functional_script" "$vmid" "${CONFIG[HEALTH_SCRIPTS_DIR]}"
+result=$?
+(( result == 0 )) || exit "$result"
 
 printf 'health=ok vmid=%s state=running transport=pct_exec systemd_services=%s\n' \
   "$vmid" "$systemd_services"
