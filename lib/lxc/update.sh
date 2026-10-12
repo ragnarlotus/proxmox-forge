@@ -108,6 +108,13 @@ esac
 
 initial_state="$state"
 
+# The entrypoint has already checked compatibility for this selected VMID.
+[[ "${FORGE_LXC_BACKUP_ONLY_VMIDS+x}" == x ]] || fail "LXC recovery preflight was not completed"
+recovery_mode=snapshot
+if [[ " ${FORGE_LXC_BACKUP_ONLY_VMIDS} " == *" $vmid "* ]]; then
+  recovery_mode=backup
+fi
+
 log_file="$(
   bash "$log_init_script" \
     "${CONFIG[LOG_DIR]}" \
@@ -354,7 +361,7 @@ else
   record_skipped_stage backup no_mutating_stages
 fi
 
-if [[ "$mutation_planned" == true ]]; then
+if [[ "$mutation_planned" == true && "$recovery_mode" == snapshot ]]; then
   snapshot_output_file="$(mktemp)" || finish_failed snapshot 1
   bash "$log_capture_script" "$log_file" snapshot -- \
     bash -o pipefail -c 'bash "$1" "$2" | tee "$3"' \
@@ -376,6 +383,9 @@ if [[ "$mutation_planned" == true ]]; then
       "vmid=$vmid" "reason=missing_name" || true
     finish_failed snapshot 1
   fi
+elif [[ "$mutation_planned" == true ]]; then
+  [[ -n "$backup_volume" ]] || finish_failed backup 1
+  record_skipped_stage snapshot backup_fallback
 else
   record_skipped_stage snapshot no_mutating_stages
 fi
@@ -388,7 +398,7 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
       "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      os_update "$stage_result" || true
+      "$recovery_mode" os_update "$stage_result" || true
     finish_failed os_update "$stage_result"
   fi
 else
@@ -403,7 +413,7 @@ if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
       "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      application_update "$stage_result" || true
+      "$recovery_mode" application_update "$stage_result" || true
     finish_failed application_update "$stage_result"
   fi
 else
@@ -422,7 +432,7 @@ else
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
       "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      custom_scripts "$stage_result" || true
+      "$recovery_mode" custom_scripts "$stage_result" || true
     finish_failed custom_scripts "$stage_result"
   fi
 fi
@@ -435,7 +445,7 @@ if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
       "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      health "$stage_result" || true
+      "$recovery_mode" health "$stage_result" || true
     finish_failed health "$stage_result"
   fi
 elif [[ "${CONFIG[HEALTH_CHECK]}" != true ]]; then

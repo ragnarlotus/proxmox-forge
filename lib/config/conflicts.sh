@@ -11,13 +11,20 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 
 (( $# > 0 )) || exit 0
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || exit 1
+# shellcheck source=/dev/null
+source "$script_dir/get.sh" || exit 1
+config_get || exit 1
+
 node="$(hostname -s)" || exit 1
 jobs_json="$(pvesh get /cluster/backup --output-format json)" || {
   printf 'ERROR: cannot read Proxmox backup jobs\n' >&2
   exit 1
 }
 
-FORGE_JOBS_JSON="$jobs_json" FORGE_NODE="$node" python3 - "$@" <<'PY'
+FORGE_JOBS_JSON="$jobs_json" FORGE_NODE="$node" python3 - \
+  "${CONFIG[BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE]}" \
+  "${CONFIG[CREATE_BACKUP_BEFORE_LXC_UPDATE]}" "$@" <<'PY'
 import json
 import os
 import re
@@ -44,8 +51,11 @@ except (ValueError, KeyError) as exc:
     sys.exit(f"ERROR: invalid Proxmox backup job data: {exc}")
 
 node = os.environ["FORGE_NODE"]
+allow_backup = sys.argv[1] == "true"
+create_backup = sys.argv[2] == "true"
 ok = True
-for vmid in sys.argv[1:]:
+fallback = []
+for vmid in sys.argv[3:]:
     if not vmid.isdigit():
         ok = fail(vmid, "invalid VMID") and ok
         continue
@@ -94,11 +104,41 @@ for vmid in sys.argv[1:]:
         if type(feature) is not int or feature not in (0, 1):
             raise ValueError("invalid snapshot feature response")
         if feature == 0:
-            raise ValueError("Proxmox does not support persistent snapshots for this LXC")
+            if not allow_backup:
+                raise ValueError(
+                    "persistent snapshots unsupported; BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false"
+                )
+            if not create_backup:
+                raise ValueError("backup fallback requires CREATE_BACKUP_BEFORE_LXC_UPDATE=true")
+
+            snap_result = subprocess.run(
+                ["pvesh", "get", f"/nodes/{node}/lxc/{vmid}/snapshot",
+                 "--output-format", "json"],
+                capture_output=True, text=True, check=True,
+            )
+            snapshots = json.loads(snap_result.stdout)
+            if not isinstance(snapshots, list) or any(
+                not isinstance(s, dict) or s.get("name") != "current"
+                for s in snapshots
+            ):
+                raise ValueError("backup restore would destroy existing persistent snapshots")
+
+            config_result = subprocess.run(
+                ["pct", "config", vmid], capture_output=True, text=True, check=True,
+            )
+            rootfs = [line.split(":", 1)[1].strip()
+                      for line in config_result.stdout.splitlines()
+                      if line.startswith("rootfs:")]
+            if len(rootfs) != 1 or not re.match(r"^[a-zA-Z0-9_-]+:[^,\s]+", rootfs[0]):
+                raise ValueError("backup recovery requires a storage-backed rootfs")
+
+            fallback.append(vmid)
 
     except (ValueError, KeyError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         ok = fail(vmid, exc) and ok
 
 if not ok:
     sys.exit(1)
+for vmid in fallback:
+    print(f"backup_fallback={vmid}")
 PY

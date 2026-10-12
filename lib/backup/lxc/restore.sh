@@ -21,7 +21,7 @@ backup_volume="$2"
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 [[ "$backup_volume" == *:* ]] || fail "BACKUP_VOLUME must be a Proxmox volume ID"
 
-for command_name in pct pvesm perl python3; do
+for command_name in pct pvesm pvesh hostname perl python3; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is not available"
 done
 
@@ -301,6 +301,29 @@ if (( state_result != 0 )); then
   exit "$state_result"
 fi
 [[ "$state_output" == 'status: stopped' ]] || fail "LXC $vmid must be stopped before automatic restore"
+
+# Recheck immediately before the destructive restore: even a snapshot created
+# after the entrypoint preflight must never be lost to pct restore --force.
+node="$(hostname -s)" || fail "could not determine Proxmox node"
+snapshots_json="$(pvesh get "/nodes/$node/lxc/$vmid/snapshot" --output-format json)" || \
+  fail "could not verify existing snapshots before restoring LXC $vmid"
+FORGE_SNAPSHOTS_JSON="$snapshots_json" python3 - <<'PY'
+import json
+import os
+import sys
+
+try:
+    snapshots = json.loads(os.environ["FORGE_SNAPSHOTS_JSON"])
+except (KeyError, ValueError) as exc:
+    sys.exit(f"ERROR: could not parse current LXC snapshot list: {exc}")
+if not isinstance(snapshots, list) or any(
+    not isinstance(item, dict) or item.get("name") != "current"
+    for item in snapshots
+):
+    sys.exit("ERROR: refusing pct restore --force: persistent LXC snapshots may be destroyed")
+PY
+snapshot_check=$?
+(( snapshot_check == 0 )) || exit "$snapshot_check"
 
 # pct restore --force destroys every storage-backed volume still referenced by
 # the old active configuration. Temporarily remove only the excluded volumes

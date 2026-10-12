@@ -108,6 +108,12 @@ HOST_BACKUP_EXTRA_PATHS=""
 # its own backup mode, storage or mount-point inclusion policy.
 CREATE_BACKUP_BEFORE_LXC_UPDATE=true
 
+# Allow same-run vzdump backup recovery when Proxmox cannot create a persistent
+# snapshot. The preflight must verify an applicable backup policy and that
+# no existing persistent snapshots could be lost by pct restore --force.
+# With false (default), snapshot-incompatible LXCs block the update.
+BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false
+
 # If a required update/health stage fails and a safe same-run recovery point is
 # available, Forge attempts to restore that guest before continuing. This does
 # not apply to the Proxmox host itself.

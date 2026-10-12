@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Recovers one failed LXC update using its same-run persistent Proxmox snapshot, preserving older snapshots and returning the guest to running state.
+# Description: Recovers an LXC from its same-run persistent snapshot, or an explicitly authorized backup fallback, then checks guest health.
 
 set -u
 
@@ -14,19 +14,21 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 7 ]] || fail "usage: recover.sh VMID BACKUP_VOLUME SNAPSHOT_NAME LOG_FILE ROLLBACK_ENABLED FAILED_STAGE PRIMARY_EXIT_CODE"
+[[ $# -eq 8 ]] || fail "usage: recover.sh VMID BACKUP_VOLUME SNAPSHOT_NAME LOG_FILE ROLLBACK_ENABLED RECOVERY_MODE FAILED_STAGE PRIMARY_EXIT_CODE"
 vmid="$1"
 backup_volume="$2"
 snapshot_name="$3"
 log_file="$4"
 rollback_enabled="$5"
-failed_stage="$6"
-primary_result="$7"
+recovery_mode="$6"
+failed_stage="$7"
+primary_result="$8"
 
 [[ "$vmid" =~ ^[0-9]+$ ]] || fail "VMID must be numeric"
 [[ -f "$log_file" ]] || fail "log file does not exist: $log_file"
 [[ -w "$log_file" ]] || fail "log file is not writable: $log_file"
 [[ "$rollback_enabled" == true || "$rollback_enabled" == false ]] || fail "ROLLBACK_ENABLED must be true or false"
+[[ "$recovery_mode" == snapshot || "$recovery_mode" == backup ]] || fail "RECOVERY_MODE must be snapshot or backup"
 [[ "$failed_stage" =~ ^[a-z][a-z0-9_-]*$ ]] || fail "invalid failed stage '$failed_stage'"
 [[ "$primary_result" =~ ^[0-9]+$ ]] || fail "PRIMARY_EXIT_CODE must be numeric"
 
@@ -34,12 +36,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 
 state_script="$script_dir/get-state.sh"
+backup_restore_script="$lib_dir/backup/lxc/restore.sh"
 health_script="$script_dir/health.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 
 for helper in \
   "$state_script" \
+  "$backup_restore_script" \
   "$health_script" \
   "$log_capture_script" \
   "$log_write_script"; do
@@ -58,12 +62,13 @@ if [[ "$rollback_enabled" != true ]]; then
   exit 0
 fi
 
-if [[ -z "$snapshot_name" ]]; then
+if [[ ( "$recovery_mode" == snapshot && -z "$snapshot_name" ) ||
+      ( "$recovery_mode" == backup && -z "$backup_volume" ) ]]; then
   bash "$log_write_script" "$log_file" WARN recovery_skipped \
     "vmid=$vmid" \
     "failed_stage=$failed_stage" \
     "primary_exit_code=$primary_result" \
-    "reason=no_recovery_snapshot" || \
+    "reason=no_recovery_artifact" || \
     printf 'ERROR: could not record unavailable recovery in %s\n' "$log_file" >&2
   exit 0
 fi
@@ -73,7 +78,8 @@ bash "$log_write_script" "$log_file" WARN recovery_start \
   "failed_stage=$failed_stage" \
   "primary_exit_code=$primary_result" \
   "backup=$backup_volume" \
-  "snapshot=$snapshot_name" || \
+  "snapshot=$snapshot_name" \
+  "recovery_mode=$recovery_mode" || \
   printf 'ERROR: could not record recovery start in %s\n' "$log_file" >&2
 
 current_state="$(bash "$state_script" "$vmid")"
@@ -120,14 +126,19 @@ case "$current_state" in
     ;;
 esac
 
-bash "$log_capture_script" "$log_file" recovery_rollback -- \
-  pct rollback "$vmid" "$snapshot_name"
+if [[ "$recovery_mode" == snapshot ]]; then
+  bash "$log_capture_script" "$log_file" recovery_rollback -- \
+    pct rollback "$vmid" "$snapshot_name"
+else
+  bash "$log_capture_script" "$log_file" recovery_restore -- \
+    bash "$backup_restore_script" "$vmid" "$backup_volume"
+fi
 recovery_result=$?
 if (( recovery_result != 0 )); then
   bash "$log_write_script" "$log_file" ERROR recovery_end \
     "vmid=$vmid" \
     "status=failed" \
-    "step=rollback" \
+    "step=$recovery_mode" \
     "exit_code=$recovery_result" \
     "backup=$backup_volume" || true
   exit "$recovery_result"
@@ -162,7 +173,7 @@ if [[ "$ready" == true ]]; then
   bash "$log_capture_script" "$log_file" recovery_health -- bash "$health_script" "$vmid"
   recovery_result=$?
 else
-  printf 'ERROR: LXC %s did not become ready after rollback\n' "$vmid" >&2
+  printf 'ERROR: LXC %s did not become ready after recovery\n' "$vmid" >&2
   recovery_result=1
 fi
 
@@ -179,6 +190,7 @@ fi
 bash "$log_write_script" "$log_file" INFO recovery_end \
   "vmid=$vmid" \
   "status=success" \
+  "recovery_mode=$recovery_mode" \
   "backup=$backup_volume" \
   "snapshot=$snapshot_name" || \
   printf 'ERROR: could not record successful recovery in %s\n' "$log_file" >&2

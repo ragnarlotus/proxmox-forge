@@ -67,7 +67,19 @@ while IFS= read -r target_record; do
 done <<< "$targets_output"
 
 # All recovery conflicts must be resolved before the host or any LXC changes.
-bash "$conflicts_script" "${vmids[@]}" || fail "LXC protection conflicts detected; no updates started"
+recovery_plan="$(bash "$conflicts_script" "${vmids[@]}")" || \
+  fail "LXC protection conflicts detected; no updates started"
+
+FORGE_LXC_BACKUP_ONLY_VMIDS=""
+while IFS= read -r record; do
+  [[ -n "$record" ]] || continue
+  [[ "$record" == backup_fallback=* ]] || fail "invalid recovery plan: $record"
+  vmid="${record#backup_fallback=}"
+  [[ "$vmid" =~ ^[0-9]+$ ]] || fail "invalid recovery plan VMID"
+  FORGE_LXC_BACKUP_ONLY_VMIDS+=" $vmid"
+  printf 'INFO: LXC %s will use the existing vzdump backup for recovery\n' "$vmid"
+done <<<"$recovery_plan"
+export FORGE_LXC_BACKUP_ONLY_VMIDS
 
 lxc_targets="${#vmids[@]}"
 update_host=false
