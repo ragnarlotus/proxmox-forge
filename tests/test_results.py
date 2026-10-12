@@ -137,6 +137,7 @@ class ResultAggregationTests(unittest.TestCase):
         ])
         self.assertIn("update_all_stage=success stage=lxc total=3 succeeded=3 failed=0", result.stdout)
         self.assertIn("update_all=success mode=lxc", result.stdout)
+        self.assertIn("Forge update summary: 3 LXCs selected, 3 succeeded, 0 failed; overall SUCCESS.", result.stdout)
 
     def test_one_guest_failure_keeps_later_guests_running(self):
         result, calls = self.invoke(
@@ -149,6 +150,8 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertIn("update_all=failed stage=lxc total=3 succeeded=2 failed=1 exit_code=1",
                       result.stdout)
         self.assertNotIn("update_all=success", result.stdout)
+        self.assertIn("Forge update summary: 3 LXCs selected, 2 succeeded, 1 failed; overall FAILED.", result.stdout)
+        self.assertIn("Failed LXC: 111 (exit code 42)", result.stdout)
 
     def test_multiple_guest_failures_are_all_counted(self):
         result, calls = self.invoke(
@@ -180,6 +183,7 @@ class ResultAggregationTests(unittest.TestCase):
         ])
         self.assertIn("update_all=failed stage=host exit_code=42 lxc_started=false",
                       result.stdout)
+        self.assertIn("Forge update summary: host FAILED (exit code 42); LXC updates not started (3 selected).", result.stdout)
 
     def test_successful_host_then_partial_lxc_failure(self):
         result, calls = self.invoke(
@@ -215,6 +219,7 @@ class ResultAggregationTests(unittest.TestCase):
         ])
         self.assertIn("update_all_stage=skipped stage=lxc reason=running_lxc_disabled",
                       result.stdout)
+        self.assertIn("Forge update summary: host SUCCESS; LXC updates skipped (disabled); overall SUCCESS.", result.stdout)
 
     def test_disabled_host_while_running_guests_enabled(self):
         result, calls = self.invoke(

@@ -260,6 +260,8 @@ finish_failed() {
 
   printf 'update=failed vmid=%s stage=%s exit_code=%s log=%s\n' \
     "$vmid" "$failed_stage" "$primary_result" "$log_file"
+  printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
+    "$vmid" "$failed_stage" "$primary_result"
   exit "$primary_result"
 }
 
@@ -490,3 +492,5 @@ bash "$log_write_script" "$log_file" INFO target_update_end \
 
 printf 'update=success vmid=%s initial_state=%s final_state=%s log=%s\n' \
   "$vmid" "$initial_state" "$initial_state" "$log_file"
+printf 'Forge update summary: LXC %s SUCCESS (final state: %s).\n' \
+  "$vmid" "$initial_state"

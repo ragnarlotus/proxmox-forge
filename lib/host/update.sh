@@ -100,6 +100,8 @@ finish_failed() {
 
   printf 'update=failed type=host hostname=%s stage=%s exit_code=%s rollback=unsupported log=%s\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result" "$log_file"
+  printf 'Forge update summary: host %s FAILED at %s (exit code %s; no automatic rollback).\n' \
+    "$hostname_fqdn" "$failed_stage" "$primary_result"
   exit "$primary_result"
 }
 
@@ -171,3 +173,4 @@ bash "$log_write_script" "$log_file" INFO target_update_end \
 
 printf 'update=success type=host hostname=%s backup=%s log=%s\n' \
   "$hostname_fqdn" "${backup_file:-none}" "$log_file"
+printf 'Forge update summary: host %s SUCCESS.\n' "$hostname_fqdn"

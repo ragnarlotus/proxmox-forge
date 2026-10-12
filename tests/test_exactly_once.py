@@ -167,6 +167,7 @@ class ExactlyOnceTests(unittest.TestCase):
                     "custom", "health", "fstrim"],
         )
         self.assertIn("update=success", result.stdout)
+        self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
 
     def test_failure_stops_later_stages_and_recovers_only_once(self):
         stages = ["backup", "snapshot", "os", "application", "custom", "health"]
@@ -184,6 +185,7 @@ class ExactlyOnceTests(unittest.TestCase):
                     self.assertEqual(recover[0]["args"][-1], "42")
                 self.assertEqual(steps, expected)
                 self.assertIn("update=failed", result.stdout)
+                self.assertIn(f"Forge update summary: LXC 111 FAILED at {stage} (exit code 42).", result.stdout)
 
     def test_fallback_uses_one_backup_no_snapshot_and_one_restore_attempt(self):
         result, steps, calls = self.invoke(

@@ -97,6 +97,8 @@ if [[ "$update_host" == true ]]; then
 
   if (( host_result != 0 )); then
     printf 'update_all=failed stage=host exit_code=%s lxc_started=false\n' "$host_result"
+    printf '\nForge update summary: host FAILED (exit code %s); LXC updates not started (%s selected).\n' \
+      "$host_result" "$lxc_targets"
     exit "$host_result"
   fi
 
@@ -108,6 +110,7 @@ fi
 if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
   succeeded=0
   failed=0
+  failed_targets=()
 
   printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
 
@@ -122,6 +125,7 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
       printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
     else
       failed=$((failed + 1))
+      failed_targets+=("$vmid (exit code $target_result)")
       printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
     fi
   done
@@ -131,6 +135,19 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
       "$lxc_targets" "$succeeded" "$failed"
     printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
       "$lxc_targets" "$succeeded" "$failed"
+    printf '\nForge update summary: '
+    if [[ "$mode" == all ]]; then
+      if [[ "$update_host" == true ]]; then
+        printf 'host SUCCESS; '
+      else
+        printf 'host skipped; '
+      fi
+    fi
+    printf '%s LXCs selected, %s succeeded, %s failed; overall FAILED.\n' \
+      "$lxc_targets" "$succeeded" "$failed"
+    for failed_target in "${failed_targets[@]}"; do
+      printf '  Failed LXC: %s\n' "$failed_target"
+    done
     exit 1
   fi
 
@@ -142,3 +159,18 @@ fi
 
 printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
   "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+
+printf '\nForge update summary: '
+if [[ "$mode" == all ]]; then
+  if [[ "$update_host" == true ]]; then
+    printf 'host SUCCESS; '
+  else
+    printf 'host skipped; '
+  fi
+fi
+if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+  printf '%s LXCs selected, %s succeeded, 0 failed; overall SUCCESS.\n' \
+    "$lxc_targets" "$succeeded"
+else
+  printf 'LXC updates skipped (disabled); overall SUCCESS.\n'
+fi
