@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Coordinates full (host then LXC) or LXC-only update runs, selecting running guests before mutation and processing selected VMIDs serially.
+# Description: Coordinates full (host then LXC) or LXC-only update runs, selecting running guests and optionally stopped guests before mutation and processing selected VMIDs serially.
 
 set -u
 
@@ -43,7 +43,7 @@ config_get || fail "could not load effective Forge configuration"
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
-  bash "$lxc_list_targets_script" "${CONFIG[UPDATE_RUNNING_LXC]}"
+  bash "$lxc_list_targets_script" "${CONFIG[UPDATE_STOPPED_LXC]}"
 )" || fail "could not resolve effective LXC target set"
 
 vmids=()
@@ -70,8 +70,8 @@ if [[ "$mode" == all && "${CONFIG[UPDATE_HOST]}" == true ]]; then
   update_host=true
 fi
 
-printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
-  "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+printf 'update_all=start mode=%s update_host=%s update_stopped_lxc=%s lxc_targets=%s\n' \
+  "$mode" "$update_host" "${CONFIG[UPDATE_STOPPED_LXC]}" "$lxc_targets"
 
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
@@ -88,40 +88,35 @@ elif [[ "$mode" == all ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
 fi
 
-if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
-  succeeded=0
-  failed=0
+succeeded=0
+failed=0
 
-  printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
+printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
 
-  for vmid in "${vmids[@]}"; do
-    printf 'update_all_target=start vmid=%s\n' "$vmid"
+for vmid in "${vmids[@]}"; do
+  printf 'update_all_target=start vmid=%s\n' "$vmid"
 
-    bash "$lxc_update_script" "$vmid" scope
-    target_result=$?
+  bash "$lxc_update_script" "$vmid" scope
+  target_result=$?
 
-    if (( target_result == 0 )); then
-      succeeded=$((succeeded + 1))
-      printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
-    else
-      failed=$((failed + 1))
-      printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
-    fi
-  done
-
-  if (( failed != 0 )); then
-    printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
-      "$lxc_targets" "$succeeded" "$failed"
-    printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
-      "$lxc_targets" "$succeeded" "$failed"
-    exit 1
+  if (( target_result == 0 )); then
+    succeeded=$((succeeded + 1))
+    printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
+  else
+    failed=$((failed + 1))
+    printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
   fi
+done
 
-  printf 'update_all_stage=success stage=lxc total=%s succeeded=%s failed=0 exit_code=0\n' \
-    "$lxc_targets" "$succeeded"
-else
-  printf 'update_all_stage=skipped stage=lxc reason=running_lxc_disabled\n'
+if (( failed != 0 )); then
+  printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+    "$lxc_targets" "$succeeded" "$failed"
+  printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+    "$lxc_targets" "$succeeded" "$failed"
+  exit 1
 fi
 
-printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
-  "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+printf 'update_all_stage=success stage=lxc total=%s succeeded=%s failed=0 exit_code=0\n' \
+  "$lxc_targets" "$succeeded"
+printf 'update_all=success mode=%s update_host=%s update_stopped_lxc=%s lxc_targets=%s\n' \
+  "$mode" "$update_host" "${CONFIG[UPDATE_STOPPED_LXC]}" "$lxc_targets"

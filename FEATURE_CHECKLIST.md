@@ -48,7 +48,7 @@ These are the agreed behavioural requirements of the current implementation.
 ## C. Selection and policies
 
 - [ ] **F026** `EXCLUDE` selection by ID/name.
-- [x] **F029** Filter automatic LXC scope by running state. `UPDATE_RUNNING_LXC` controls inclusion of currently running LXCs; stopped LXCs are never selected automatically.
+- [x] **F029** Select running LXCs automatically; `UPDATE_STOPPED_LXC` optionally includes stopped LXCs in bulk updates.
 - [x] **F030** Skip templates automatically.
 
 ## D. Update execution

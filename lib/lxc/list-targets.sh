@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Lists the automatic local LXC update scope: currently running non-template containers when UPDATE_RUNNING_LXC is enabled.
+# Description: Lists the automatic local LXC update scope: running non-template containers, plus stopped containers when UPDATE_STOPPED_LXC is enabled.
 
 set -u
 
@@ -14,15 +14,14 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: list-targets.sh UPDATE_RUNNING_LXC"
-update_running="$1"
+[[ $# -eq 1 ]] || fail "usage: list-targets.sh UPDATE_STOPPED_LXC"
+update_stopped="$1"
 
-case "$update_running" in
+case "$update_stopped" in
   true|false) ;;
-  *) fail "UPDATE_RUNNING_LXC must be true or false" ;;
+  *) fail "UPDATE_STOPPED_LXC must be true or false" ;;
 esac
 
-[[ "$update_running" == true ]] || exit 0
 
 run_id="${FORGE_RUN_ID:-}"
 [[ -n "$run_id" ]] || fail "Forge run identifier is unavailable"
@@ -51,7 +50,7 @@ for config_file in "${config_files[@]}"; do
     continue
   fi
 
-  [[ "$state" == stopped ]] && continue
+  [[ "$state" == stopped && "$update_stopped" == false ]] && continue
 
-  printf 'type=lxc vmid=%s name=%s state=running template=false\n' "$vmid" "$name"
+  printf 'type=lxc vmid=%s name=%s state=%s template=false\n' "$vmid" "$name" "$state"
 done

@@ -127,9 +127,7 @@ run_update_all() {
   local mode="$1"
 
   [[ -r "$UPDATE_ALL_SCRIPT" ]] || fail "update coordinator is not readable: $UPDATE_ALL_SCRIPT"
-  if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
-    ensure_lxc_environment
-  fi
+  ensure_lxc_environment
   bash "$UPDATE_ALL_SCRIPT" "$mode"
 }
 
@@ -155,10 +153,8 @@ main() {
         list-targets)
           [[ $# -eq 2 ]] || fail "usage: forge lxc list-targets"
           [[ -r "$LXC_LIST_TARGETS_SCRIPT" ]] || fail "LXC target-list helper is not readable: $LXC_LIST_TARGETS_SCRIPT"
-          if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
-            ensure_lxc_environment
-          fi
-          bash "$LXC_LIST_TARGETS_SCRIPT" "${CONFIG[UPDATE_RUNNING_LXC]}"
+          ensure_lxc_environment
+          bash "$LXC_LIST_TARGETS_SCRIPT" "${CONFIG[UPDATE_STOPPED_LXC]}"
           ;;
         update)
           [[ $# -eq 3 ]] || fail "usage: forge lxc update TARGET|all"

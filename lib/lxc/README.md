@@ -19,7 +19,7 @@ validate configuration and resolve exact target/current state
 → success
 ```
 
-`UPDATE_RUNNING_LXC` applies only to automatic target discovery for `forge lxc list-targets` and both bulk update commands. It does not block `forge lxc update TARGET`.
+`UPDATE_STOPPED_LXC=false` (default) excludes stopped containers from automatic target discovery; running containers are always included. When enabled, bulk runs start stopped LXCs temporarily, update them, and return them to stopped state. Explicit `forge lxc update TARGET` is independent of this setting.
 
 LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
 
