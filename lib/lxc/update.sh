@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Orchestrates one protected LXC update, temporarily starts a stopped guest selected explicitly or by bulk scope and restores its original state, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
+# Description: Orchestrates one protected LXC update, temporarily starts an explicitly selected stopped guest and restores its original state, delegates update stages, and attempts same-run backup recovery after post-mutation failure.
 
 set -u
 
@@ -99,8 +99,7 @@ case "$state" in
   running)
     ;;
   stopped)
-    [[ "$selection_mode" == explicit || "${CONFIG[UPDATE_STOPPED_LXC]}" == true ]] || \
-      fail "LXC $vmid is stopped; automatic stopped-LXC updates are disabled"
+    [[ "$selection_mode" == explicit ]] || fail "LXC $vmid is stopped; automatic updates require running containers"
     ;;
   *)
     fail "unsupported LXC state '$state' for VMID $vmid"

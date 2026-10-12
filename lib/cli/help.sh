@@ -15,7 +15,7 @@ Usage: forge COMMAND [ARGUMENTS]
 Commands:
   validate-config             Validate the effective Forge configuration.
   host update                 Update the local Proxmox VE host.
-  lxc list-targets            List running LXCs, plus stopped if UPDATE_STOPPED_LXC.
+  lxc list-targets            List running LXCs selected by UPDATE_RUNNING_LXC.
   lxc update TARGET           Update one LXC; temporarily start it if stopped.
   lxc update all              Update LXCs from lxc list-targets; do not update host.
   update all                  Update the host first, then LXCs from lxc list-targets.
