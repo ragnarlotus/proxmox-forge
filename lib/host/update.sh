@@ -23,6 +23,7 @@ config_get_script="$lib_dir/config/get.sh"
 requirements_script="$script_dir/check-requirements.sh"
 backup_create_script="$lib_dir/backup/host/create.sh"
 os_update_script="$script_dir/update/os.sh"
+held_packages_script="$lib_dir/preflight/held-packages.sh"
 reboot_script="$lib_dir/postflight/reboot-required.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
@@ -33,6 +34,7 @@ for helper in \
   "$requirements_script" \
   "$backup_create_script" \
   "$os_update_script" \
+  "$held_packages_script" \
   "$reboot_script" \
   "$log_init_script" \
   "$log_capture_script" \
@@ -112,6 +114,18 @@ bash "$log_capture_script" "$log_file" requirements -- \
 stage_result=$?
 if (( stage_result != 0 )); then
   finish_failed requirements "$stage_result"
+fi
+
+# Report apt-mark holds once before mutation. A failed read-only inspection
+# warns rather than overriding the administrator's package policy.
+bash "$log_capture_script" "$log_file" held_packages -- \
+  bash "$held_packages_script" host
+held_result=$?
+if (( held_result != 0 )); then
+  printf 'WARNING: could not inspect held APT packages on Proxmox host (exit code %s)\n' "$held_result" >&2
+  bash "$log_write_script" "$log_file" WARN held_packages \
+    "type=host" "status=unknown" "exit_code=$held_result" || \
+    printf 'ERROR: could not log host held-package warning\n' >&2
 fi
 
 if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then

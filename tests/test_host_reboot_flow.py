@@ -34,6 +34,10 @@ elif kind == "requirements":
     print("requirements=ok type=host")
 elif kind == "os":
     sys.exit(int(os.environ.get("FORGE_TEST_OS_FAIL", "0")))
+elif kind == "held":
+    if os.environ.get("FORGE_TEST_HELD_FAIL") == "true":
+        sys.exit(42)
+    print("held_packages=0 type=host")
 elif kind == "reboot":
     code = int(os.environ.get("FORGE_TEST_REBOOT_FAIL", "0"))
     if code:
@@ -59,6 +63,7 @@ class HostRebootFlowTests(unittest.TestCase):
             "host/check-requirements.sh": "requirements",
             "backup/host/create.sh": "backup",
             "host/update/os.sh": "os",
+            "preflight/held-packages.sh": "held",
             "postflight/reboot-required.sh": "reboot",
             "logging/init.sh": "init",
             "logging/capture.sh": "capture",
@@ -128,6 +133,8 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertIn("reboot_required=yes", result.stdout)
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
+        self.assertEqual([c["kind"] for c in calls].count("held"), 1)
+        self.assertLess([c["kind"] for c in calls].index("held"), [c["kind"] for c in calls].index("os"))
         self.assertEqual([c["kind"] for c in calls].count("os"), 1)
 
     def test_host_without_reboot_signal(self):
@@ -143,6 +150,13 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertIn("reboot_required=unknown", result.stdout)
         self.assertIn("WARNING: could not determine host reboot", result.stderr)
         self.assertEqual([c["kind"] for c in calls].count("os"), 1)
+
+    def test_held_detection_failure_is_nonfatal(self):
+        result, calls = self.invoke(FORGE_TEST_HELD_FAIL="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c["kind"] for c in calls].count("held"), 1)
+        self.assertEqual([c["kind"] for c in calls].count("os"), 1)
+        self.assertIn("WARNING: could not inspect held APT packages", result.stderr)
 
     def test_failed_host_update_does_not_run_reboot_postflight(self):
         result, calls = self.invoke(FORGE_TEST_OS_FAIL="42")
