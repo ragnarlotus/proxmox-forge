@@ -106,7 +106,8 @@ CREATE_BACKUP_BEFORE_HOST_UPDATE=true
 
 # Additional absolute paths to include in Forge host configuration backups,
 # separated by commas. The built-in paths /etc/, /root, /var/lib/pve-cluster,
-# /usr/local/bin and /opt/proxmox-forge/scripts.d/ are always included.
+# /usr/local/bin, /opt/proxmox-forge/scripts.d/ and
+# /opt/proxmox-forge/health.d/ are always included.
 # The optional /opt/proxmox-forge/forge.conf is included when present.
 # Configured extra paths must exist; a missing path makes the host backup fail
 # instead of being skipped silently.
@@ -134,6 +135,12 @@ ROLLBACK_ON_FAILURE=true
 
 # Validate target health after mutation before declaring success.
 HEALTH_CHECK=true
+
+# Optional per-LXC functional checks (health.d/<VMID>/*.sh).
+# They run inside the guest after generic health checks and again after rollback.
+# A missing target directory means no additional checks. HEALTH_CHECK=false
+# disables both generic and functional checks during a normal update.
+HEALTH_SCRIPTS_DIR="/opt/proxmox-forge/health.d"
 
 
 # -----------------------------------------------------------------------------

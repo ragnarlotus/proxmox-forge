@@ -21,6 +21,7 @@ printf 'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=%s\n' "${CONFIG[BACKUP_WHEN_SNAPSHOT_NO
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
 printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
 printf 'MIN_ROOT_FREE_MB=%s\n' "${CONFIG[MIN_ROOT_FREE_MB]}"
+printf 'HEALTH_SCRIPTS_DIR=%s\n' "${CONFIG[HEALTH_SCRIPTS_DIR]}"
 printf 'MIN_MEM_AVAILABLE_MB=%s\n' "${CONFIG[MIN_MEM_AVAILABLE_MB]}"
 printf 'LOG_KEEP=%s\n' "${CONFIG[LOG_KEEP]}"
 printf 'HOST_BACKUP_EXTRA_PATHS=%s\n' "${CONFIG[HOST_BACKUP_EXTRA_PATHS]}"
@@ -71,6 +72,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("MIN_ROOT_FREE_MB=1024\n", result.stdout)
         self.assertIn("MIN_MEM_AVAILABLE_MB=128\n", result.stdout)
         self.assertIn("LOG_KEEP=8\n", result.stdout)
+        self.assertIn("HEALTH_SCRIPTS_DIR=/opt/proxmox-forge/health.d\n", result.stdout)
 
     def test_local_overrides_defaults(self):
         result = self.load(
@@ -110,6 +112,12 @@ class ConfigurationTests(unittest.TestCase):
                       "*", "share*", "bad name", "111;rm", "100/101"):
             with self.subTest(value=value):
                 self.assert_invalid(f'EXCLUDE="{value}"\n', "EXCLUDE")
+
+    def test_functional_health_directory_configuration(self):
+        result = self.load('HEALTH_SCRIPTS_DIR="/srv/forge-health"\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("HEALTH_SCRIPTS_DIR=/srv/forge-health\n", result.stdout)
+        self.assert_invalid('HEALTH_SCRIPTS_DIR="relative/dir"\n', "HEALTH_SCRIPTS_DIR")
 
     def test_quoted_valid_values(self):
         result = self.load(
@@ -167,7 +175,7 @@ class ConfigurationTests(unittest.TestCase):
                                     "LOG_KEEP must be a positive integer")
 
     def test_paths_must_be_absolute(self):
-        for key in ("CUSTOM_SCRIPTS_DIR", "LOG_DIR"):
+        for key in ("CUSTOM_SCRIPTS_DIR", "HEALTH_SCRIPTS_DIR", "LOG_DIR"):
             with self.subTest(key=key):
                 self.assert_invalid(f'{key}="relative/path"\n',
                                     f"{key} must be an absolute path")

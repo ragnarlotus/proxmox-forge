@@ -73,6 +73,7 @@ include=(
   /var/lib/pve-cluster
   /usr/local/bin
   /opt/proxmox-forge/scripts.d/
+  /opt/proxmox-forge/health.d/
 )
 
 # Host-local Forge overrides are optional, unlike the scripts directory.

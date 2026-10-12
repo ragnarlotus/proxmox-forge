@@ -4,3 +4,7 @@ forge.conf
 # Target-specific local custom scripts are intentionally not versioned.
 scripts.d/*
 !scripts.d/README.md
+
+# Host-local functional health checks are managed independently of custom updaters.
+health.d/*
+!health.d/README.md
