@@ -23,6 +23,10 @@ Partial, prefix and fuzzy matching are deliberately forbidden. An unknown target
 
 Loads `forge.conf.default`, then optional local `forge.conf`, validates the merged result, and checks backup-policy and persistent-snapshot compatibility for running LXCs selected by `UPDATE_RUNNING_LXC`. It reports all detected conflicts and performs no updates. When `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, compatible backup-only recovery is accepted, and the selected VMIDs are reported.
 
+## `forge show-config`
+
+Loads and validates `forge.conf.default` and optional `forge.conf`, printing the effective values in stable key order. The end of each line indicates `source=default` or `source=override` (even when an override matches the default). Values use Bash-safe quoting and sensitive-looking keys are redacted. This read-only command does not query LXC state or run the snapshot/backup recovery-policy preflight.
+
 ## `forge host update`
 
 Runs the protected local Proxmox host update when `UPDATE_HOST=true`. Host rollback is intentionally unsupported. Host requirements are checked internally before mutation.
@@ -59,6 +63,7 @@ Useful read-only public CLI commands before an update:
 
 ```bash
 forge validate-config
+forge show-config
 forge lxc list-targets
 ```
 
