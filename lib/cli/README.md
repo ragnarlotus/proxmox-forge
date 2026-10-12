@@ -3,6 +3,7 @@
 
 ```text
 forge validate-config
+forge show-config
 forge host update
 forge lxc list-targets
 forge lxc update TARGET

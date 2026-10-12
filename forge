@@ -83,6 +83,7 @@ unset FORGE_LXC_BACKUP_ONLY_VMIDS
 
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
+CONFIG_SHOW_SCRIPT="$FORGE_DIR/lib/config/show.sh"
 HOST_UPDATE_SCRIPT="$FORGE_DIR/lib/host/update.sh"
 LXC_ENVIRONMENT_SCRIPT="$FORGE_DIR/lib/lxc/get-environment.sh"
 LXC_LIST_TARGETS_SCRIPT="$FORGE_DIR/lib/lxc/list-targets.sh"
@@ -119,7 +120,7 @@ ensure_lxc_environment() {
 }
 
 case "${1:-}" in
-  validate-config|host|lxc|update)
+  validate-config|show-config|host|lxc|update)
     config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
     write_runtime_state
     export FORGE_RUNTIME_CONFIG_READY=true
@@ -184,6 +185,13 @@ main() {
       else
         printf 'Forge configuration OK: defaults=%s overrides=none\n' "$CONFIG_FILE"
       fi
+      ;;
+    show-config)
+      [[ $# -eq 1 ]] || fail "show-config does not accept additional arguments"
+      [[ -r "$CONFIG_SHOW_SCRIPT" ]] || fail "config show helper is not readable: $CONFIG_SHOW_SCRIPT"
+      # shellcheck source=/dev/null
+      source "$CONFIG_SHOW_SCRIPT" || fail "could not load config show helper"
+      config_show || fail "could not show effective Forge configuration"
       ;;
     host)
       [[ $# -eq 2 && "$2" == update ]] || fail "usage: forge host update"
