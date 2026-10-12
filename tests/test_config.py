@@ -19,6 +19,7 @@ source "$1/lib/config/get.sh" || exit 1
 config_get_files "$2" "$3" || exit 1
 printf 'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=%s\n' "${CONFIG[BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE]}"
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
+printf 'MIN_ROOT_FREE_MB=%s\n' "${CONFIG[MIN_ROOT_FREE_MB]}"
 printf 'LOG_KEEP=%s\n' "${CONFIG[LOG_KEEP]}"
 printf 'HOST_BACKUP_EXTRA_PATHS=%s\n' "${CONFIG[HOST_BACKUP_EXTRA_PATHS]}"
 """
@@ -64,6 +65,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true\n", result.stdout)
         self.assertIn("UPDATE_HOST=true\n", result.stdout)
+        self.assertIn("MIN_ROOT_FREE_MB=1024\n", result.stdout)
         self.assertIn("LOG_KEEP=8\n", result.stdout)
 
     def test_local_overrides_defaults(self):
@@ -75,6 +77,14 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("UPDATE_HOST=false\n", result.stdout)
         self.assertIn("LOG_KEEP=12\n", result.stdout)
         self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false\n", result.stdout)
+
+    def test_free_space_threshold_validation(self):
+        result = self.load("MIN_ROOT_FREE_MB=512\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("MIN_ROOT_FREE_MB=512\n", result.stdout)
+        for invalid in ("0", "-1", "1.5", "not-a-number", "1048577"):
+            with self.subTest(invalid=invalid):
+                self.assert_invalid(f"MIN_ROOT_FREE_MB={invalid}\n", "MIN_ROOT_FREE_MB")
 
     def test_quoted_valid_values(self):
         result = self.load(
