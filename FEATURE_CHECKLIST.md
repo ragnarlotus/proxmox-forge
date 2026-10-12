@@ -41,7 +41,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [ ] **F016** Report the exact list of affected packages.
 - [ ] **F017** Report installed version → candidate version.
 - [ ] **F018** Distinguish security updates.
-- [x] **F022** Detect held packages. Before any host or LXC update mutation, Forge inspects explicit APT holds via read-only `apt-mark showhold` (inside the guest via `pct exec`), lists each held package and the count in captured terminal/log output, and issues a notice if any are held. No unhold or change to the APT update plan; a failed inspection is a visible nonfatal warning. Automated tests cover the detector, both orchestrators and preflight sequencing.
+- [x] **F022** Detect actionable held APT upgrades. After the OS APT stage (using refreshed lists when `apt-get update` succeeds), Forge checks only explicitly held packages with a newer APT candidate (`apt-mark showhold`, `apt-cache policy`, `dpkg --compare-versions`); reports affected package, installed and candidate versions, and count. No noise for holds without available upgrades, no unhold or impact on update/recovery exit status. On OS failures findings provide diagnosis; on Community Scripts updater failures they are context only, not proof of causation. If LXC OS updates are disabled but the app updater is active, cached candidate versions are checked before the app stage. Automated regression tests cover both flows, empty/non-outdated holds, diagnostic failures and warnings.
 - [ ] **F023** Provide a completely read-only preview/check mode.
 - [ ] **F024** Generate an exact update plan before execution.
 

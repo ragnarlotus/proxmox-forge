@@ -116,18 +116,6 @@ if (( stage_result != 0 )); then
   finish_failed requirements "$stage_result"
 fi
 
-# Report apt-mark holds once before mutation. A failed read-only inspection
-# warns rather than overriding the administrator's package policy.
-bash "$log_capture_script" "$log_file" held_packages -- \
-  bash "$held_packages_script" host
-held_result=$?
-if (( held_result != 0 )); then
-  printf 'WARNING: could not inspect held APT packages on Proxmox host (exit code %s)\n' "$held_result" >&2
-  bash "$log_write_script" "$log_file" WARN held_packages \
-    "type=host" "status=unknown" "exit_code=$held_result" || \
-    printf 'ERROR: could not log host held-package warning\n' >&2
-fi
-
 if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then
   backup_output_file="$(mktemp)" || finish_failed backup 1
 
@@ -162,6 +150,19 @@ fi
 bash "$log_capture_script" "$log_file" os_update -- \
   bash "$os_update_script"
 stage_result=$?
+
+# Diagnose only held packages with pending candidate upgrades using refreshed
+# APT lists, even if the OS update failed. A failed inspection is nonfatal.
+bash "$log_capture_script" "$log_file" held_packages -- \
+  bash "$held_packages_script" host
+held_result=$?
+if (( held_result != 0 )); then
+  printf 'WARNING: could not inspect held APT packages on Proxmox host (exit code %s)\n' "$held_result" >&2
+  bash "$log_write_script" "$log_file" WARN held_packages \
+    "type=host" "status=unknown" "exit_code=$held_result" || \
+    printf 'ERROR: could not log host held-package warning\n' >&2
+fi
+
 if (( stage_result != 0 )); then
   finish_failed os_update "$stage_result"
 fi

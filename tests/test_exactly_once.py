@@ -79,7 +79,7 @@ else:
     elif component == "reboot":
         print("reboot_required=yes type=lxc vmid=111 marker=yes")
     elif component == "held":
-        print("held_packages=0 type=lxc vmid=111")
+        pass
 """
 
 
@@ -169,7 +169,7 @@ class ExactlyOnceTests(unittest.TestCase):
         result, steps, _ = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            steps, ["held", "backup", "snapshot", "os", "application",
+            steps, ["backup", "snapshot", "os", "held", "application",
                     "custom", "health", "fstrim", "reboot"],
         )
         self.assertIn("update=success", result.stdout)
@@ -184,7 +184,9 @@ class ExactlyOnceTests(unittest.TestCase):
                 self.calls_path.unlink(missing_ok=True)
                 result, steps, calls = self.invoke(FORGE_TEST_FAIL_STAGE=stage)
                 self.assertEqual(result.returncode, 42, result.stderr)
-                expected = ["held"] + stages[:stages.index(stage) + 1]
+                expected = stages[:stages.index(stage) + 1]
+                if stage in ("os", "application", "custom", "health"):
+                    expected.insert(expected.index("os") + 1, "held")
                 if stage in ("os", "application", "custom", "health"):
                     expected.append("recover")
                     recover = [c for c in calls if c["component"] == "recover"]
@@ -208,7 +210,7 @@ class ExactlyOnceTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertEqual(
-            steps, ["held", "backup", "os", "application", "custom", "recover"]
+            steps, ["backup", "os", "held", "application", "custom", "recover"]
         )
         recover = [c for c in calls if c["component"] == "recover"]
         self.assertEqual(len(recover), 1)
@@ -222,13 +224,13 @@ class ExactlyOnceTests(unittest.TestCase):
             FORGE_TEST_FAIL_STAGE="os", FORGE_TEST_FAIL_RECOVERY="true",
         )
         self.assertEqual(result.returncode, 42, result.stderr)
-        self.assertEqual(steps, ["held", "backup", "snapshot", "os", "recover"])
+        self.assertEqual(steps, ["backup", "snapshot", "os", "held", "recover"])
 
     def test_nonfatal_fstrim_failure_is_not_retried(self):
         result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE="fstrim")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            steps, ["held", "backup", "snapshot", "os", "application",
+            steps, ["backup", "snapshot", "os", "held", "application",
                     "custom", "health", "fstrim", "reboot"],
         )
         self.assertIn("WARNING: post-update fstrim failed", result.stderr)
@@ -247,6 +249,13 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("reboot_required=unknown", result.stdout)
         self.assertIn("WARNING: could not determine reboot requirement", result.stderr)
 
+    def test_application_only_checks_held_packages_once(self):
+        result, steps, _ = self.invoke(FORGE_TEST_OS="false")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(steps.count("held"), 1)
+        self.assertLess(steps.index("held"), steps.index("application"))
+        self.assertNotIn("os", steps)
+
     def test_no_mutations_when_all_update_stages_disabled(self):
         result, steps, _ = self.invoke(
             FORGE_TEST_OS="false",
@@ -254,7 +263,7 @@ class ExactlyOnceTests(unittest.TestCase):
             FORGE_TEST_CUSTOM_SCRIPTS="false",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(steps, ["held", "reboot"])
+        self.assertEqual(steps, ["reboot"])
 
 
 if __name__ == "__main__":

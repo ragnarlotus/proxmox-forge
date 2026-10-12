@@ -312,18 +312,6 @@ application_updater="${RECORD_FIELDS[application_updater]:-}"
 [[ -n "$package_manager" ]] || finish_failed requirements 1
 [[ -n "$application_updater" ]] || finish_failed requirements 1
 
-# Inspect guest apt-mark holds before any backup or mutation. A failed
-# read-only inspection warns rather than overriding the user's package policy.
-bash "$log_capture_script" "$log_file" held_packages -- \
-  bash "$held_packages_script" "$vmid"
-held_result=$?
-if (( held_result != 0 )); then
-  printf 'WARNING: could not inspect held APT packages for LXC %s (exit code %s)\n' "$vmid" "$held_result" >&2
-  bash "$log_write_script" "$log_file" WARN held_packages \
-    "vmid=$vmid" "status=unknown" "exit_code=$held_result" || \
-    printf 'ERROR: could not log LXC held-package warning\n' >&2
-fi
-
 # Discover local scripts independently of LXC requirements, before backup planning.
 if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
   && [[ -d "${CONFIG[CUSTOM_SCRIPTS_DIR]}/$vmid" ]] \
@@ -413,6 +401,17 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
     bash "$os_update_script" "$vmid" "$package_manager"
   stage_result=$?
 
+  # Inspect only held APT packages with pending upgrades (current APT lists).
+  # This is informational and cannot prove why a Community Script failed.
+  bash "$log_capture_script" "$log_file" held_packages -- \
+    bash "$held_packages_script" "$vmid"
+  held_result=$?
+  if (( held_result != 0 )); then
+    printf 'WARNING: could not inspect held APT packages for LXC %s (exit code %s)\n' "$vmid" "$held_result" >&2
+    bash "$log_write_script" "$log_file" WARN held_packages \
+      "vmid=$vmid" "status=unknown" "exit_code=$held_result" || \
+      printf 'ERROR: could not log LXC held-package warning\n' >&2
+  fi
   if (( stage_result != 0 )); then
     bash "$recovery_script" \
       "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
@@ -421,6 +420,19 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
   fi
 else
   record_skipped_stage os_update disabled
+  if [[ "$application_update_planned" == true ]]; then
+    # Inspect only held APT packages with pending upgrades (current APT lists).
+    # This is informational and cannot prove why a Community Script failed.
+    bash "$log_capture_script" "$log_file" held_packages -- \
+      bash "$held_packages_script" "$vmid"
+    held_result=$?
+    if (( held_result != 0 )); then
+      printf 'WARNING: could not inspect held APT packages for LXC %s (exit code %s)\n' "$vmid" "$held_result" >&2
+      bash "$log_write_script" "$log_file" WARN held_packages \
+        "vmid=$vmid" "status=unknown" "exit_code=$held_result" || \
+        printf 'ERROR: could not log LXC held-package warning\n' >&2
+    fi
+  fi
 fi
 
 if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then

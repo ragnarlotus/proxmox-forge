@@ -134,7 +134,7 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
         self.assertEqual([c["kind"] for c in calls].count("held"), 1)
-        self.assertLess([c["kind"] for c in calls].index("held"), [c["kind"] for c in calls].index("os"))
+        self.assertGreater([c["kind"] for c in calls].index("held"), [c["kind"] for c in calls].index("os"))
         self.assertEqual([c["kind"] for c in calls].count("os"), 1)
 
     def test_host_without_reboot_signal(self):
@@ -162,6 +162,7 @@ class HostRebootFlowTests(unittest.TestCase):
         result, calls = self.invoke(FORGE_TEST_OS_FAIL="42")
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertNotIn("reboot", [c["kind"] for c in calls])
+        self.assertIn("held", [c["kind"] for c in calls])
         self.assertIn("update=failed type=host", result.stdout)
 
 
