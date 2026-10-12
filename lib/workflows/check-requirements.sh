@@ -21,6 +21,10 @@ target_record="${2:-}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine script directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 info_script="$lib_dir/lxc/get-info.sh"
+root_space_script="$lib_dir/preflight/root-space.sh"
+source "$lib_dir/config/get.sh" || fail "could not load config"
+config_get || fail "could not load effective config"
+[[ -r "$root_space_script" ]] || fail "space helper is not readable"
 
 [[ -r "$info_script" ]] || fail "required helper is not readable: $info_script"
 
@@ -48,6 +52,7 @@ package_manager="${info_fields[package_manager]:-}"
 dpkg_audit="${info_fields[dpkg_audit]:-}"
 package_process="${info_fields[package_process]:-}"
 application_updater="${info_fields[application_updater]:-}"
+root_free_kb="${info_fields[root_free_kb]:-}"
 
 [[ -n "$vmid" ]] || fail "LXC information returned no vmid"
 [[ -n "$name" ]] || fail "LXC information returned no name"
@@ -57,6 +62,8 @@ application_updater="${info_fields[application_updater]:-}"
 [[ -n "$dpkg_audit" ]] || fail "LXC information returned no dpkg_audit"
 [[ -n "$package_process" ]] || fail "LXC information returned no package_process"
 [[ -n "$application_updater" ]] || fail "LXC information returned no application_updater"
+[[ -n "$root_free_kb" ]] || fail "LXC information returned no root_free_kb"
+bash "$root_space_script" "$vmid" "${CONFIG[MIN_ROOT_FREE_MB]}" "$root_free_kb" || fail "LXC $vmid root space preflight failed"
 
 [[ "$package_manager" != unknown ]] || fail "LXC $vmid has no supported package manager"
 
