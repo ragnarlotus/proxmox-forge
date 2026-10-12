@@ -189,6 +189,9 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42)
         self.assert_calls(calls, [
             ("list", ["true"]),
+            ("space", ["100", "1024"]),
+            ("space", ["111", "1024"]),
+            ("space", ["115", "1024"]),
             ("preflight", ["100", "111", "115"]),
             ("host", []),
         ])
