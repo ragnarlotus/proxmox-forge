@@ -47,7 +47,7 @@ These are the agreed behavioural requirements of the current implementation.
 
 ## C. Selection and policies
 
-- [ ] **F026** `EXCLUDE` selection by ID/name.
+- [x] **F026** `EXCLUDE` selection by ID/name. `EXCLUDE=""` defaults to no exclusions. Comma-separated exact VMIDs or hostnames are removed from the running-LXC selection used by `forge lxc list-targets`, `forge lxc update all`, `forge update all` and `validate-config`. Filtering occurs before resource and recovery preflights, backup and update. Explicit `forge lxc update TARGET` and host updates remain unaffected. Malformed configuration is rejected; automated tests cover matching and bulk enforcement.
 - [x] **F029** Filter automatic LXC scope by running state. `UPDATE_RUNNING_LXC` controls inclusion of currently running LXCs; stopped LXCs are never selected automatically.
 - [x] **F030** Skip templates automatically.
 

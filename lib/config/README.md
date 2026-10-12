@@ -28,6 +28,7 @@ Rules:
 - booleans must be exactly `true` or `false`;
 - `CUSTOM_SCRIPTS_DIR` and `LOG_DIR` must be absolute paths;
 - each non-empty `HOST_BACKUP_EXTRA_PATHS` entry must be an absolute path;
+- `EXCLUDE` must be empty or comma-separated exact VMIDs/hostnames. Spaces around entries are accepted; empty entries, wildcards and spaces inside names are rejected;
 - `LOG_KEEP` must be a positive integer;
 - `MIN_ROOT_FREE_MB` and `MIN_MEM_AVAILABLE_MB` must each be integers from 1 to 1048576 MiB.
 
@@ -41,6 +42,7 @@ LXC requirements checks are mandatory before backup or mutation and cannot be di
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
 | `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include currently running LXCs in `forge lxc list-targets`, `forge lxc update all` and `forge update all`. It does not restrict `forge lxc update TARGET`. |
+| `EXCLUDE` | Empty string or comma-separated VMIDs/exact LXC names | Remove matching running LXCs from automatic listing and both bulk update commands **before** preflight, backup or update. Case-sensitive; no partial or wildcard matching. Does not affect explicit `forge lxc update TARGET` or host updates. Entries for stopped or absent LXCs are inactive. Example: `EXCLUDE="108,share"`. |
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
 | `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
 | `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |

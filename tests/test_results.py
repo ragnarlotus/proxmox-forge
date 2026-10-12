@@ -26,13 +26,16 @@ with Path(os.environ["FORGE_TEST_CALLS"]).open("a") as log:
                           "fallback": os.environ.get("FORGE_LXC_BACKUP_ONLY_VMIDS", "")}) + "\n")
 
 if kind == "list":
-    if args != [os.environ["FORGE_TEST_RUNNING_LXC"]]:
-        sys.exit("unexpected selection flag")
-    if args == ["true"]:
+    if args != [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]:
+        sys.exit("unexpected selection policy")
+    if args[0] == "true":
         if os.environ.get("FORGE_TEST_MALFORMED_TARGET") == "true":
             print("type=lxc name=missing_id state=running template=false")
         else:
+            exclusions = {value.strip() for value in args[1].split(",") if value.strip()}
             for vmid in filter(None, os.environ["FORGE_TEST_VMIDS"].split(",")):
+                if vmid in exclusions or f"guest{vmid}" in exclusions:
+                    continue
                 print(f"type=lxc vmid={vmid} name=guest{vmid} state=running template=false")
 elif kind == "space":
     if len(args) != 2 or args[1] != "1024":
@@ -95,6 +98,7 @@ class ResultAggregationTests(unittest.TestCase):
                     '  declare -gA CONFIG=(\n'
                     '    [UPDATE_HOST]="$FORGE_TEST_UPDATE_HOST"\n'
                     '    [UPDATE_RUNNING_LXC]="$FORGE_TEST_RUNNING_LXC"\n'
+                    '    [EXCLUDE]="$FORGE_TEST_EXCLUDE"\n'
                     '    [MIN_ROOT_FREE_MB]=1024\n'
                     '    [MIN_MEM_AVAILABLE_MB]=128\n'
                     '  )\n'
@@ -118,6 +122,7 @@ class ResultAggregationTests(unittest.TestCase):
             "FORGE_TEST_CALLS": str(self.calls_file),
             "FORGE_TEST_UPDATE_HOST": "true",
             "FORGE_TEST_RUNNING_LXC": "true",
+            "FORGE_TEST_EXCLUDE": "",
             "FORGE_TEST_VMIDS": "100,111,115",
         })
         for key in ("FORGE_TEST_HOST_CODE", "FORGE_TEST_LXC_CODES",
@@ -145,7 +150,7 @@ class ResultAggregationTests(unittest.TestCase):
         result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_calls(calls, [
-            ("list", ["true"]),
+            ("list", ["true", ""]),
             ("space", ["100", "1024"]),
             ("space", ["111", "1024"]),
             ("space", ["115", "1024"]),
@@ -199,7 +204,7 @@ class ResultAggregationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 42)
         self.assert_calls(calls, [
-            ("list", ["true"]),
+            ("list", ["true", ""]),
             ("space", ["100", "1024"]),
             ("space", ["111", "1024"]),
             ("space", ["115", "1024"]),
@@ -246,7 +251,7 @@ class ResultAggregationTests(unittest.TestCase):
     def test_no_running_guests_still_reports_success(self):
         result, calls = self.invoke(FORGE_TEST_VMIDS="")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assert_calls(calls, [("list", ["true"]), ("preflight", [])])
+        self.assert_calls(calls, [("list", ["true", ""]), ("preflight", [])])
         self.assertIn("update_all=success mode=lxc", result.stdout)
         self.assertIn("total=0 succeeded=0 failed=0", result.stdout)
 
@@ -256,7 +261,7 @@ class ResultAggregationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_calls(calls, [
-            ("list", ["false"]), ("preflight", []), ("host", [])
+            ("list", ["false", ""]), ("preflight", []), ("host", [])
         ])
         self.assertIn("update_all_stage=skipped stage=lxc reason=running_lxc_disabled",
                       result.stdout)
@@ -286,6 +291,40 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertTrue(all(c["fallback"].strip() == "111" for c in updates))
         self.assertIn("INFO: LXC 111 will use the existing vzdump backup for recovery",
                       result.stdout)
+
+    def test_excluded_vmids_never_reach_mutating_stages(self):
+        result, calls = self.invoke("all", FORGE_TEST_EXCLUDE="111,115")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([(c["kind"], c["args"]) for c in calls], [
+            ("list", ["true", "111,115"]),
+            ("space", ["100", "1024"]),
+            ("memory", ["100", "128"]),
+            ("preflight", ["100"]),
+            ("host", []),
+            ("lxc", ["100", "scope"]),
+        ])
+        self.assertIn("lxc_targets=1", result.stdout)
+        self.assertNotIn("vmid=111", result.stdout)
+
+    def test_excluded_hostname_never_reaches_preflight_or_update(self):
+        result, calls = self.invoke(FORGE_TEST_EXCLUDE="guest111")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] in ("space", "memory", "lxc")],
+                         ["100", "115", "100", "115", "100", "115"])
+        self.assertEqual(next(c["args"] for c in calls if c["kind"] == "preflight"),
+                         ["100", "115"])
+
+    def test_all_excluded_preserves_host_update_and_avoids_guest_mutations(self):
+        result, calls = self.invoke("all", FORGE_TEST_EXCLUDE="100,guest111,115")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c["kind"] for c in calls], ["list", "preflight", "host"])
+        self.assertIn("lxc_targets=0", result.stdout)
+
+    def test_exclusion_has_no_effect_when_scope_disabled(self):
+        result, calls = self.invoke("all", FORGE_TEST_RUNNING_LXC="false",
+                                    FORGE_TEST_EXCLUDE="111")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([c["kind"] for c in calls], ["list", "preflight", "host"])
 
     def test_invalid_target_blocks_host_update(self):
         result, calls = self.invoke("all", FORGE_TEST_MALFORMED_TARGET="true")
