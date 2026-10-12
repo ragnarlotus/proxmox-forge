@@ -30,7 +30,17 @@ case "$scope" in
     [[ "$status" == failed && $# -eq 2 ]] || fail "usage: final.sh preflight failed MODE REASON"
     mode="$1"; reason="$2"
     [[ "$mode" == all || "$mode" == lxc ]] || fail "invalid update mode"
-    [[ -n "$reason" && "$reason" != *
+    [[ -n "$reason" ]] || fail "invalid failure reason"
+    [[ "$reason" != *$'\n'* && "$reason" != *$'\r'* ]] || fail "invalid failure reason"
+    printf 'Subject: [Proxmox Forge] FAILED - %s update\n' "$mode"
+    if [[ "$mode" == all ]]; then
+      printf 'Status: FAILED\nOperation: forge update all\n'
+    else
+      printf 'Status: FAILED\nOperation: forge lxc update all\n'
+    fi
+    printf 'Phase: preflight\nReason: %s\nNo updates started.\n' "$reason"
+    ;;
+  host)
     [[ $# -eq 4 ]] || fail "usage: final.sh host STATUS HOSTNAME STAGE EXIT_CODE REBOOT"
     hostname="$1"; stage="$2"; exit_code="$3"; reboot="$4"
     [[ "$hostname" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || fail "invalid host"
