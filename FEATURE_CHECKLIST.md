@@ -96,7 +96,7 @@ These are the agreed behavioural requirements of the current implementation.
 
 > Guest rollback capabilities do not apply to the Proxmox host itself.
 >
-> For LXC mutations, Forge requires a persistent `Update_*` snapshot as well as the `vzdump` backup from the applicable Proxmox job. Automatic recovery uses `pct rollback` to the same-run snapshot, never an automatic destructive `pct restore --force` fallback. Forge applies the job's `keep-last` value to its own `Update_*` snapshots; Proxmox backup pruning does not manage persistent snapshots. The snapshot is required, not an optional extra.
+> By default, `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false` requires persistent `Update_*` snapshots; automatic recovery uses `pct rollback` to the same-run snapshot. When enabled, snapshot-incompatible LXCs may instead use their same-run `vzdump` backup, but only if the centralized preflight confirms an applicable backup job, backup creation is enabled, and no existing persistent snapshots would be destroyed. The advanced restore helper rechecks snapshots before any `pct restore --force`. Forge applies the job's `keep-last` value to its own `Update_*` snapshots; Proxmox backup pruning does not manage persistent snapshots. Bulk preflight covers only selected running LXCs, excluding stopped containers.
 
 ## I. Guest lifecycle
 

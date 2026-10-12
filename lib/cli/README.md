@@ -20,7 +20,7 @@ Partial, prefix and fuzzy matching are deliberately forbidden. An unknown target
 
 ## `forge validate-config`
 
-Loads `forge.conf.default`, then optional local `forge.conf`, validates the merged result and performs no update.
+Loads `forge.conf.default`, then optional local `forge.conf`, validates the merged result, and checks backup-policy and persistent-snapshot compatibility for running LXCs selected by `UPDATE_RUNNING_LXC`. It reports all detected conflicts and performs no updates. When `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, compatible backup-only recovery is accepted, and the selected VMIDs are reported.
 
 ## `forge host update`
 
@@ -32,7 +32,7 @@ Lists the automatic LXC scope controlled by `UPDATE_RUNNING_LXC`: currently runn
 
 ## `forge lxc update TARGET`
 
-Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC`. If the explicitly selected LXC is stopped, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe to succeed, performs the update while it is running, and returns it to stopped state afterwards. LXCs that were already running do not use this startup-readiness phase.
+Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC`, checking its recovery compatibility before starting or changing that LXC. If the explicitly selected LXC is stopped, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe to succeed, performs the update while it is running, and returns it to stopped state afterwards. LXCs that were already running do not use this startup-readiness phase.
 
 ## `forge lxc update all`
 
@@ -41,6 +41,8 @@ Updates the LXC targets selected by `forge lxc list-targets` serially, without u
 ## `forge update all`
 
 Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first if `UPDATE_HOST=true`, then updates those VMIDs serially. Automatic updates require a running LXC and never start a stopped container.
+
+Both bulk commands check the entire selected running-LXC scope for recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false` (default), snapshot-incompatible LXCs are blocked; `true` allows only a safe, preflight-approved `vzdump` recovery fallback.
 
 In either bulk command, any failed LXC is recorded as failed regardless of its exit code. Forge attempts eligible guest recovery and continues with later LXC targets. In `forge update all`, a host update failure aborts the run before LXC processing.
 

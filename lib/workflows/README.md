@@ -5,9 +5,14 @@
 `forge update all` deliberately has asymmetric host and guest semantics. `forge lxc update all` follows the LXC stage only:
 
 ```text
-freeze effective VMID scope
+freeze effective running-LXC VMID scope
         │
         ▼
+check recovery compatibility of every selected LXC
+   │
+   ├─ conflict → abort before host or guest mutation
+   │
+   ▼
 update host
    │
    ├─ failure → abort global run before any LXC starts
@@ -23,7 +28,7 @@ update LXCs serially
 aggregate final result
 ```
 
-This means `continue after guest failure` never means `convert failure into success`.
+This means `continue after guest failure` never means `convert failure into success`. The centralized read-only conflict checker runs once for the complete selected scope before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false` blocks unsupported persistent snapshots; enabling it permits a backup-only path only when its preflight safety requirements pass. Stopped LXCs are excluded from bulk scope.
 
 ## Validation status
 
