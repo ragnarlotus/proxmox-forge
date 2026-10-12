@@ -27,12 +27,14 @@ lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directo
 config_get_script="$lib_dir/config/get.sh"
 host_update_script="$lib_dir/host/update.sh"
 lxc_list_targets_script="$lib_dir/lxc/list-targets.sh"
+conflicts_script="$lib_dir/config/conflicts.sh"
 lxc_update_script="$lib_dir/lxc/update.sh"
 
 for helper in \
   "$config_get_script" \
   "$host_update_script" \
   "$lxc_list_targets_script" \
+  "$conflicts_script" \
   "$lxc_update_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
@@ -63,6 +65,9 @@ while IFS= read -r target_record; do
 
   vmids+=("$vmid")
 done <<< "$targets_output"
+
+# All recovery conflicts must be resolved before the host or any LXC changes.
+bash "$conflicts_script" "${vmids[@]}" || fail "LXC protection conflicts detected; no updates started"
 
 lxc_targets="${#vmids[@]}"
 update_host=false

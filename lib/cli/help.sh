@@ -13,7 +13,7 @@ cat <<'EOF'
 Usage: forge COMMAND [ARGUMENTS]
 
 Commands:
-  validate-config             Validate the effective Forge configuration.
+  validate-config             Validate Forge configuration and running-LXC protection.
   host update                 Update the local Proxmox VE host.
   lxc list-targets            List running LXCs selected by UPDATE_RUNNING_LXC.
   lxc update TARGET           Update one LXC; temporarily start it if stopped.

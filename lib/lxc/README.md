@@ -21,6 +21,8 @@ validate configuration and resolve exact target/current state
 
 `UPDATE_RUNNING_LXC` applies only to automatic target discovery for `forge lxc list-targets` and both bulk update commands. It does not block `forge lxc update TARGET`.
 
+`lib/config/conflicts.sh` checks Proxmox backup-job policy and snapshot compatibility for the selected LXCs before mutation. Bulk updates check every selected running LXC before the host update; `forge validate-config` checks the automatic running LXC scope. Stopped LXCs are included only when explicitly selected. Conflicts stop the entire operation before any changes.
+
 LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
 
 The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`. Before mutation, Forge also creates a persistent Proxmox `Update_*` snapshot of the LXC. It reads `keep-last` from the single applicable enabled Proxmox backup job, prunes only the oldest `Update_*` snapshots **before** creating a new one, and leaves manually named snapshots untouched. Successful updates retain the new snapshot; failures roll back to that same-run snapshot using `pct rollback`. If no safe snapshot/retention plan is possible, mutation does not begin.

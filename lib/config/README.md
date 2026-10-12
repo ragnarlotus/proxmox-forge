@@ -34,7 +34,7 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 
 ## Current configuration keys
 
-LXC requirements checks are mandatory before backup or mutation and cannot be disabled.
+LXC requirements checks are mandatory before backup or mutation and cannot be disabled. `forge validate-config` additionally checks backup-policy and persistent-snapshot compatibility for the running LXCs in automatic update scope. Both bulk and explicit LXC updates run the same read-only conflict check before any update begins. Stopped LXCs are checked only when explicitly selected.
 
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
