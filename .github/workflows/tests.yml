@@ -1,0 +1,23 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  configuration:
+    name: Configuration (F209)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check shell syntax
+        run: |
+          bash -n forge
+          find lib -type f -name '*.sh' -print0 | xargs -0 -r -n 1 bash -n
+      - name: Run configuration tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
