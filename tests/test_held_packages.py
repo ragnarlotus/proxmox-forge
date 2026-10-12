@@ -18,7 +18,7 @@ exit "$FORGE_TEST_APT_CODE"
 """
 
 PCT = r"""#!/bin/sh
-[ "$#" -eq 8 ] || exit 95
+[ "$#" -eq 7 ] || exit 95
 [ "$1" = exec ] && [ "$2" = 111 ] && [ "$3" = -- ] && \
   [ "$4" = env ] && [ "$5" = LC_ALL=C ] && \
   [ "$6" = apt-mark ] && [ "$7" = showhold ] || exit 96
