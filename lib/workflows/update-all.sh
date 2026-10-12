@@ -49,7 +49,7 @@ config_get || fail "could not load effective Forge configuration"
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
-  bash "$lxc_list_targets_script" "${CONFIG[UPDATE_RUNNING_LXC]}"
+  bash "$lxc_list_targets_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}"
 )" || fail "could not resolve effective LXC target set"
 
 vmids=()
