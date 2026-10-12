@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  configuration:
-    name: Configuration (F209)
+  tests:
+    name: Configuration and mocked integration (F209/F213)
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -19,5 +19,5 @@ jobs:
         run: |
           bash -n forge
           find lib -type f -name '*.sh' -print0 | xargs -0 -r -n 1 bash -n
-      - name: Run configuration tests
+      - name: Run automated tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
