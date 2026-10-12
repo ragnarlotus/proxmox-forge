@@ -32,6 +32,8 @@ Rules:
 - `LOG_KEEP` must be a positive integer;
 - `MIN_ROOT_FREE_MB` and `MIN_MEM_AVAILABLE_MB` must each be integers from 1 to 1048576 MiB.
 
+Run `forge show-config` to print the validated effective settings (defaults merged with local overrides) in alphabetical order. Each line is a shell-escaped `KEY=value` assignment followed by `# source=default` or `# source=override`. An override is marked even if it repeats the default value. Sensitive-looking keys (passwords, tokens, secrets and credentials) are redacted. This read-only command does not query Proxmox guest state or run the `validate-config` LXC recovery-policy preflight; it only validates configuration syntax and values.
+
 Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not replace local overrides. Target-specific contents below `scripts.d/` and `health.d/` are also ignored except for their README files.
 
 ## Current configuration keys

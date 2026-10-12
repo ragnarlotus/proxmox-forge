@@ -165,7 +165,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **F176** Validate the complete configuration before execution.
 - [x] **F177** Defined policy for unknown/invalid configuration values.
 - [x] **F179** Preserve custom configuration across upgrades.
-- [ ] **F180** Print the effective configuration.
+- [x] **F180** Print the effective configuration. `forge show-config` validates and prints the merged defaults/overrides in stable sorted order, with per-key origin, Bash-safe quoting and redaction of sensitive-looking keys. It does not query Proxmox or mutate state. Regression tests cover real CLI dispatch, precedence, origins, invalid values and output safety.
 - [x] **F181** Validate configuration without updating anything.
 
 > Configuration is now layered like a defaults/local model: versioned `forge.conf.default` is always loaded first and optional Git-ignored `forge.conf` is loaded afterwards as host-local overrides. Duplicate keys inside one file and unknown keys are errors.

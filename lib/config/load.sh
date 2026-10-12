@@ -79,6 +79,11 @@ config_load_file() {
 
     CONFIG["$key"]="$value"
     SEEN["$key"]=1
+    if [[ "$allow_override" == true ]]; then
+      CONFIG_SOURCES["$key"]=override
+    else
+      CONFIG_SOURCES["$key"]=default
+    fi
     file_seen["$key"]=1
   done < "$config_file"
 }
@@ -89,6 +94,7 @@ config_load() {
 
   declare -gA CONFIG=()
   declare -gA SEEN=()
+  declare -gA CONFIG_SOURCES=()
 
   config_load_file "$default_file" false || return 1
 

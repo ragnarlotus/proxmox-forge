@@ -79,6 +79,8 @@ cd /opt/proxmox-forge
 ./forge validate-config
 ```
 
+To inspect effective settings without checking Proxmox guest state, use `./forge show-config`; it prints the merged configuration with each setting's default/override origin.
+
 Forge must be run as `root` on the Proxmox host because it uses `pvesh`, `pct`, package management, host configuration backup and restore operations.
 
 An optional convenience symlink can expose the CLI as `forge`:
