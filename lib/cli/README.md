@@ -42,7 +42,7 @@ Updates the LXC targets selected by `forge lxc list-targets` serially, without u
 
 Validates configuration and freezes the currently running LXC VMID scope when `UPDATE_RUNNING_LXC=true`, updates the Proxmox host first if `UPDATE_HOST=true`, then updates those VMIDs serially. Automatic updates require a running LXC and never start a stopped container.
 
-Both bulk commands check the entire selected running-LXC scope for recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` (default), snapshot-incompatible LXCs use a `vzdump` recovery fallback only when preflight approves it; setting `false` blocks those LXCs.
+Both bulk commands check the entire selected running-LXC scope for free root filesystem space and recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` (default), snapshot-incompatible LXCs use a `vzdump` recovery fallback only when preflight approves it; setting `false` blocks those LXCs.
 
 In either bulk command, any failed LXC is recorded as failed regardless of its exit code. Forge attempts eligible guest recovery and continues with later LXC targets. In `forge update all`, a host update failure aborts the run before LXC processing.
 
