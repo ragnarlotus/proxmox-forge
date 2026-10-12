@@ -122,7 +122,7 @@ class FinalNotificationTests(unittest.TestCase):
             "lxc", "failed", "111", "application_update", "17", "unknown", str(log)
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("diagnostic redacted", result.stdout)
+        self.assertIn("error redacted; inspect log", result.stdout)
         self.assertNotIn("very-sensitive-value", result.stdout)
 
     def test_bulk_reads_failure_metadata_when_available(self):
