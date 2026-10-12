@@ -28,7 +28,8 @@ Rules:
 - booleans must be exactly `true` or `false`;
 - `CUSTOM_SCRIPTS_DIR` and `LOG_DIR` must be absolute paths;
 - each non-empty `HOST_BACKUP_EXTRA_PATHS` entry must be an absolute path;
-- `LOG_KEEP` must be a positive integer.
+- `LOG_KEEP` must be a positive integer;
+- `MIN_ROOT_FREE_MB` must be an integer from 1 to 1048576 MiB.
 
 Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not replace local overrides. Target-specific contents below `scripts.d/` are also ignored except for `scripts.d/README.md`.
 
@@ -50,5 +51,6 @@ LXC requirements checks are mandatory before backup or mutation and cannot be di
 | `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE` | Boolean: `true` or `false` | Default `true`; when safe, use the same-run `vzdump` backup instead of a persistent snapshot for unsupported LXCs. Set `false` to require persistent snapshots and block snapshot-incompatible targets. |
 | `ROLLBACK_ON_FAILURE` | Boolean: `true` or `false` | Attempt same-run guest recovery after eligible update/health failures. |
 | `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation. |
+| `MIN_ROOT_FREE_MB` | Integer from 1 to 1048576, default 1024 | Minimum free space on `/` before updating host or LXC. |
 | `LOG_DIR` | Absolute path | Base Forge log directory. |
 | `LOG_KEEP` | Positive integer (`>= 1`) | Number of timestamped logs retained per LXC. |
