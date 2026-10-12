@@ -22,7 +22,7 @@ LOG_DIR/<PVE_FQDN>/lxc/<VMID>/<TIMESTAMP>.log
 
 `LOG_KEEP` controls retention of timestamped per-LXC logs.
 
-Forge records structured events with ISO timestamps, event names, fields, exit codes and durations where available. Host `ERROR` events are mirrored to `error.log`.
+Forge records structured events with ISO timestamps, event names, fields, exit codes and durations where available. Before updates, it also captures the read-only F022 `held_packages` stage with per-package lines, total count, and a notice for nonzero holds. Query failures are visible warnings and never treated as a clean zero-hold result. Host `ERROR` events are mirrored to `error.log`.
 
 ## Terminal capture behaviour
 

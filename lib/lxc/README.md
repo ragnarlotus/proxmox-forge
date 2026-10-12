@@ -33,6 +33,12 @@ LXC requirements checks always run before backup creation or mutation. A failure
 
 The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`. Before mutation, Forge also creates a persistent Proxmox `Update_*` snapshot of the LXC. It reads `keep-last` from the single applicable enabled Proxmox backup job, prunes only the oldest `Update_*` snapshots **before** creating a new one, and leaves manually named snapshots untouched. Successful updates retain the new snapshot; failures roll back to that same-run snapshot using `pct rollback`. If no safe snapshot/retention plan is possible, mutation does not begin. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, a selected LXC that cannot create persistent snapshots instead retains the newly created `vzdump` backup as its recovery point, skipping snapshot creation. An automatic `pct restore --force` is permitted only when no persistent snapshots exist; the restore helper checks again immediately before any destructive step.
 
+## Explicitly held APT packages (F022)
+
+Once LXC requirements pass, Forge checks `apt-mark showhold` within the running guest, before backup and mutation. It reports each explicitly held package and a count in the terminal and target log. This also applies to explicitly updated stopped LXCs while they are temporarily running. The check never removes holds or changes update selection. A failure to query is reported as a nonfatal warning, not silently treated as zero holds.
+
+This is not a report of every package that could be "kept back" by APT dependency resolution; it specifically detects administrative holds.
+
 ## Package-manager update strategies
 
 Forge currently supports APT-based LXCs only.
