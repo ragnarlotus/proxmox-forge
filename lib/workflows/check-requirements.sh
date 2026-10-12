@@ -22,9 +22,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
 info_script="$lib_dir/lxc/get-info.sh"
 root_space_script="$lib_dir/preflight/root-space.sh"
+memory_script="$lib_dir/preflight/memory.sh"
 source "$lib_dir/config/get.sh" || fail "could not load config"
 config_get || fail "could not load effective config"
 [[ -r "$root_space_script" ]] || fail "space helper is not readable"
+[[ -r "$memory_script" ]] || fail "memory helper is not readable"
 
 [[ -r "$info_script" ]] || fail "required helper is not readable: $info_script"
 
@@ -53,6 +55,7 @@ dpkg_audit="${info_fields[dpkg_audit]:-}"
 package_process="${info_fields[package_process]:-}"
 application_updater="${info_fields[application_updater]:-}"
 root_free_kb="${info_fields[root_free_kb]:-}"
+mem_available_kb="${info_fields[mem_available_kb]:-}"
 
 [[ -n "$vmid" ]] || fail "LXC information returned no vmid"
 [[ -n "$name" ]] || fail "LXC information returned no name"
@@ -64,6 +67,8 @@ root_free_kb="${info_fields[root_free_kb]:-}"
 [[ -n "$application_updater" ]] || fail "LXC information returned no application_updater"
 [[ -n "$root_free_kb" ]] || fail "LXC information returned no root_free_kb"
 bash "$root_space_script" "$vmid" "${CONFIG[MIN_ROOT_FREE_MB]}" "$root_free_kb" || fail "LXC $vmid root space preflight failed"
+[[ -n "$mem_available_kb" ]] || fail "LXC information returned no mem_available_kb"
+bash "$memory_script" "$vmid" "${CONFIG[MIN_MEM_AVAILABLE_MB]}" "$mem_available_kb" || fail "LXC $vmid memory preflight failed"
 
 [[ "$package_manager" != unknown ]] || fail "LXC $vmid has no supported package manager"
 
