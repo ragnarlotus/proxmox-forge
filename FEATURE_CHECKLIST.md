@@ -168,7 +168,7 @@ The final summary is a **per-execution results table**, inspired by the presenta
 
 - [ ] **F153** Email notifications.
 - [ ] **F154** Notify only on errors.
-- [ ] **F157** Final consolidated SUCCESS/FAILED/PARTIAL result derived exclusively from the same authoritative host/LXC records used by F225, including zero-selected/all-skipped, fully failed and mixed outcomes. The previous standalone notification renderer and integration were reverted to avoid duplicate logic. Implement only after F220–F225 and use its result for any future email notification; do not introduce a separate result collector.
+- [ ] **F157** Final consolidated SUCCESS/FAILED/PARTIAL result derived exclusively from the same authoritative host/LXC records used by F225, including zero-selected/all-skipped, fully failed and mixed outcomes. **Implementation:** the existing F225 renderer now derives the global status from its parsed `result_target` rows, prints a single `result_global` machine-readable record plus an `Overall result` label, and reuses those same row totals. `SUCCESS` means no `ERROR`/`NOT_RUN` (including no-selected/all-skipped); `FAILED` means one or more `ERROR`/`NOT_RUN` and zero `OK`; `PARTIAL` means both completed and failed/blocked targets exist. An intentional skip is not a failure. Existing F147 technical summaries and exit codes are unchanged; no notification renderer, separate collector or email delivery is added. **Acceptance remains pending the F226 gate.**
 - [ ] **F159** Summary with failed targets and causes.
 
 ## Q. Configuration
