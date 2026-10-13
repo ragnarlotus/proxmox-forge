@@ -145,6 +145,20 @@ forge_result_render() {
   fi
   if ! printf '%s\n' "$@" | python3 "$renderer"; then
     printf 'WARNING: final table rendering failed; structured results remain authoritative\n' >&2
+    return 0
+  fi
+
+  # Mail is a best-effort optional presentation of these *same* final rows,
+  # never a second update or collector. Nested bulk target runs never reach
+  # this point, so one Forge execution produces at most one notification.
+  if [[ "${CONFIG[EMAIL_NOTIFICATIONS]:-false}" == true ]]; then
+    local notifier
+    notifier="$(dirname "${BASH_SOURCE[0]}")/../notifications/send.py"
+    if [[ ! -r "$notifier" ]]; then
+      printf 'WARNING: Forge email notifier is unavailable\n' >&2
+    elif ! printf '%s\n' "$@" | python3 "$notifier" "${CONFIG[NOTIFY_ONLY_ERRORS]:-true}"; then
+      printf 'WARNING: Forge email notification was not accepted; update result unchanged\n' >&2
+    fi
   fi
   return 0
 }
