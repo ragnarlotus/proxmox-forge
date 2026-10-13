@@ -19,6 +19,8 @@ source "$1/lib/config/get.sh" || exit 1
 config_get_files "$2" "$3" || exit 1
 printf 'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=%s\n' "${CONFIG[BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE]}"
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
+printf 'EMAIL_NOTIFICATIONS=%s\n' "${CONFIG[EMAIL_NOTIFICATIONS]}"
+printf 'NOTIFY_ONLY_ERRORS=%s\n' "${CONFIG[NOTIFY_ONLY_ERRORS]}"
 printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
 printf 'MIN_ROOT_FREE_MB=%s\n' "${CONFIG[MIN_ROOT_FREE_MB]}"
 printf 'HEALTH_SCRIPTS_DIR=%s\n' "${CONFIG[HEALTH_SCRIPTS_DIR]}"
@@ -68,6 +70,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true\n", result.stdout)
         self.assertIn("UPDATE_HOST=true\n", result.stdout)
+        self.assertIn("EMAIL_NOTIFICATIONS=false\n", result.stdout)
+        self.assertIn("NOTIFY_ONLY_ERRORS=true\n", result.stdout)
         self.assertIn("EXCLUDE=\n", result.stdout)
         self.assertIn("MIN_ROOT_FREE_MB=1024\n", result.stdout)
         self.assertIn("MIN_MEM_AVAILABLE_MB=128\n", result.stdout)
@@ -83,6 +87,21 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("UPDATE_HOST=false\n", result.stdout)
         self.assertIn("LOG_KEEP=12\n", result.stdout)
         self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false\n", result.stdout)
+
+    def test_notification_flags_independent_overrides_and_validation(self):
+        for override, expected_email, expected_errors_only in (
+            ("EMAIL_NOTIFICATIONS=true\n", "true", "true"),
+            ("NOTIFY_ONLY_ERRORS=false\n", "false", "false"),
+            ("EMAIL_NOTIFICATIONS=true\nNOTIFY_ONLY_ERRORS=false\n", "true", "false"),
+        ):
+            with self.subTest(override=override):
+                result = self.load(override)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"EMAIL_NOTIFICATIONS={expected_email}\n", result.stdout)
+                self.assertIn(f"NOTIFY_ONLY_ERRORS={expected_errors_only}\n", result.stdout)
+        for option in ("EMAIL_NOTIFICATIONS", "NOTIFY_ONLY_ERRORS"):
+            with self.subTest(invalid=option):
+                self.assert_invalid(f"{option}=yes\n", f"{option} must be true or false")
 
     def test_free_space_threshold_validation(self):
         result = self.load("MIN_ROOT_FREE_MB=512\n")
