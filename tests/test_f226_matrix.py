@@ -89,8 +89,8 @@ class FinalResultsMatrixTests(unittest.TestCase):
             self.assertEqual("".join(cell[1]), row["name"])
             self.assertEqual("".join(cell[2]), displayed_apt)
             self.assertEqual(
-                re.sub(r"\\s+", "", "".join(cell[3])),
-                re.sub(r"\\s+", "", displayed_app),
+                re.sub(r"\s+", "", "".join(cell[3])),
+                re.sub(r"\s+", "", displayed_app),
             )
             detail = unquote(row["result_detail"])
             if status == "SKIPPED":
