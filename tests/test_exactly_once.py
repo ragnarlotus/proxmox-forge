@@ -172,6 +172,8 @@ class ExactlyOnceTests(unittest.TestCase):
                 target.write_text(
                     'config_get() {\n'
                     '  declare -gA CONFIG=(\n'
+                    '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
+                    '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
                     '    [LOG_DIR]="$FORGE_TEST_LOG_DIR"\n'
                     '    [LOG_KEEP]=8\n'
                     '    [CUSTOM_SCRIPTS_DIR]="$FORGE_TEST_SCRIPTS"\n'
@@ -243,6 +245,25 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertEqual(steps.count("reboot"), 1)
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
         self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed apt_upgraded=2", result.stdout)
+
+
+    def test_f153_individual_lxc_sends_only_on_error_by_default(self):
+        sender = self.root / "bin" / "sendmail"
+        sender.write_text('#!/bin/sh\ncat > "$FORGE_TEST_MAIL_LOG"\n', encoding="utf-8")
+        sender.chmod(0o755)
+        mail = self.root / "lxc-mail.txt"
+        enabled = {"FORGE_TEST_EMAIL_NOTIFICATIONS": "true",
+                   "FORGE_TEST_MAIL_LOG": str(mail)}
+        success, _, _ = self.invoke(**enabled)
+        self.assertEqual(success.returncode, 0, success.stderr)
+        self.assertFalse(mail.exists())
+        failed, _, _ = self.invoke(FORGE_TEST_FAIL_STAGE="application", **enabled)
+        self.assertEqual(failed.returncode, 42, failed.stderr)
+        self.assertIn("Subject: [Proxmox Forge] FAILED",
+                      mail.read_text(encoding="utf-8"))
+        self.assertIn("Failed and blocked targets (1):",
+                      mail.read_text(encoding="utf-8"))
+        self.assertEqual(failed.stdout.count("Forge final results"), 1)
 
     def test_f225_individual_lxc_success_or_failure_has_one_table(self):
         for stage, code in [("", 0), ("application", 42)]:
