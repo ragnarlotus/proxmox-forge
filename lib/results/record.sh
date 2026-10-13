@@ -28,13 +28,18 @@ forge_result_print() {
   fi
   [[ "$result_detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ ]] || return 2
 
-  printf 'result_target type=%s vmid=%s name=%s selected=%s attempted=%s status=%s reason=%s' \
+  local record
+  printf -v record 'result_target type=%s vmid=%s name=%s selected=%s attempted=%s status=%s reason=%s' \
     "$type" "$vmid" "$name" "$selected" "$attempted" "$status" "$reason"
   if [[ -n "$exit_code" ]]; then
-    printf ' exit_code=%s' "$exit_code"
+    record+=" exit_code=$exit_code"
   fi
-  printf ' apt_upgraded=%s app_before=%s app_after=%s app_repository=%s failed_stage=%s recovery=%s result_detail=%s\n' \
+  local extra
+  printf -v extra ' apt_upgraded=%s app_before=%s app_after=%s app_repository=%s failed_stage=%s recovery=%s result_detail=%s' \
     "$apt_upgraded" "$app_before" "$app_after" "$app_repository" "$failed_stage" "$recovery" "$result_detail"
+  record+="$extra"
+  FORGE_RESULT_LAST_RECORD="$record"
+  printf '%s\n' "$record"
 }
 
 # Only values safe for single-token result_target records pass unchanged.
@@ -122,5 +127,24 @@ forge_result_publish() {
     fi
     return 0
   fi
-  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery"
+  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" || return $?
+  if [[ "${FORGE_RESULT_TABLE:-}" == true ]]; then
+    forge_result_render "$FORGE_RESULT_LAST_RECORD"
+  fi
+  return 0
+}
+
+# The table consumes exactly the same validated records already printed.
+# Reporting cannot mask the primary update's failure code.
+forge_result_render() {
+  local renderer
+  renderer="$(dirname "${BASH_SOURCE[0]}")/table.py"
+  if [[ ! -r "$renderer" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf 'WARNING: final table unavailable (Python renderer missing)\n' >&2
+    return 0
+  fi
+  if ! printf '%s\n' "$@" | python3 "$renderer"; then
+    printf 'WARNING: final table rendering failed; structured results remain authoritative\n' >&2
+  fi
+  return 0
 }
