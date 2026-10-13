@@ -110,3 +110,5 @@ This is storage maintenance, not backup pruning. It returns filesystem blocks th
 A `fstrim` failure is logged and reported as a **warning**. Forge deliberately does not restore an otherwise healthy guest merely because trim failed.
 
 F220: completed individual LXC runs emit one structured `result_target` record with target and authoritative result. Bulk updates suppress nested guest records; the coordinator emits the consolidated records instead.
+
+F221: pre/post read-only dpkg comparison adds `apt_upgraded=N|-` to the final result. If rollback restores the previous packages, the count becomes `0`. The final guest snapshot precedes returning an explicitly updated stopped LXC to its original stopped state. Application/custom-script APT upgrades are included where measurable.

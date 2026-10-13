@@ -81,6 +81,29 @@ class AptUpgradeFactsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "pkg:amd64\t1.0\n")
 
+    def test_lifecycle_count_after_simulated_rollback(self):
+        bin_dir = self.path / "bin"
+        bin_dir.mkdir()
+        current = self.path / "installed"
+        current.write_text("pkg\t1.0\tii \n", encoding="utf-8")
+        fake = bin_dir / "dpkg-query"
+        fake.write_text('#!/bin/bash\ncat "$APT_TEST_STATE"\n', encoding="utf-8")
+        fake.chmod(0o755)
+        result = subprocess.run(
+            ["bash", "-c",
+             'source "$1"; forge_apt_begin host || exit 91; '
+             'FORGE_APT_ACTIVE=true; '
+             'printf "pkg\\t2.0\\tii \\n" > "$2"; '
+             'printf "pkg\\t1.0\\tii \\n" > "$2"; '
+             'forge_apt_finalize host; printf "%s\\n" "$FORGE_APT_COUNT"',
+             "_", str(HELPER), str(current)],
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                 "APT_TEST_STATE": str(current)},
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "0")
+
     def test_snapshot_failure_propagates_not_silent_zero(self):
         bin_dir = self.path / "bin"
         bin_dir.mkdir()

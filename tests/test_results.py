@@ -204,6 +204,16 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
                          ["100", "111", "115"])
 
+    def test_f221_all_skipped_have_unattempted_apt_counts(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_RUNNING_LXC="false", FORGE_TEST_UPDATE_HOST="false",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertTrue(all(r["apt_upgraded"] == "-" for r in rows))
+        self.assertNotIn("host", [c["kind"] for c in calls])
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+
     def test_f221_skipped_and_blocked_targets_have_unknown_count(self):
         result, _ = self.invoke(
             "all", FORGE_TEST_HOST_CODE="42",

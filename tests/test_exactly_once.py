@@ -304,6 +304,12 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertLess(steps.index("held"), steps.index("application"))
         self.assertNotIn("os", steps)
 
+    def test_application_only_still_reports_installed_package_changes(self):
+        result, steps, _ = self.invoke(FORGE_TEST_OS="false", FORGE_TEST_APT_COUNT="5")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("os", steps)
+        self.assertIn("apt_upgraded=5", result.stdout)
+
     def test_no_mutations_when_all_update_stages_disabled(self):
         result, steps, _ = self.invoke(
             FORGE_TEST_OS="false",
