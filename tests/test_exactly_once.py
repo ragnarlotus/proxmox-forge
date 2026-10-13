@@ -29,9 +29,12 @@ def record(component, arguments=None):
         handle.write(json.dumps({"component": component, "args": arguments or []}) + "\n")
 
 if name == "get-target.sh":
-    print("type=lxc vmid=111 name=share state=running template=false")
+    state = os.environ.get("FORGE_TEST_INITIAL_STATE", "running")
+    print(f"type=lxc vmid=111 name=share state={state} template=false")
 elif name == "get-state.sh":
-    print("running")
+    path = Path(os.environ["FORGE_TEST_STATE_FILE"])
+    print(path.read_text().strip() if path.exists() else
+          os.environ.get("FORGE_TEST_INITIAL_STATE", "running"))
 elif name == "init.sh":
     path = Path(os.environ["FORGE_TEST_LOG"])
     path.touch()
@@ -39,7 +42,7 @@ elif name == "init.sh":
 elif name == "write.sh":
     pass
 elif name == "capture.sh":
-    if len(args) < 4 or args[2] != "--" or args[3] != "bash":
+    if len(args) < 4 or args[2] != "--" or args[3] not in ("bash", "pct"):
         sys.exit("invalid simulated capture command")
     record("capture", [args[1]])
     sys.exit(subprocess.run(args[3:], check=False).returncode)
@@ -88,6 +91,27 @@ class ExactlyOnceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="forge-once-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        bin_path = self.root / "bin"
+        bin_path.mkdir()
+        pct = bin_path / "pct"
+        pct.write_text(
+            '#!/usr/bin/env python3\n'
+            'import json,os,sys\n'
+            'from pathlib import Path\n'
+            'args=sys.argv[1:]\n'
+            'if not args: sys.exit(91)\n'
+            'action=args[0]\n'
+            'state=Path(os.environ["FORGE_TEST_STATE_FILE"])\n'
+            'log=Path(os.environ["FORGE_TEST_CALLS"])\n'
+            'with log.open("a") as out:\n'
+            '    out.write(json.dumps({"component":"pct","args":args}) + "\\n")\n'
+            'if action=="start": state.write_text("running")\n'
+            'elif action=="shutdown": state.write_text("stopped")\n'
+            'elif action=="exec": pass\n'
+            'else: sys.exit(92)\n',
+            encoding="utf-8",
+        )
+        pct.chmod(0o755)
         lib = self.root / "lib"
 
         paths = [
@@ -98,12 +122,12 @@ class ExactlyOnceTests(unittest.TestCase):
             "lxc/update/application.sh", "lxc/update/custom-scripts.sh",
             "lxc/update/fstrim.sh", "lxc/health.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh", "results/apt.sh", "results/application.sh",
+            "results/record.sh", "results/table.py", "results/apt.sh", "results/application.sh",
         ]
         for path in paths:
             target = lib / path
             target.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("lxc/update.sh", "results/record.sh"):
+            if path in ("lxc/update.sh", "results/record.sh", "results/table.py"):
                 target.symlink_to(ROOT / "lib" / path)
             elif path == "results/application.sh":
                 target.write_text(
@@ -180,6 +204,8 @@ class ExactlyOnceTests(unittest.TestCase):
         self.env = os.environ.copy()
         self.env.update({
             "FORGE_RUNTIME_GUARD": str(guard),
+            "PATH": f"{bin_path}:{os.environ['PATH']}",
+            "FORGE_TEST_STATE_FILE": str(self.root / "guest-state"),
             "FORGE_LXC_BACKUP_ONLY_VMIDS": "",
             "FORGE_TEST_HELPER": str(self.helper),
             "FORGE_TEST_CALLS": str(self.calls_path),
@@ -218,10 +244,38 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
         self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed apt_upgraded=2", result.stdout)
 
+    def test_f225_individual_lxc_success_or_failure_has_one_table(self):
+        for stage, code in [("", 0), ("application", 42)]:
+            with self.subTest(stage=stage):
+                self.calls_path.unlink(missing_ok=True)
+                result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE=stage)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(result.stdout.count("Forge final results"), 1)
+                self.assertIn("111 | share |", result.stdout)
+                self.assertIn("Totals: targets=1 selected=1 attempted=1", result.stdout)
+                self.assertIn(f"ERROR={int(code != 0)} ", result.stdout)
+                self.assertEqual(steps.count("application"), 1)
+
+    def test_f226_explicit_stopped_lxc_returns_to_stopped_once(self):
+        self.calls_path.unlink(missing_ok=True)
+        result, steps, calls = self.invoke(FORGE_TEST_INITIAL_STATE="stopped")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.root.joinpath("guest-state").read_text(), "stopped")
+        self.assertEqual(result.stdout.count("Forge final results"), 1)
+        self.assertIn("111 | share |", result.stdout)
+        self.assertIn("final state: stopped", result.stdout)
+        pct_actions = [call["args"][0] for call in calls
+                       if call["component"] == "pct"]
+        self.assertEqual(pct_actions.count("start"), 1)
+        self.assertEqual(pct_actions.count("shutdown"), 1)
+        self.assertEqual(steps.count("backup"), 1)
+        self.assertEqual(steps.count("application"), 1)
+
     def test_bulk_execution_suppresses_nested_result_record(self):
         result, steps, _ = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("result_target ", result.stdout)
+        self.assertNotIn("Forge final results", result.stdout)
 
     def test_failure_stops_later_stages_and_recovers_only_once(self):
         stages = ["backup", "snapshot", "os", "application", "custom", "health"]

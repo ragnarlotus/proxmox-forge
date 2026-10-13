@@ -70,12 +70,12 @@ class HostResultDetailsTests(unittest.TestCase):
             "backup/host/create.sh", "host/update/os.sh",
             "preflight/held-packages.sh", "postflight/reboot-required.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh", "results/apt.sh", "config/get.sh",
+            "results/record.sh", "results/table.py", "results/apt.sh", "config/get.sh",
         ]
         for path in paths:
             dest = self.lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("host/update.sh", "results/record.sh"):
+            if path in ("host/update.sh", "results/record.sh", "results/table.py"):
                 dest.symlink_to(ROOT / "lib" / path)
             elif path == "logging/capture.sh":
                 dest.write_text(CAPTURE, encoding="utf-8")
@@ -154,6 +154,19 @@ class HostResultDetailsTests(unittest.TestCase):
             "reboot requirement unknown (check exit 9)",
         )
 
+    def test_f225_host_success_and_failure_have_one_table(self):
+        for failed, expected_status, code in [
+            ("false", "OK", 0), ("true", "ERROR", 42),
+        ]:
+            with self.subTest(failed=failed):
+                result, row, detail = self.invoke(FORGE_TEST_OS_FAILURE=failed)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(row["status"], expected_status)
+                self.assertEqual(result.stdout.count("Forge final results"), 1)
+                self.assertIn("HOST | host-test.example | 0 | —", result.stdout)
+                self.assertIn("Totals: targets=1 selected=1 attempted=1", result.stdout)
+                self.assertIn(f"ERROR={int(bool(code))} ", result.stdout)
+
     def test_bulk_mode_does_not_duplicate_host_target_record(self):
         handoff = self.root / "host-handoff"
         result = subprocess.run(
@@ -164,6 +177,7 @@ class HostResultDetailsTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("result_target ", result.stdout)
+        self.assertNotIn("Forge final results", result.stdout)
         fields = handoff.read_text().rstrip("\n").split("\t")
         self.assertEqual(fields, ["OK", "-", "-"])
 

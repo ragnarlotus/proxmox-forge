@@ -126,13 +126,17 @@ result_not_run_detail=""
 inventory_ready=true
 emit_final_inventory() {
   trap - EXIT
+  local -a final_records=()
   [[ "$inventory_ready" == true ]] || return 0
   if [[ "$mode" == all ]]; then
     if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
-    forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
+    if forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
       "$host_status" "$host_reason" "$host_exit" "$host_apt" "-" "-" "-" \
-      "$host_detail" "$host_failed_stage" "$host_recovery" ||
+      "$host_detail" "$host_failed_stage" "$host_recovery"; then
+      final_records+=("$FORGE_RESULT_LAST_RECORD")
+    else
       printf 'ERROR: could not print host result record\n' >&2
+    fi
   fi
   local id reason selected
   for id in "${result_ids[@]}"; do
@@ -144,12 +148,16 @@ emit_final_inventory() {
     if [[ "${result_status[$id]}" == NOT_RUN && -n "$result_not_run_detail" ]]; then
       detail="$(forge_result_encode "NOT RUN: $result_not_run_detail")"
     fi
-    forge_result_print lxc "$id" "${result_name[$id]}" "$selected" \
+    if forge_result_print lxc "$id" "${result_name[$id]}" "$selected" \
       "${result_attempted[$id]}" "${result_status[$id]}" "$reason" "${result_exit[$id]}" "${result_apt[$id]}" \
       "${result_app_before[$id]}" "${result_app_after[$id]}" "${result_app_repository[$id]}" \
-      "$detail" "${result_failed_stage[$id]}" "${result_recovery[$id]}" ||
+      "$detail" "${result_failed_stage[$id]}" "${result_recovery[$id]}"; then
+      final_records+=("$FORGE_RESULT_LAST_RECORD")
+    else
       printf 'ERROR: could not print result for LXC %s\n' "$id" >&2
+    fi
   done
+  forge_result_render "${final_records[@]}"
   if [[ -n "$apt_result_dir" ]]; then
     rm -rf -- "$apt_result_dir" ||
       printf 'WARNING: could not remove APT result handoff directory\n' >&2

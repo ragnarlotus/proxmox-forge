@@ -93,6 +93,7 @@ source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
 # shellcheck source=/dev/null
 source "$result_record_script" || fail "could not load result record helper"
+FORGE_RESULT_TABLE=true
 # shellcheck source=/dev/null
 source "$apt_results_script" || fail "could not load APT results helper"
 # shellcheck source=/dev/null

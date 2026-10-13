@@ -139,6 +139,7 @@ class ResultAggregationTests(unittest.TestCase):
             "lxc/update.sh": "lxc",
             "results/inventory.sh": "inventory",
             "results/record.sh": None,
+            "results/table.py": None,
         }
         for path, kind in paths.items():
             dest = lib / path
@@ -206,6 +207,86 @@ class ResultAggregationTests(unittest.TestCase):
             if line.startswith("result_target "):
                 records.append(dict(field.split("=", 1) for field in line.split()[1:]))
         return records
+
+    def test_f225_final_table_exactly_once_across_success_failures_and_blockers(self):
+        scenarios = [
+            ("lxc", {}, 0, 3, 0),
+            ("all", {}, 0, 4, 0),
+            ("lxc", {"FORGE_TEST_VMIDS": ""}, 0, 0, 0),
+            ("all", {"FORGE_TEST_LXC_CODES": json.dumps({"111": 42})}, 1, 4, 1),
+            ("all", {"FORGE_TEST_HOST_CODE": "42"}, 42, 4, 1),
+            ("all", {"FORGE_TEST_CONFLICT": "true"}, 1, 4, 0),
+            ("all", {"FORGE_TEST_RUNNING_LXC": "false"}, 0, 4, 0),
+            ("all", {"FORGE_TEST_RUNNING_LXC": "false",
+                     "FORGE_TEST_UPDATE_HOST": "false"}, 0, 4, 0),
+            ("all", {"FORGE_TEST_EXCLUDE": "111,115"}, 0, 4, 0),
+            ("lxc", {"FORGE_TEST_VMIDS": "",
+                     "FORGE_TEST_INVENTORY_VMIDS": "100,111,115",
+                     "FORGE_TEST_STOPPED_VMIDS": "100,111,115"}, 0, 3, 0),
+            ("lxc", {"FORGE_TEST_VMIDS": "111,115",
+                     "FORGE_TEST_INVENTORY_VMIDS": "100,111,115",
+                     "FORGE_TEST_TEMPLATE_VMIDS": "100"}, 0, 3, 0),
+            ("all", {"FORGE_TEST_LXC_CODES": json.dumps({
+                "100": 2, "111": 3, "115": 4})}, 1, 4, 3),
+            ("lxc", {"FORGE_TEST_VMIDS": "100,115",
+                     "FORGE_TEST_INVENTORY_VMIDS": "100,111,115",
+                     "FORGE_TEST_STOPPED_VMIDS": "111"}, 0, 3, 0),
+            ("lxc", {"FORGE_TEST_LXC_CODES": json.dumps({
+                "100": 22, "111": 33, "115": 44})}, 1, 3, 3),
+        ]
+        for mode, options, exit_code, target_count, error_count in scenarios:
+            with self.subTest(mode=mode, options=options):
+                result, calls = self.invoke(mode, **options)
+                self.assertEqual(result.returncode, exit_code, result.stderr)
+                rows = self.inventory(result)
+                self.assertEqual(len(rows), target_count)
+                self.assertEqual(result.stdout.count("Forge final results"), 1)
+                self.assertEqual(result.stdout.count("Totals: targets="), 1)
+                self.assertIn(
+                    f"Totals: targets={target_count} ", result.stdout
+                )
+                self.assertIn(
+                    f"ERROR={error_count} ", result.stdout
+                )
+                for row in rows:
+                    self.assertIn(row["name"], result.stdout)
+                self.assertEqual(
+                    len([c for c in calls if c["kind"] == "lxc"]),
+                    sum(row["attempted"] == "true" for row in rows
+                        if row["type"] == "lxc"),
+                )
+                self.assertNotIn("\033[", result.stdout)
+
+    def test_f225_bulk_table_propagates_real_metadata_and_result_details(self):
+        result, calls = self.invoke(
+            "all",
+            FORGE_TEST_LXC_APP=json.dumps({
+                "100": ["v1.0", "v1.2", "https://github.com/pi-hole/pi-hole"],
+                "111": ["v2.0", "v2.0", "https://github.com/docmost/docmost"],
+                "115": ["-", "-", "-"],
+            }),
+            FORGE_TEST_LXC_APT=json.dumps({"100": 4, "111": 0, "115": 0}),
+            FORGE_TEST_LXC_CODES=json.dumps({"111": 42}),
+            FORGE_TEST_LXC_DETAIL=json.dumps({
+                "111": [
+                    "ERROR%3A%20application_update%20%28exit%2042%29%3B%20recovery%20succeeded",
+                    "application_update", "success"
+                ],
+            }),
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout.count("Forge final results"), 1)
+        self.assertIn("100 | guest100 | 4 | v1.0 → v1.2", result.stdout)
+        self.assertIn("111 | guest111 | 0 | v2.0", result.stdout)
+        self.assertIn("Changelog: https://github.com/pi-hole/pi-hole", result.stdout)
+        self.assertIn("Changelog: https://github.com/docmost/docmost", result.stdout)
+        self.assertIn("ERROR: application_update (exit 42); recovery succeeded", result.stdout)
+        self.assertIn("Totals: targets=4 selected=4 attempted=4 "
+                      "OK=3 ERROR=1 SKIPPED=0 NOT_RUN=0", result.stdout)
+        self.assertEqual(
+            [c["args"][0] for c in calls if c["kind"] == "lxc"],
+            ["100", "111", "115"]
+        )
 
     def test_f222_bulk_keeps_app_versions_and_excludes_skipped_guests(self):
         result, calls = self.invoke(
