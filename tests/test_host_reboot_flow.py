@@ -68,12 +68,13 @@ class HostRebootFlowTests(unittest.TestCase):
             "logging/init.sh": "init",
             "logging/capture.sh": "capture",
             "logging/write.sh": "write",
+            "results/record.sh": None,
         }
         for path, kind in paths.items():
             dest = self.base / "lib" / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             if kind is None:
-                dest.symlink_to(ROOT / "lib/host/update.sh")
+                dest.symlink_to(ROOT / "lib" / path)
             elif kind == "config":
                 dest.write_text(
                     'config_get() { declare -gA CONFIG=(\n'
@@ -131,6 +132,7 @@ class HostRebootFlowTests(unittest.TestCase):
         result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("reboot_required=yes", result.stdout)
+        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=OK reason=completed", result.stdout)
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
         self.assertEqual([c["kind"] for c in calls].count("held"), 1)

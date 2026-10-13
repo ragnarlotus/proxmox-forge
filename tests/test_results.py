@@ -21,6 +21,29 @@ import sys
 
 kind = sys.argv[1]
 args = sys.argv[2:]
+if kind == "inventory":
+    if args != [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]:
+        sys.exit("unexpected inventory policy")
+    vmids = os.environ.get("FORGE_TEST_INVENTORY_VMIDS", os.environ["FORGE_TEST_VMIDS"])
+    excluded = {x.strip() for x in args[1].split(",") if x.strip()}
+    stopped = set(filter(None, os.environ.get("FORGE_TEST_STOPPED_VMIDS", "").split(",")))
+    templates = set(filter(None, os.environ.get("FORGE_TEST_TEMPLATE_VMIDS", "").split(",")))
+    for vmid in sorted(filter(None, vmids.split(",")), key=int):
+        name = f"guest{vmid}"
+        if vmid in templates:
+            policy = "template"
+        elif vmid in stopped:
+            policy = "stopped"
+        elif vmid in excluded or name in excluded:
+            policy = "excluded"
+        elif args[0] == "false":
+            policy = "running_lxc_disabled"
+        else:
+            policy = "eligible"
+        state = "stopped" if vmid in stopped else "running"
+        print(f"{vmid}\t{name}\t{state}\t{policy}")
+    sys.exit(0)
+
 with Path(os.environ["FORGE_TEST_CALLS"]).open("a") as log:
     log.write(json.dumps({"kind": kind, "args": args,
                           "fallback": os.environ.get("FORGE_LXC_BACKUP_ONLY_VMIDS", "")}) + "\n")
@@ -86,12 +109,14 @@ class ResultAggregationTests(unittest.TestCase):
             "preflight/root-space.sh": "space",
             "preflight/memory.sh": "memory",
             "lxc/update.sh": "lxc",
+            "results/inventory.sh": "inventory",
+            "results/record.sh": None,
         }
         for path, kind in paths.items():
             dest = lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             if kind is None:
-                dest.symlink_to(ROOT / "lib/workflows/update-all.sh")
+                dest.symlink_to(ROOT / "lib" / path)
             elif kind == "config":
                 dest.write_text(
                     'config_get() {\n'
@@ -304,7 +329,7 @@ class ResultAggregationTests(unittest.TestCase):
             ("lxc", ["100", "scope"]),
         ])
         self.assertIn("lxc_targets=1", result.stdout)
-        self.assertNotIn("vmid=111", result.stdout)
+        self.assertIn("result_target type=lxc vmid=111 name=guest111 selected=false attempted=false status=SKIPPED reason=excluded", result.stdout)
 
     def test_excluded_hostname_never_reaches_preflight_or_update(self):
         result, calls = self.invoke(FORGE_TEST_EXCLUDE="guest111")
