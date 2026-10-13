@@ -136,6 +136,47 @@ class ApplicationVersionTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, "")
 
+    def test_f223_official_app_repositories_are_whitelisted(self):
+        # All seven upstream project repositories were independently verified.
+        expected = {
+            "pihole": "https://github.com/pi-hole/pi-hole",
+            "caddy": "https://github.com/caddyserver/caddy",
+            "vaultwarden": "https://github.com/dani-garcia/vaultwarden",
+            "docmost": "https://github.com/docmost/docmost",
+            "immich": "https://github.com/immich-app/immich",
+            "audiobookshelf": "https://github.com/advplyr/audiobookshelf",
+            "whisparr": "https://github.com/Whisparr/Whisparr",
+            "plex": "-",  # Proprietary: no verified official source repo.
+            "unsupported-app": "-",
+            "": "-",
+        }
+        for slug, url in expected.items():
+            with self.subTest(slug=slug):
+                result = self.run_bash(f'forge_app_repository "{slug}"')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), url)
+                self.assertNotIn("community-scripts/ProxmoxVE", url)
+
+    def test_f223_repo_does_not_depend_on_detectable_installed_version(self):
+        result = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; '
+            'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_REPOSITORY"',
+            APP_TEST_LAUNCHER=generated_launcher("whisparr"),
+            APP_TEST_OUTPUT="unavailable",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout.strip(), "-|https://github.com/Whisparr/Whisparr"
+        )
+
+        result = self.run_bash(
+            'forge_app_begin 101 none; '
+            'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_REPOSITORY"',
+            APP_TEST_LAUNCHER=generated_launcher("whisparr"),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "-|-")
+
     def test_supported_app_probes(self):
         for slug, output, expected in [
             ("plex", "ii \t1.43.2.11", "1.43.2.11"),
@@ -239,8 +280,24 @@ class ApplicationVersionTests(unittest.TestCase):
             FORGE_APP_RESULT_FILE=str(handoff),
         )
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(handoff.read_text(encoding="utf-8"), "1.0\t2.0\n")
+        self.assertEqual(handoff.read_text(encoding="utf-8"), "1.0\t2.0\t-\n")
         self.assertEqual(r.stdout, "")
+
+    def test_f223_bulk_handoff_contains_known_repo_even_for_noop(self):
+        handoff = self.base / "repo-record"
+        result = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; forge_app_finalize 101',
+            APP_TEST_LAUNCHER=generated_launcher("pihole"),
+            APP_TEST_OUTPUT="Core version is v6.4.3",
+            FORGE_RESULTS_AGGREGATE="bulk",
+            FORGE_APP_RESULT_FILE=str(handoff),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            handoff.read_text(encoding="utf-8"),
+            "v6.4.3\tv6.4.3\thttps://github.com/pi-hole/pi-hole\n",
+        )
+        self.assertEqual(result.stdout, "")
 
 
 if __name__ == "__main__":

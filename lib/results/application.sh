@@ -3,6 +3,7 @@
 # Community Scripts updaters. No version cache, downloads, or updater execution.
 
 FORGE_APP_SLUG=""
+FORGE_APP_REPOSITORY="-"
 FORGE_APP_BEFORE="-"
 FORGE_APP_AFTER="-"
 FORGE_APP_FINISHED=false
@@ -39,6 +40,21 @@ forge_app_detect_slug() {
     sed -E 's@^.*/ct/([a-z0-9_-]+)\.sh$@\1@' | LC_ALL=C sort -u)" || return 1
   [[ -n "$matches" && "$matches" != *$'\n'* ]] || return 1
   printf '%s\n' "$matches"
+}
+
+# Verified official application source repositories (not Community Scripts).
+# Unknown/closed-source or unverified repositories remain unavailable.
+forge_app_repository() {
+  case "$1" in
+    pihole)         printf '%s\n' 'https://github.com/pi-hole/pi-hole' ;;
+    caddy)          printf '%s\n' 'https://github.com/caddyserver/caddy' ;;
+    vaultwarden)    printf '%s\n' 'https://github.com/dani-garcia/vaultwarden' ;;
+    docmost)        printf '%s\n' 'https://github.com/docmost/docmost' ;;
+    immich)         printf '%s\n' 'https://github.com/immich-app/immich' ;;
+    audiobookshelf) printf '%s\n' 'https://github.com/advplyr/audiobookshelf' ;;
+    whisparr)       printf '%s\n' 'https://github.com/Whisparr/Whisparr' ;;
+    *)              printf '%s\n' '-' ;;
+  esac
 }
 
 forge_app_probe() {
@@ -90,11 +106,13 @@ forge_app_probe() {
 forge_app_begin() {
   local vmid="$1" updater="$2" slug version
   FORGE_APP_SLUG=""
+  FORGE_APP_REPOSITORY="-"
   FORGE_APP_BEFORE="-"
   FORGE_APP_AFTER="-"
   FORGE_APP_FINISHED=false
   slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
   FORGE_APP_SLUG="$slug"
+  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
   version="$(forge_app_probe "$vmid" "$slug")" || return 0
   FORGE_APP_BEFORE="$version"
 }
@@ -115,7 +133,7 @@ forge_app_finalize() {
     FORGE_APP_AFTER="-"
   fi
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" > "$FORGE_APP_RESULT_FILE" ||
+    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
       printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
   fi
 }

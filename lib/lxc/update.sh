@@ -283,7 +283,7 @@ finish_failed() {
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"
+    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY"
   fi
   exit "$primary_result"
 }
@@ -576,5 +576,5 @@ elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
 fi
 if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-  forge_result_print lxc "$vmid" "$name" true true OK completed "" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"
+  forge_result_print lxc "$vmid" "$name" true true OK completed "" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY"
 fi

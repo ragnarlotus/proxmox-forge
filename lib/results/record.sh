@@ -2,8 +2,8 @@
 # Description: Print one structured final-results record for a host or LXC.
 # Source this helper from update orchestration; F225 will use these same facts.
 forge_result_print() {
-  [[ $# -ge 7 && $# -le 11 ]] || return 2
-  local type="$1" vmid="$2" name="$3" selected="$4" attempted="$5" status="$6" reason="$7" exit_code="${8:-}" apt_upgraded="${9:--}" app_before="${10:--}" app_after="${11:--}"
+  [[ $# -ge 7 && $# -le 12 ]] || return 2
+  local type="$1" vmid="$2" name="$3" selected="$4" attempted="$5" status="$6" reason="$7" exit_code="${8:-}" apt_upgraded="${9:--}" app_before="${10:--}" app_after="${11:--}" app_repository="${12:--}"
 
   [[ "$type" == host || "$type" == lxc ]] || return 2
   if [[ "$type" == host ]]; then
@@ -20,11 +20,13 @@ forge_result_print() {
   [[ "$apt_upgraded" == "-" || "$apt_upgraded" =~ ^[0-9]+$ ]] || return 2
   [[ "$app_before" == "-" || "$app_before" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 2
   [[ "$app_after" == "-" || "$app_after" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 2
+  [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 2
 
   printf 'result_target type=%s vmid=%s name=%s selected=%s attempted=%s status=%s reason=%s' \
     "$type" "$vmid" "$name" "$selected" "$attempted" "$status" "$reason"
   if [[ -n "$exit_code" ]]; then
     printf ' exit_code=%s' "$exit_code"
   fi
-  printf ' apt_upgraded=%s app_before=%s app_after=%s\n' "$apt_upgraded" "$app_before" "$app_after"
+  printf ' apt_upgraded=%s app_before=%s app_after=%s app_repository=%s\n' \
+    "$apt_upgraded" "$app_before" "$app_after" "$app_repository"
 }

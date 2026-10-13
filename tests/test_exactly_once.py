@@ -107,9 +107,10 @@ class ExactlyOnceTests(unittest.TestCase):
                 target.symlink_to(ROOT / "lib" / path)
             elif path == "results/application.sh":
                 target.write_text(
-                    'FORGE_APP_BEFORE="-"; FORGE_APP_AFTER="-"; FORGE_APP_FINISHED=false\n'
+                    'FORGE_APP_BEFORE="-"; FORGE_APP_AFTER="-"; FORGE_APP_REPOSITORY="-"; FORGE_APP_FINISHED=false\n'
                     'forge_app_begin() {\n'
                     '  FORGE_APP_BEFORE="${FORGE_TEST_APP_BEFORE:-1.0}"\n'
+                    '  FORGE_APP_REPOSITORY="${FORGE_TEST_APP_REPOSITORY:-https://github.com/pi-hole/pi-hole}"\n'
                     '}\n'
                     'forge_app_finalize() {\n'
                     '  [[ "$FORGE_APP_FINISHED" == true ]] && return 0\n'
@@ -119,7 +120,7 @@ class ExactlyOnceTests(unittest.TestCase):
                     '    FORGE_APP_AFTER="$FORGE_APP_BEFORE"\n'
                     '  fi\n'
                     '  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then\n'
-                    '    printf "%s\\t%s\\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" > "$FORGE_APP_RESULT_FILE"\n'
+                    '    printf "%s\\t%s\\t%s\\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE"\n'
                     '  fi\n'
                     '}\n', encoding="utf-8",
                 )
@@ -279,6 +280,24 @@ class ExactlyOnceTests(unittest.TestCase):
         result, _, _ = self.invoke(FORGE_TEST_APP_BEFORE="1.2", FORGE_TEST_APP_AFTER="1.3")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("app_before=1.2 app_after=1.3", result.stdout)
+
+    def test_f223_repository_survives_success_and_rollback(self):
+        for stage, code in [("", 0), ("application", 42)]:
+            with self.subTest(stage=stage):
+                result, _, _ = self.invoke(
+                    FORGE_TEST_FAIL_STAGE=stage,
+                    FORGE_TEST_APP_REPOSITORY="https://github.com/pi-hole/pi-hole",
+                )
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertIn(
+                    "app_repository=https://github.com/pi-hole/pi-hole",
+                    result.stdout,
+                )
+
+    def test_f223_unknown_repository_is_separate_from_known_version(self):
+        result, _, _ = self.invoke(FORGE_TEST_APP_REPOSITORY="-")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("app_before=1.0 app_after=2.0 app_repository=-", result.stdout)
 
     def test_app_version_after_rollback_matches_before(self):
         result, _, _ = self.invoke(
