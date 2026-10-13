@@ -112,3 +112,5 @@ A `fstrim` failure is logged and reported as a **warning**. Forge deliberately d
 F220: completed individual LXC runs emit one structured `result_target` record with target and authoritative result. Bulk updates suppress nested guest records; the coordinator emits the consolidated records instead.
 
 F221: pre/post read-only dpkg comparison adds `apt_upgraded=N|-` to the final result. If rollback restores the previous packages, the count becomes `0`. The final guest snapshot precedes returning an explicitly updated stopped LXC to its original stopped state. Application/custom-script APT upgrades are included where measurable.
+
+F222: a read-only version probe detects Community Scripts identity from the installed `/usr/bin/update` launcher (without executing it), then records verified installed application versions before and after update/recovery when the application-specific probe is supported. The final `result_target` line contains `app_before` and `app_after` (`-` when unknown). Rollback restores the before-version where possible. Existing update behaviour is unchanged.
