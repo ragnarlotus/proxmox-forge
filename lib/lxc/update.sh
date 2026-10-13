@@ -59,6 +59,7 @@ log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 result_record_script="$lib_dir/results/record.sh"
 apt_results_script="$lib_dir/results/apt.sh"
+app_results_script="$lib_dir/results/application.sh"
 
 for helper in \
   "$config_get_script" \
@@ -79,7 +80,8 @@ for helper in \
   "$log_capture_script" \
   "$log_write_script" \
   "$result_record_script" \
-  "$apt_results_script"; do
+  "$apt_results_script" \
+  "$app_results_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -93,6 +95,8 @@ config_get || fail "could not load effective Forge configuration"
 source "$result_record_script" || fail "could not load result record helper"
 # shellcheck source=/dev/null
 source "$apt_results_script" || fail "could not load APT results helper"
+# shellcheck source=/dev/null
+source "$app_results_script" || fail "could not load application version helper"
 trap forge_apt_cleanup EXIT
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
@@ -252,6 +256,7 @@ finish_failed() {
 
   # Measure after possible rollback but before restoring a stopped guest.
   forge_apt_finalize "$vmid"
+  forge_app_finalize "$vmid"
   if [[ "$failed_stage" != lifecycle_restore ]]; then
     restore_initial_state || state_restore_result=$?
   fi
@@ -278,7 +283,7 @@ finish_failed() {
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT"
+    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"
   fi
   exit "$primary_result"
 }
@@ -325,6 +330,10 @@ package_manager="${RECORD_FIELDS[package_manager]:-}"
 application_updater="${RECORD_FIELDS[application_updater]:-}"
 [[ -n "$package_manager" ]] || finish_failed requirements 1
 [[ -n "$application_updater" ]] || finish_failed requirements 1
+
+# Read current version only from a positively identified Community Scripts
+# updater, with app-specific evidence from installed package/binary metadata.
+forge_app_begin "$vmid" "$application_updater"
 
 # Discover local scripts independently of LXC requirements, before backup planning.
 if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" == true ]] \
@@ -539,6 +548,7 @@ fi
 
 # Finalize before stopping an initially stopped guest.
 forge_apt_finalize "$vmid"
+forge_app_finalize "$vmid"
 restore_initial_state
 stage_result=$?
 if (( stage_result != 0 )); then
@@ -566,5 +576,5 @@ elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
 fi
 if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-  forge_result_print lxc "$vmid" "$name" true true OK completed "" "$FORGE_APT_COUNT"
+  forge_result_print lxc "$vmid" "$name" true true OK completed "" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"
 fi
