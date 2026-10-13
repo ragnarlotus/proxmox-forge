@@ -96,6 +96,24 @@ class FinalResultsMatrixTests(unittest.TestCase):
                           if line.startswith("result_global ")]
         self.assertEqual(global_records, [expected_global], result.stdout)
         self.assertEqual(result.stdout.count(f"Overall result: {outcome}"), 1)
+        # F159 must summarize only the very same failed/blocked records;
+        # a warning-only OK and an intentional SKIPPED target are never errors.
+        affected = [row for row in rows
+                    if row["status"] in ("ERROR", "NOT_RUN")]
+        marker = "Failed and blocked targets ("
+        if affected:
+            self.assertEqual(result.stdout.count(marker), 1)
+            digest = result.stdout.split(marker, 1)[1]
+            self.assertTrue(digest.startswith(f"{len(affected)}):"), digest)
+            for row in rows:
+                heading = f'  {row["vmid"]} | {row["name"]} | {row["status"]}'
+                self.assertEqual(
+                    digest.count(heading),
+                    int(row["status"] in ("ERROR", "NOT_RUN")),
+                    digest,
+                )
+        else:
+            self.assertNotIn(marker, result.stdout)
         expected_guest_calls = [r["vmid"] for r in rows
                                 if r["type"] == "lxc" and r["attempted"] == "true"]
         self.assertEqual(self.changes(calls, "lxc"), expected_guest_calls)
