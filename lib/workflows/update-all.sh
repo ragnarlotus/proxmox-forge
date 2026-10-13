@@ -58,7 +58,7 @@ source "$result_record_script" || fail "could not load result record helper"
 
 declare -a result_ids=()
 declare -A result_name=() result_policy=() result_status=()
-declare -A result_reason=() result_attempted=() result_exit=()
+declare -A result_reason=() result_attempted=() result_exit=() result_apt=()
 inventory_ready=false
 inventory_output="$(bash "$inventory_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}")" ||
   fail "could not read complete LXC inventory"
@@ -77,6 +77,7 @@ while IFS=$'\t' read -r id name state policy; do
   result_policy[$id]="$policy"
   result_attempted[$id]=false
   result_exit[$id]=""
+  result_apt[$id]="-"
   if [[ "$policy" == eligible ]]; then
     result_status[$id]=NOT_RUN
     result_reason[$id]=not_started
@@ -92,6 +93,7 @@ host_reason=host_disabled
 host_selected=false
 host_attempted=false
 host_exit=""
+host_apt="-"
 if [[ "$mode" == all ]]; then
   host_name="$(hostname -f)" || fail "could not read host FQDN for inventory"
   [[ "$host_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "invalid host FQDN"
@@ -102,6 +104,12 @@ if [[ "$mode" == all ]]; then
   fi
 fi
 
+# Private, disposable handoff for measured APT counts from nested updates.
+# Missing reporting storage never changes which guests update or their exit code.
+apt_result_dir="$(mktemp -d)" || {
+  apt_result_dir=""
+  printf 'WARNING: cannot create APT result handoff directory\n' >&2
+}
 result_not_run_reason=preflight_blocked
 inventory_ready=true
 emit_final_inventory() {
@@ -110,7 +118,7 @@ emit_final_inventory() {
   if [[ "$mode" == all ]]; then
     if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
     forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
-      "$host_status" "$host_reason" "$host_exit" ||
+      "$host_status" "$host_reason" "$host_exit" "$host_apt" ||
       printf 'ERROR: could not print host result record\n' >&2
   fi
   local id reason selected
@@ -120,9 +128,13 @@ emit_final_inventory() {
     selected=false
     [[ "${result_policy[$id]}" == eligible ]] && selected=true
     forge_result_print lxc "$id" "${result_name[$id]}" "$selected" \
-      "${result_attempted[$id]}" "${result_status[$id]}" "$reason" "${result_exit[$id]}" ||
+      "${result_attempted[$id]}" "${result_status[$id]}" "$reason" "${result_exit[$id]}" "${result_apt[$id]}" ||
       printf 'ERROR: could not print result for LXC %s\n' "$id" >&2
   done
+  if [[ -n "$apt_result_dir" ]]; then
+    rm -rf -- "$apt_result_dir" ||
+      printf 'WARNING: could not remove APT result handoff directory\n' >&2
+  fi
   return 0
 }
 trap emit_final_inventory EXIT
@@ -202,8 +214,12 @@ printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_target
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
   host_attempted=true
-  FORGE_RESULTS_AGGREGATE=bulk bash "$host_update_script"
+  FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/host}" bash "$host_update_script"
   host_result=$?
+  if [[ -n "$apt_result_dir" && -f "$apt_result_dir/host" ]]; then
+    apt_value="$(< "$apt_result_dir/host")"
+    [[ "$apt_value" =~ ^[0-9]+$ ]] && host_apt="$apt_value"
+  fi
 
   if (( host_result != 0 )); then
     host_status=ERROR
@@ -234,8 +250,12 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
     result_attempted[$vmid]=true
-    FORGE_RESULTS_AGGREGATE=bulk bash "$lxc_update_script" "$vmid" scope
+    FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" bash "$lxc_update_script" "$vmid" scope
     target_result=$?
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/lxc-$vmid" ]]; then
+      apt_value="$(< "$apt_result_dir/lxc-$vmid")"
+      [[ "$apt_value" =~ ^[0-9]+$ ]] && result_apt[$vmid]="$apt_value"
+    fi
 
     if (( target_result == 0 )); then
       result_status[$vmid]=OK
