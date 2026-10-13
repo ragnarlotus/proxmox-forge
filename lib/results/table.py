@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""F225: present finalized F220-F224 result_target records; never run updates."""
+"""F225/F157: render and classify authoritative result_target records without updates."""
 
 import os
 import re
@@ -110,6 +110,24 @@ def wrap(value, size):
     ) or [""]
 
 
+def summarize(rows):
+    """Compute F157 once from exactly the F225 source records.
+
+    Excluded/skipped targets are intentional; eligible NOT_RUN targets are
+    blockers, never successes. With no selected targets the run succeeded
+    without attempting any updates, rather than claiming an update occurred.
+    """
+    counts = Counter(row["status"] for row in rows)
+    selected = sum(row["selected"] == "true" for row in rows)
+    attempted = sum(row["attempted"] == "true" for row in rows)
+    incomplete = counts["ERROR"] + counts["NOT_RUN"]
+    if incomplete:
+        status = "PARTIAL" if counts["OK"] else "FAILED"
+    else:
+        status = "SUCCESS"
+    return counts, selected, attempted, status
+
+
 def emit(rows, width, enabled):
     print("\nForge final results")
     values = [fields(row) for row in rows]
@@ -145,9 +163,7 @@ def emit(rows, width, enabled):
             for idx, part in enumerate(detail):
                 print((prefix if idx == 0 else " " * len(prefix)) +
                       colored(part, row["status"], enabled))
-    counts = Counter(row["status"] for row in rows)
-    selected = sum(row["selected"] == "true" for row in rows)
-    attempted = sum(row["attempted"] == "true" for row in rows)
+    counts, selected, attempted, status = summarize(rows)
     print(
         "Totals: targets={total} selected={selected} attempted={attempted} "
         "OK={ok} ERROR={error} SKIPPED={skipped} NOT_RUN={not_run}".format(
@@ -156,6 +172,19 @@ def emit(rows, width, enabled):
             not_run=counts["NOT_RUN"],
         )
     )
+    # The machine-readable F157 outcome uses precisely the same snapshot as
+    # the human table and totals. This is not a notification or second collector.
+    print(
+        "result_global status={status} targets={total} selected={selected} "
+        "attempted={attempted} succeeded={ok} failed={error} "
+        "skipped={skipped} not_run={not_run}".format(
+            status=status, total=len(rows), selected=selected, attempted=attempted,
+            ok=counts["OK"], error=counts["ERROR"], skipped=counts["SKIPPED"],
+            not_run=counts["NOT_RUN"],
+        )
+    )
+    note = " (no targets selected)" if selected == 0 else ""
+    print(f"Overall result: {status}{note}")
 
 
 def main():
