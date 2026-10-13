@@ -111,16 +111,11 @@ finish_failed() {
     "duration_seconds=$duration_seconds" || \
     printf 'ERROR: could not record failed host update result in %s\n' "$log_file" >&2
 
-  if [[ -n "${FORGE_NOTIFICATION_DETAIL_DIR:-}" ]]; then
-    printf 'stage=%s\nlog=%s\n' "$failed_stage" "$log_file" > "$FORGE_NOTIFICATION_DETAIL_DIR/host" ||
-      printf 'WARNING: could not record host notification failure details\n' >&2
-  fi
-
   printf 'update=failed type=host hostname=%s stage=%s exit_code=%s rollback=unsupported log=%s\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: host %s FAILED at %s (exit code %s; no automatic rollback).\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result"
-  show_final_notification failed "$hostname_fqdn" "$failed_stage" "$primary_result" unknown "$log_file"
+  show_final_notification failed "$hostname_fqdn" "$failed_stage" "$primary_result" unknown
   exit "$primary_result"
 }
 

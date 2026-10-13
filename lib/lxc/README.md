@@ -113,5 +113,3 @@ A `fstrim` failure is logged and reported as a **warning**. Forge deliberately d
 ## Final notification draft (F157)
 
 After an individual LXC update, Forge displays one reusable plain-text notification preview with subject, SUCCESS/FAILED status, VMID and either required restart status or the failing stage and exit code. It does **not** send email yet. When a guest is updated within a bulk run, only the bulk notification is shown. This presentation never changes the original update or rollback result.
-
-F159 enriches failed LXC notification previews with the actual failing stage, exact log location and explicit error diagnostic from the failed stage when present. It does not guess causes or infer that unrelated held packages caused an application failure.
