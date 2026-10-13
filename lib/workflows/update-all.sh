@@ -60,6 +60,7 @@ declare -a result_ids=()
 declare -A result_name=() result_policy=() result_status=()
 declare -A result_reason=() result_attempted=() result_exit=() result_apt=()
 declare -A result_app_before=() result_app_after=() result_app_repository=()
+declare -A result_detail=() result_failed_stage=() result_recovery=()
 inventory_ready=false
 inventory_output="$(bash "$inventory_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}")" ||
   fail "could not read complete LXC inventory"
@@ -82,6 +83,9 @@ while IFS=$'\t' read -r id name state policy; do
   result_app_before[$id]="-"
   result_app_after[$id]="-"
   result_app_repository[$id]="-"
+  result_detail[$id]=""
+  result_failed_stage[$id]="-"
+  result_recovery[$id]="-"
   if [[ "$policy" == eligible ]]; then
     result_status[$id]=NOT_RUN
     result_reason[$id]=not_started
@@ -98,6 +102,9 @@ host_selected=false
 host_attempted=false
 host_exit=""
 host_apt="-"
+host_detail=""
+host_failed_stage="-"
+host_recovery="-"
 if [[ "$mode" == all ]]; then
   host_name="$(hostname -f)" || fail "could not read host FQDN for inventory"
   [[ "$host_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "invalid host FQDN"
@@ -115,6 +122,7 @@ apt_result_dir="$(mktemp -d)" || {
   printf 'WARNING: cannot create APT result handoff directory\n' >&2
 }
 result_not_run_reason=preflight_blocked
+result_not_run_detail=""
 inventory_ready=true
 emit_final_inventory() {
   trap - EXIT
@@ -122,7 +130,8 @@ emit_final_inventory() {
   if [[ "$mode" == all ]]; then
     if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
     forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
-      "$host_status" "$host_reason" "$host_exit" "$host_apt" ||
+      "$host_status" "$host_reason" "$host_exit" "$host_apt" "-" "-" "-" \
+      "$host_detail" "$host_failed_stage" "$host_recovery" ||
       printf 'ERROR: could not print host result record\n' >&2
   fi
   local id reason selected
@@ -131,9 +140,14 @@ emit_final_inventory() {
     if [[ "${result_status[$id]}" == NOT_RUN ]]; then reason="$result_not_run_reason"; fi
     selected=false
     [[ "${result_policy[$id]}" == eligible ]] && selected=true
+    local detail="${result_detail[$id]}"
+    if [[ "${result_status[$id]}" == NOT_RUN && -n "$result_not_run_detail" ]]; then
+      detail="$(forge_result_encode "NOT RUN: $result_not_run_detail")"
+    fi
     forge_result_print lxc "$id" "${result_name[$id]}" "$selected" \
       "${result_attempted[$id]}" "${result_status[$id]}" "$reason" "${result_exit[$id]}" "${result_apt[$id]}" \
-      "${result_app_before[$id]}" "${result_app_after[$id]}" "${result_app_repository[$id]}" ||
+      "${result_app_before[$id]}" "${result_app_after[$id]}" "${result_app_repository[$id]}" \
+      "$detail" "${result_failed_stage[$id]}" "${result_recovery[$id]}" ||
       printf 'ERROR: could not print result for LXC %s\n' "$id" >&2
   done
   if [[ -n "$apt_result_dir" ]]; then
@@ -184,17 +198,25 @@ done
 
 # Verify all selected running LXCs before updating the host or any guest.
 for vmid in "${vmids[@]}"; do
-  bash "$root_space_script" "$vmid" "${CONFIG[MIN_ROOT_FREE_MB]}" || fail "LXC $vmid root space preflight failed; no updates started"
+  bash "$root_space_script" "$vmid" "${CONFIG[MIN_ROOT_FREE_MB]}" || {
+    result_not_run_detail="LXC $vmid root space preflight failed"
+    fail "LXC $vmid root space preflight failed; no updates started"
+  }
 done
 
 # Memory preflight for the frozen running LXC scope, before any mutations.
 for vmid in "${vmids[@]}"; do
-  bash "$memory_script" "$vmid" "${CONFIG[MIN_MEM_AVAILABLE_MB]}" || fail "LXC $vmid memory preflight failed; no updates started"
+  bash "$memory_script" "$vmid" "${CONFIG[MIN_MEM_AVAILABLE_MB]}" || {
+    result_not_run_detail="LXC $vmid memory preflight failed"
+    fail "LXC $vmid memory preflight failed; no updates started"
+  }
 done
 
 # All recovery conflicts must be resolved before the host or any LXC changes.
-recovery_plan="$(bash "$conflicts_script" "${vmids[@]}")" || \
+recovery_plan="$(bash "$conflicts_script" "${vmids[@]}")" || {
+  result_not_run_detail="LXC recovery protection conflicts detected"
   fail "LXC protection conflicts detected; no updates started"
+}
 
 FORGE_LXC_BACKUP_ONLY_VMIDS=""
 while IFS= read -r record; do
@@ -219,11 +241,24 @@ printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_target
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
   host_attempted=true
-  FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/host}" bash "$host_update_script"
+  FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/host}" \
+    FORGE_RESULT_DETAIL_FILE="${apt_result_dir:+$apt_result_dir/result-host}" \
+    bash "$host_update_script"
   host_result=$?
   if [[ -n "$apt_result_dir" && -f "$apt_result_dir/host" ]]; then
     apt_value="$(< "$apt_result_dir/host")"
     [[ "$apt_value" =~ ^[0-9]+$ ]] && host_apt="$apt_value"
+  fi
+
+  if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-host" ]]; then
+    IFS=$'\t' read -r detail stage recovery < "$apt_result_dir/result-host"
+    if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
+          ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
+          ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+      host_detail="$detail"
+      host_failed_stage="$stage"
+      host_recovery="$recovery"
+    fi
   fi
 
   if (( host_result != 0 )); then
@@ -257,6 +292,7 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     result_attempted[$vmid]=true
     FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" \
       FORGE_APP_RESULT_FILE="${apt_result_dir:+$apt_result_dir/app-$vmid}" \
+      FORGE_RESULT_DETAIL_FILE="${apt_result_dir:+$apt_result_dir/result-lxc-$vmid}" \
       bash "$lxc_update_script" "$vmid" scope
     target_result=$?
     if [[ -n "$apt_result_dir" && -f "$apt_result_dir/lxc-$vmid" ]]; then
@@ -274,6 +310,17 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
       fi
       if [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
         result_app_repository[$vmid]="$app_repository"
+      fi
+    fi
+
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-lxc-$vmid" ]]; then
+      IFS=$'\t' read -r detail stage recovery < "$apt_result_dir/result-lxc-$vmid"
+      if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
+            ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
+            ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+        result_detail[$vmid]="$detail"
+        result_failed_stage[$vmid]="$stage"
+        result_recovery[$vmid]="$recovery"
       fi
     fi
 
