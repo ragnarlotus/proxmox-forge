@@ -152,6 +152,8 @@ snapshot_name=""
 package_manager=""
 application_updater=""
 custom_scripts_planned=false
+result_warning=""
+result_recovery="-"
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -247,18 +249,48 @@ restore_initial_state() {
     "state=stopped" || return 1
 }
 
+# Report the recovery attempt separately; never replace the primary failure
+# code or retry the update just because recovery failed.
+run_recovery() {
+  local failed_stage="$1" primary_result="$2" recovery_code=0
+  bash "$recovery_script" \
+    "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+    "$recovery_mode" "$failed_stage" "$primary_result" || recovery_code=$?
+  if [[ "${CONFIG[ROLLBACK_ON_FAILURE]}" != true ]]; then
+    result_recovery=disabled
+  elif [[ ( "$recovery_mode" == snapshot && -z "$snapshot_name" ) ||
+          ( "$recovery_mode" == backup && -z "$backup_volume" ) ]]; then
+    result_recovery=unavailable
+  elif (( recovery_code != 0 )); then
+    result_recovery="failed:$recovery_code"
+  else
+    result_recovery=success
+  fi
+}
+
 finish_failed() {
   local failed_stage="$1"
   local primary_result="$2"
+  local explicit_error="${3:-}"
+  local failure_error
   local finished_at
   local duration_seconds
   local state_restore_result=0
+
+  failure_error="$explicit_error"
+  if [[ -z "$failure_error" ]]; then
+    failure_error="$(forge_result_stage_error "$log_file" "$failed_stage")"
+  fi
 
   # Measure after possible rollback but before restoring a stopped guest.
   forge_apt_finalize "$vmid"
   forge_app_finalize "$vmid"
   if [[ "$failed_stage" != lifecycle_restore ]]; then
     restore_initial_state || state_restore_result=$?
+    if (( state_restore_result != 0 )); then
+      if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+      result_warning+="failed to restore original stopped state (exit $state_restore_result)"
+    fi
   fi
 
   finished_at="$(date +%s)" || finished_at="$started_at"
@@ -282,9 +314,9 @@ finish_failed() {
     "$vmid" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY"
-  fi
+  forge_result_publish lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" \
+    "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" \
+    "$failed_stage" "$failure_error" "$result_recovery" "$result_warning"
   exit "$primary_result"
 }
 
@@ -379,7 +411,7 @@ if [[ "$mutation_planned" == true ]]; then
       bash "$log_write_script" "$log_file" ERROR backup_artifact_error \
         "vmid=$vmid" \
         "reason=missing_volume" || true
-      finish_failed backup 1
+      finish_failed backup 1 "backup volume missing from completed backup"
     fi
 
     bash "$log_write_script" "$log_file" INFO recovery_artifact \
@@ -412,7 +444,7 @@ if [[ "$mutation_planned" == true && "$recovery_mode" == snapshot ]]; then
   if [[ -z "$snapshot_name" ]]; then
     bash "$log_write_script" "$log_file" ERROR snapshot_artifact_error \
       "vmid=$vmid" "reason=missing_name" || true
-    finish_failed snapshot 1
+    finish_failed snapshot 1 "snapshot name missing from completed snapshot"
   fi
 elif [[ "$mutation_planned" == true ]]; then
   [[ -n "$backup_volume" ]] || finish_failed backup 1
@@ -433,15 +465,15 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
     bash "$held_packages_script" "$vmid"
   held_result=$?
   if (( held_result != 0 )); then
+    if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+    result_warning+="held-package inspection failed (exit $held_result)"
     printf 'WARNING: could not inspect held APT packages for LXC %s (exit code %s)\n' "$vmid" "$held_result" >&2
     bash "$log_write_script" "$log_file" WARN held_packages \
       "vmid=$vmid" "status=unknown" "exit_code=$held_result" || \
       printf 'ERROR: could not log LXC held-package warning\n' >&2
   fi
   if (( stage_result != 0 )); then
-    bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      "$recovery_mode" os_update "$stage_result" || true
+    run_recovery os_update "$stage_result"
     finish_failed os_update "$stage_result"
   fi
 else
@@ -453,7 +485,9 @@ else
       bash "$held_packages_script" "$vmid"
     held_result=$?
     if (( held_result != 0 )); then
-      printf 'WARNING: could not inspect held APT packages for LXC %s (exit code %s)\n' "$vmid" "$held_result" >&2
+      if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+    result_warning+="held-package inspection failed (exit $held_result)"
+    printf 'WARNING: could not inspect held APT packages for LXC %s (exit code %s)\n' "$vmid" "$held_result" >&2
       bash "$log_write_script" "$log_file" WARN held_packages \
         "vmid=$vmid" "status=unknown" "exit_code=$held_result" || \
         printf 'ERROR: could not log LXC held-package warning\n' >&2
@@ -468,9 +502,7 @@ if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      "$recovery_mode" application_update "$stage_result" || true
+    run_recovery application_update "$stage_result"
     finish_failed application_update "$stage_result"
   fi
 else
@@ -488,9 +520,7 @@ else
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      "$recovery_mode" custom_scripts "$stage_result" || true
+    run_recovery custom_scripts "$stage_result"
     finish_failed custom_scripts "$stage_result"
   fi
 fi
@@ -501,9 +531,7 @@ if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
   stage_result=$?
 
   if (( stage_result != 0 )); then
-    bash "$recovery_script" \
-      "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-      "$recovery_mode" health "$stage_result" || true
+    run_recovery health "$stage_result"
     finish_failed health "$stage_result"
   fi
 elif [[ "${CONFIG[HEALTH_CHECK]}" != true ]]; then
@@ -523,6 +551,8 @@ if [[ "$mutation_planned" == true ]]; then
       "stage=fstrim" \
       "exit_code=$stage_result" || \
       printf 'ERROR: could not record failed post-update fstrim in %s\n' "$log_file" >&2
+    if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+    result_warning+="fstrim failed (exit $stage_result)"
     printf 'WARNING: post-update fstrim failed for LXC %s (exit code: %s)\n' \
       "$vmid" "$stage_result" >&2
   fi
@@ -540,6 +570,8 @@ if (( reboot_check_result == 0 )) && [[ "$reboot_record" =~ ^reboot_required=(ye
   bash "$log_write_script" "$log_file" INFO reboot_status \
     "vmid=$vmid" "reboot_required=$reboot_required" || fail "could not log LXC reboot status"
 else
+  if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+  result_warning+="reboot requirement unknown (check exit $reboot_check_result)"
   printf 'WARNING: could not determine reboot requirement for LXC %s (exit code %s)\n' "$vmid" "$reboot_check_result" >&2
   bash "$log_write_script" "$log_file" WARN reboot_status \
     "vmid=$vmid" "reboot_required=unknown" "check_exit_code=$reboot_check_result" || \
@@ -575,6 +607,6 @@ if [[ "$reboot_required" == yes ]]; then
 elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
 fi
-if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-  forge_result_print lxc "$vmid" "$name" true true OK completed "" "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY"
-fi
+forge_result_publish lxc "$vmid" "$name" true true OK completed "" \
+  "$FORGE_APT_COUNT" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" \
+  "-" "" "-" "$result_warning"
