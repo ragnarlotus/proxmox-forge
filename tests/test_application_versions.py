@@ -14,6 +14,33 @@ SCRIPT_URL = "https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main
 LEGACY_URL = "https://github.com/tteck/Proxmox/raw/main/ct/{}.sh"
 
 
+# Based on the actual LXC 101 (pihole) and LXC 102 (plex) launchers.
+# This text is only inspected; it is never executed.
+GENERATED_LAUNCHER = """#!/usr/bin/env bash
+# Community-Scripts update entrypoint (generated - do not edit by hand).
+# Regenerated on install and on every successful update.
+export SCRIPT_SLUG="__SLUG__"
+export UPDATE_SCRIPT_NAME="__SLUG__"
+export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main"
+export COMMUNITY_SCRIPTS_CORE_URL="https://raw.githubusercontent.com/community-scripts/core/main"
+export COMMUNITY_SCRIPTS_WEBSITE_URL="https://community-scripts.org"
+# Pull the shared helper; it decides whether this app can still be updated. If it
+# cannot be fetched, fall back to the legacy direct pull so update still works.
+_cs_helper="$(curl -fsSL --connect-timeout 10 "${COMMUNITY_SCRIPTS_CORE_URL}/misc/update.sh" 2>/dev/null)"
+if [[ -n "$_cs_helper" ]]; then
+  bash -c "$_cs_helper"
+else
+  echo "Update helper unavailable - falling back to direct update."
+  bash -c "$(curl -fsSL "${COMMUNITY_SCRIPTS_URL}/ct/${UPDATE_SCRIPT_NAME}.sh")"
+fi
+"""
+
+
+def generated_launcher(slug):
+    return GENERATED_LAUNCHER.replace("__SLUG__", slug)
+
+
+
 class ApplicationVersionTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="forge-app-version-")
@@ -69,6 +96,46 @@ class ApplicationVersionTests(unittest.TestCase):
                           APP_TEST_LAUNCHER=SCRIPT_URL.format("plex")).returncode, 0
         )
 
+    def test_generated_entrypoints_from_actual_proxmox_installs(self):
+        for slug in ("pihole", "plex", "immich", "caddy",
+                     "vaultwarden", "docmost", "audiobookshelf"):
+            with self.subTest(slug=slug):
+                result = self.run_bash(
+                    "forge_app_detect_slug 101 /usr/bin/update",
+                    APP_TEST_LAUNCHER=generated_launcher(slug),
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), slug)
+
+    def test_generated_identity_must_be_unambiguous_and_from_official_source(self):
+        valid = generated_launcher("plex")
+        cases = [
+            valid.replace('export UPDATE_SCRIPT_NAME="plex"',
+                          'export UPDATE_SCRIPT_NAME="pihole"'),
+            valid.replace('export SCRIPT_SLUG="plex"',
+                          'export SCRIPT_SLUG="plex"\nexport SCRIPT_SLUG="pihole"'),
+            valid.replace('export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main"',
+                          'export COMMUNITY_SCRIPTS_URL="https://other.example/ProxmoxVE/main"'),
+            valid.replace('export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main"',
+                          'export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main"\n'
+                          'export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main"'),
+            valid.replace('# Community-Scripts update entrypoint (generated - do not edit by hand).',
+                          '# Unknown updater'),
+            valid.replace('export SCRIPT_SLUG="plex"', 'export SCRIPT_SLUG="$(danger)"'),
+            valid.replace('${COMMUNITY_SCRIPTS_URL}/ct/${UPDATE_SCRIPT_NAME}.sh',
+                          'https://other.example/ct/${UPDATE_SCRIPT_NAME}.sh'),
+            valid.replace('export UPDATE_SCRIPT_NAME="plex"', ''),
+            valid.replace('export SCRIPT_SLUG="plex"', ''),
+        ]
+        for malformed in cases:
+            with self.subTest(malformed=malformed[:140]):
+                result = self.run_bash(
+                    "forge_app_detect_slug 101 /usr/bin/update",
+                    APP_TEST_LAUNCHER=malformed,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+
     def test_supported_app_probes(self):
         for slug, output, expected in [
             ("plex", "ii \t1.43.2.11", "1.43.2.11"),
@@ -106,7 +173,7 @@ class ApplicationVersionTests(unittest.TestCase):
                     'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
                     'forge_app_finalize 101; '
                     'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
-                    APP_TEST_LAUNCHER=SCRIPT_URL.format("plex"),
+                    APP_TEST_LAUNCHER=generated_launcher("plex"),
                     APP_TEST_OUTPUT=before, APP_TEST_AFTER=after,
                 )
                 self.assertEqual(r.returncode, 0, r.stderr)
@@ -120,7 +187,7 @@ class ApplicationVersionTests(unittest.TestCase):
                 'forge_app_begin 101 /usr/bin/update; '
                 'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
                 'forge_app_finalize 101; printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
-                APP_TEST_LAUNCHER=SCRIPT_URL.format("plex"),
+                APP_TEST_LAUNCHER=generated_launcher("plex"),
                 APP_TEST_OUTPUT=before, APP_TEST_AFTER=after,
             )
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -132,7 +199,7 @@ class ApplicationVersionTests(unittest.TestCase):
             'forge_app_begin 101 /usr/bin/update; '
             'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
             'forge_app_finalize 101',
-            APP_TEST_LAUNCHER=SCRIPT_URL.format("plex"),
+            APP_TEST_LAUNCHER=generated_launcher("plex"),
             APP_TEST_OUTPUT="ii \t1.0",
             APP_TEST_AFTER="ii \t2.0",
             FORGE_RESULTS_AGGREGATE="bulk",
