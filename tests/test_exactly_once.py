@@ -123,11 +123,12 @@ class ExactlyOnceTests(unittest.TestCase):
             "lxc/update/fstrim.sh", "lxc/health.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
             "results/record.sh", "results/table.py", "results/apt.sh", "results/application.sh",
+            "notifications/send.py",
         ]
         for path in paths:
             target = lib / path
             target.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("lxc/update.sh", "results/record.sh", "results/table.py"):
+            if path in ("lxc/update.sh", "results/record.sh", "results/table.py", "notifications/send.py"):
                 target.symlink_to(ROOT / "lib" / path)
             elif path == "results/application.sh":
                 target.write_text(
