@@ -144,6 +144,20 @@ HEALTH_SCRIPTS_DIR="/opt/proxmox-forge/health.d"
 
 
 # -----------------------------------------------------------------------------
+# Notifications (F153/F154)
+# -----------------------------------------------------------------------------
+
+# Deliver a single final email through the host's existing Proxmox root-mail
+# forwarding and notification matcher. No dedicated SMTP credentials or
+# recipient list are maintained by Forge.
+EMAIL_NOTIFICATIONS=false
+
+# When email is enabled, notify only on global FAILED/PARTIAL results (errors
+# or blocked eligible targets); false also notifies on SUCCESS.
+NOTIFY_ONLY_ERRORS=true
+
+
+# -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
 
