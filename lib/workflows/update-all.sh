@@ -11,11 +11,6 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
-  if [[ "${final_notification_ready:-false}" == true ]]; then
-    printf '\nForge final notification preview (email not sent):\n'
-    bash "$final_notification_script" preflight failed "$mode" "$*" || \
-      printf 'WARNING: could not render failed preflight notification\n' >&2
-  fi
   exit 1
 }
 
@@ -36,7 +31,6 @@ conflicts_script="$lib_dir/config/conflicts.sh"
 root_space_script="$lib_dir/preflight/root-space.sh"
 memory_script="$lib_dir/preflight/memory.sh"
 lxc_update_script="$lib_dir/lxc/update.sh"
-final_notification_script="$lib_dir/notifications/final.sh"
 
 for helper in \
   "$config_get_script" \
@@ -45,15 +39,13 @@ for helper in \
   "$conflicts_script" \
   "$root_space_script" \
   "$memory_script" \
-  "$lxc_update_script" \
-  "$final_notification_script"; do
+  "$lxc_update_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
-final_notification_ready=true
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
@@ -103,15 +95,6 @@ while IFS= read -r record; do
 done <<<"$recovery_plan"
 export FORGE_LXC_BACKUP_ONLY_VMIDS
 
-show_bulk_notification() {
-  local status="$1" host_state="$2" succeeded_count="$3" failed_count="$4"
-  shift 4
-  printf '\nForge final notification preview (email not sent):\n'
-  bash "$final_notification_script" bulk "$status" "$mode" "$host_state" \
-    "$lxc_targets" "$succeeded_count" "$failed_count" "$@" || \
-    printf 'WARNING: could not render final bulk notification\n' >&2
-}
-
 lxc_targets="${#vmids[@]}"
 update_host=false
 if [[ "$mode" == all && "${CONFIG[UPDATE_HOST]}" == true ]]; then
@@ -123,14 +106,13 @@ printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_target
 
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
-  FORGE_NOTIFICATION_AGGREGATE=bulk bash "$host_update_script"
+  bash "$host_update_script"
   host_result=$?
 
   if (( host_result != 0 )); then
     printf 'update_all=failed stage=host exit_code=%s lxc_started=false\n' "$host_result"
     printf '\nForge update summary: host FAILED (exit code %s); LXC updates not started (%s selected).\n' \
       "$host_result" "$lxc_targets"
-    show_bulk_notification failed failed 0 0
     exit "$host_result"
   fi
 
@@ -143,14 +125,13 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
   succeeded=0
   failed=0
   failed_targets=()
-  failed_records=()
 
   printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
 
   for vmid in "${vmids[@]}"; do
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
-    FORGE_NOTIFICATION_AGGREGATE=bulk bash "$lxc_update_script" "$vmid" scope
+    bash "$lxc_update_script" "$vmid" scope
     target_result=$?
 
     if (( target_result == 0 )); then
@@ -159,7 +140,6 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     else
       failed=$((failed + 1))
       failed_targets+=("$vmid (exit code $target_result)")
-      failed_records+=("$vmid:$target_result")
       printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
     fi
   done
@@ -182,13 +162,6 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     for failed_target in "${failed_targets[@]}"; do
       printf '  Failed LXC: %s\n' "$failed_target"
     done
-    final_status=failed
-    if (( succeeded > 0 )) || [[ "$update_host" == true ]]; then
-      final_status=partial
-    fi
-    host_state=skipped
-    [[ "$update_host" == true ]] && host_state=success
-    show_bulk_notification "$final_status" "$host_state" "$succeeded" "$failed" "${failed_records[@]}"
     exit 1
   fi
 
@@ -214,11 +187,4 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     "$lxc_targets" "$succeeded"
 else
   printf 'LXC updates skipped (disabled); overall SUCCESS.\n'
-fi
-host_state=skipped
-[[ "$update_host" == true ]] && host_state=success
-if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
-  show_bulk_notification success "$host_state" "$succeeded" 0
-else
-  show_bulk_notification success "$host_state" 0 0
 fi
