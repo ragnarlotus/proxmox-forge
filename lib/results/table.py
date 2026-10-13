@@ -152,6 +152,65 @@ def emit_failures(rows, width, enabled):
             print((prefix if index == 0 else " " * len(prefix)) + part)
 
 
+
+def compact_widths(values, width):
+    """Fit six aligned columns inside a conventional 60-165-column terminal."""
+    minimums = [4, 4, 3, 19, 9, 6]  # Header sizes; total including separators = 60.
+    maximums = [6, 20, 5, 29, 9, 44]
+    desired = [
+        min(maximums[i], max([minimums[i], *(len(c[i]) for c in values)]))
+        for i in range(6)
+    ]
+    sizes = minimums[:]
+    remaining = max(0, width - sum(sizes) - 3 * (len(sizes) - 1))
+    # Names, installed versions and failure diagnoses receive the most room.
+    # Changelog is always a short footnote reference in this compact layout.
+    while remaining and sizes != desired:
+        for i in (1, 3, 5, 1, 3, 5, 0, 2):
+            if remaining == 0:
+                break
+            if sizes[i] < desired[i]:
+                sizes[i] += 1
+                remaining -= 1
+    return sizes
+
+
+def emit_compact_table(rows, values, width, enabled):
+    """Keep a genuine six-column grid and full clickable source URLs."""
+    urls = list(dict.fromkeys(c[4] for c in values if c[4] != "—"))
+    references = {url: f"[{i}]" for i, url in enumerate(urls, 1)}
+    cells_by_row = [
+        (c[0], c[1], c[2], c[3], references.get(c[4], "—"), c[5])
+        for c in values
+    ]
+    sizes = compact_widths(cells_by_row, width)
+
+    def output(cells):
+        print(" | ".join(str(value).ljust(sizes[i])
+                         for i, value in enumerate(cells)).rstrip())
+
+    output(HEADERS)
+    print("-+-".join("-" * size for size in sizes))
+    for row, cells in zip(rows, cells_by_row):
+        # All cell content is preserved, even on narrow terminals; URLs are
+        # referenced instead of split into non-clickable pieces.
+        columns = [
+            textwrap.wrap(value, width=sizes[i], break_long_words=True,
+                          break_on_hyphens=False, replace_whitespace=True,
+                          drop_whitespace=True) or [""]
+            for i, value in enumerate(cells)
+        ]
+        for idx in range(max(map(len, columns))):
+            physical = [col[idx] if idx < len(col) else "" for col in columns]
+            if idx < len(columns[5]):
+                physical[5] = colored(physical[5], row["status"], enabled)
+            output(physical)
+    if urls:
+        print("\nChangelog links:")
+        for url in urls:
+            print(f"  {references[url]} Changelog: {url}")
+
+
 def emit(rows, width, enabled):
     print("\nForge final results")
     values = [fields(row) for row in rows]
@@ -175,18 +234,7 @@ def emit(rows, width, enabled):
                     physical[5] = colored(physical[5], row["status"], enabled)
                 output(physical)
     else:
-        # Small terminals: never cut a real GitHub link in half or hide errors.
-        # One logical row per target, with two indented continuation fields.
-        print(" | ".join(HEADERS))
-        print("-" * min(width, 75))
-        for row, cells in zip(rows, values):
-            print(" | ".join(cells[:4]))
-            print("    Changelog: " + cells[4])
-            prefix = "    Result: "
-            detail = wrap(cells[5], max(32, width - len(prefix)))
-            for idx, part in enumerate(detail):
-                print((prefix if idx == 0 else " " * len(prefix)) +
-                      colored(part, row["status"], enabled))
+        emit_compact_table(rows, values, width, enabled)
     counts, selected, attempted, status = summarize(rows)
     print(
         "Totals: targets={total} selected={selected} attempted={attempted} "

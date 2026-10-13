@@ -186,7 +186,7 @@ class HostResultDetailsTests(unittest.TestCase):
                 self.assertEqual(result.returncode, code, result.stderr)
                 self.assertEqual(row["status"], expected_status)
                 self.assertEqual(result.stdout.count("Forge final results"), 1)
-                self.assertIn("HOST | host-test.example | 0 | —", result.stdout)
+                self.assertRegex(result.stdout, r"(?m)^HOST\s+\|\s+host-test\.example\s+\|\s+0\s+\|\s+—\s+\|")
                 self.assertIn("Totals: targets=1 selected=1 attempted=1", result.stdout)
                 self.assertIn(f"ERROR={int(bool(code))} ", result.stdout)
                 global_status = "FAILED" if code else "SUCCESS"
