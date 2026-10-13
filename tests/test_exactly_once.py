@@ -299,6 +299,47 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("app_before=1.0 app_after=2.0 app_repository=-", result.stdout)
 
+    def test_f224_primary_failure_has_stage_and_recovery_success(self):
+        result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE="application")
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertEqual(steps.count("recover"), 1)
+        self.assertIn("failed_stage=application_update", result.stdout)
+        self.assertIn("recovery=success", result.stdout)
+        self.assertIn(
+            "result_detail=ERROR%3A%20application_update%20%28exit%2042%29%3B%20recovery%20succeeded",
+            result.stdout,
+        )
+
+    def test_f224_failed_recovery_does_not_mask_primary_failure(self):
+        result, steps, _ = self.invoke(
+            FORGE_TEST_FAIL_STAGE="os", FORGE_TEST_FAIL_RECOVERY="true",
+        )
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertEqual(steps.count("recover"), 1)
+        self.assertIn("failed_stage=os_update recovery=failed:42", result.stdout)
+        self.assertIn("recovery%20failed%20%28exit%2042%29", result.stdout)
+
+    def test_f224_nonfatal_warning_does_not_change_success(self):
+        result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE="fstrim")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(steps.count("fstrim"), 1)
+        self.assertIn("status=OK", result.stdout)
+        self.assertIn("WARNING%3A%20fstrim%20failed%20%28exit%2042%29", result.stdout)
+
+    def test_f224_bulk_handoff_preserves_result_without_second_record(self):
+        handoff = self.root / "result-handoff"
+        result, steps, _ = self.invoke(
+            FORGE_RESULTS_AGGREGATE="bulk",
+            FORGE_RESULT_DETAIL_FILE=str(handoff),
+            FORGE_TEST_FAIL_STAGE="application",
+        )
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertNotIn("result_target ", result.stdout)
+        self.assertEqual(steps.count("recover"), 1)
+        parts = handoff.read_text(encoding="utf-8").strip().split("\t")
+        self.assertEqual(parts[1:], ["application_update", "success"])
+        self.assertIn("ERROR%3A%20application_update", parts[0])
+
     def test_app_version_after_rollback_matches_before(self):
         result, _, _ = self.invoke(
             FORGE_TEST_FAIL_STAGE="application", FORGE_TEST_APP_BEFORE="1.2",
