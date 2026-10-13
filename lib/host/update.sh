@@ -28,7 +28,6 @@ reboot_script="$lib_dir/postflight/reboot-required.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
-final_notification_script="$lib_dir/notifications/final.sh"
 
 for helper in \
   "$config_get_script" \
@@ -39,8 +38,7 @@ for helper in \
   "$reboot_script" \
   "$log_init_script" \
   "$log_capture_script" \
-  "$log_write_script" \
-  "$final_notification_script"; do
+  "$log_write_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -76,13 +74,6 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 started_at="$(date +%s)" || fail "could not create host update start timestamp"
 backup_file=""
 
-show_final_notification() {
-  [[ "${FORGE_NOTIFICATION_AGGREGATE:-}" != bulk ]] || return 0
-  printf '\nForge final notification preview (email not sent):\n'
-  bash "$final_notification_script" host "$@" || \
-    printf 'WARNING: could not render final host notification\n' >&2
-}
-
 record_skipped_stage() {
   local stage_name="$1"
   local reason="$2"
@@ -115,7 +106,6 @@ finish_failed() {
     "$hostname_fqdn" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: host %s FAILED at %s (exit code %s; no automatic rollback).\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result"
-  show_final_notification failed "$hostname_fqdn" "$failed_stage" "$primary_result" unknown
   exit "$primary_result"
 }
 
@@ -223,4 +213,3 @@ if [[ "$reboot_required" == yes ]]; then
 elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: Proxmox host reboot requirement could not be determined.\n' >&2
 fi
-show_final_notification success "$hostname_fqdn" none 0 "$reboot_required"

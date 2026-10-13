@@ -97,14 +97,13 @@ class ExactlyOnceTests(unittest.TestCase):
             "lxc/recover.sh", "postflight/reboot-required.sh", "preflight/held-packages.sh", "lxc/update/os.sh",
             "lxc/update/application.sh", "lxc/update/custom-scripts.sh",
             "lxc/update/fstrim.sh", "lxc/health.sh",
-            "notifications/final.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
         ]
         for path in paths:
             target = lib / path
             target.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("lxc/update.sh", "notifications/final.sh"):
-                target.symlink_to(ROOT / "lib" / path)
+            if path == "lxc/update.sh":
+                target.symlink_to(ROOT / "lib/lxc/update.sh")
             elif path == "config/get.sh":
                 target.write_text(
                     'config_get() {\n'
@@ -174,7 +173,6 @@ class ExactlyOnceTests(unittest.TestCase):
                     "custom", "health", "fstrim", "reboot"],
         )
         self.assertIn("update=success", result.stdout)
-        self.assertIn("Subject: [Proxmox Forge] SUCCESS - LXC 111", result.stdout)
         self.assertIn("reboot_required=yes", result.stdout)
         self.assertEqual(steps.count("reboot"), 1)
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
@@ -198,7 +196,6 @@ class ExactlyOnceTests(unittest.TestCase):
                 self.assertEqual(steps, expected)
                 self.assertNotIn("reboot", steps)
                 self.assertIn("update=failed", result.stdout)
-                self.assertIn("Subject: [Proxmox Forge] FAILED - LXC 111", result.stdout)
                 reported_stage = {"os": "os_update", "application": "application_update",
                                   "custom": "custom_scripts"}.get(stage, stage)
                 self.assertIn(

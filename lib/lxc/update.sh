@@ -57,7 +57,6 @@ reboot_script="$lib_dir/postflight/reboot-required.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
-final_notification_script="$lib_dir/notifications/final.sh"
 
 for helper in \
   "$config_get_script" \
@@ -76,8 +75,7 @@ for helper in \
   "$reboot_script" \
   "$log_init_script" \
   "$log_capture_script" \
-  "$log_write_script" \
-  "$final_notification_script"; do
+  "$log_write_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -141,13 +139,6 @@ snapshot_name=""
 package_manager=""
 application_updater=""
 custom_scripts_planned=false
-
-show_final_notification() {
-  [[ "${FORGE_NOTIFICATION_AGGREGATE:-}" != bulk ]] || return 0
-  printf '\nForge final notification preview (email not sent):\n'
-  bash "$final_notification_script" lxc "$@" || \
-    printf 'WARNING: could not render final LXC notification\n' >&2
-}
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -275,7 +266,6 @@ finish_failed() {
     "$vmid" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
-  show_final_notification failed "$vmid" "$failed_stage" "$primary_result" unknown
   exit "$primary_result"
 }
 
@@ -554,4 +544,3 @@ if [[ "$reboot_required" == yes ]]; then
 elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
 fi
-show_final_notification success "$vmid" none 0 "$reboot_required"
