@@ -34,10 +34,13 @@ class CompleteLxcInventoryTests(unittest.TestCase):
         source = (ROOT / "lib/results/inventory.sh").read_text(encoding="utf-8")
         locator = "configs=(/etc/pve/lxc/*.conf)"
         config_file = 'file="/etc/pve/lxc/$vmid.conf"'
+        config_guard = '[[ -d /etc/pve/lxc ]]'
         self.assertEqual(source.count(locator), 1)
         self.assertEqual(source.count(config_file), 1)
+        self.assertEqual(source.count(config_guard), 1)
         script = source.replace(locator, f"configs=({self.config}/*.conf)")
         script = script.replace(config_file, f'file="{self.config}/$vmid.conf"')
+        script = script.replace(config_guard, f'[[ -d "{self.config}" ]]')
         self.script = target / "inventory.sh"
         self.script.write_text(script, encoding="utf-8")
         lxc_dir = self.base / "lib" / "lxc"
