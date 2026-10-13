@@ -80,10 +80,19 @@ elif kind == "preflight":
         if vmid in args:
             print(f"backup_fallback={vmid}")
 elif kind == "host":
+    if os.environ.get("FORGE_APT_RESULT_FILE"):
+        Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
+            os.environ.get("FORGE_TEST_HOST_APT", "3") + "\n"
+        )
     code = int(os.environ.get("FORGE_TEST_HOST_CODE", "0"))
     print(f"update={'success' if code == 0 else 'failed'} type=host")
     sys.exit(code)
 elif kind == "lxc":
+    if os.environ.get("FORGE_APT_RESULT_FILE"):
+        counts = json.loads(os.environ.get("FORGE_TEST_LXC_APT", "{}"))
+        Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
+            str(counts.get(args[0], 0)) + "\n"
+        )
     if len(args) != 2 or args[1] != "scope":
         sys.exit("unexpected LXC invocation")
     code = int(json.loads(os.environ.get("FORGE_TEST_LXC_CODES", "{}")).get(args[0], 0))
@@ -178,6 +187,43 @@ class ResultAggregationTests(unittest.TestCase):
             if line.startswith("result_target "):
                 records.append(dict(field.split("=", 1) for field in line.split()[1:]))
         return records
+
+    def test_f221_bulk_records_keep_per_target_measured_apt_values(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_HOST_APT="12",
+            FORGE_TEST_LXC_APT=json.dumps({"100": 0, "111": 4, "115": 2}),
+            FORGE_TEST_LXC_CODES=json.dumps({"111": 42}),
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual(
+            [(row["vmid"], row["apt_upgraded"]) for row in rows],
+            [("HOST", "12"), ("100", "0"), ("111", "4"), ("115", "2")],
+        )
+        self.assertEqual(rows[2]["exit_code"], "42")
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111", "115"])
+
+    def test_f221_all_skipped_have_unattempted_apt_counts(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_RUNNING_LXC="false", FORGE_TEST_UPDATE_HOST="false",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertTrue(all(r["apt_upgraded"] == "-" for r in rows))
+        self.assertNotIn("host", [c["kind"] for c in calls])
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+
+    def test_f221_skipped_and_blocked_targets_have_unknown_count(self):
+        result, _ = self.invoke(
+            "all", FORGE_TEST_HOST_CODE="42",
+            FORGE_TEST_STOPPED_VMIDS="113",
+            FORGE_TEST_INVENTORY_VMIDS="100,111,113,115",
+        )
+        self.assertEqual(result.returncode, 42)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["apt_upgraded"], "3")
+        self.assertTrue(all(r["apt_upgraded"] == "-" for r in rows[1:]))
 
     def test_f220_mixed_inventory_order_and_skip_reasons(self):
         result, calls = self.invoke(

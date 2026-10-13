@@ -29,6 +29,7 @@ log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 result_record_script="$lib_dir/results/record.sh"
+apt_results_script="$lib_dir/results/apt.sh"
 
 for helper in \
   "$config_get_script" \
@@ -40,7 +41,8 @@ for helper in \
   "$log_init_script" \
   "$log_capture_script" \
   "$log_write_script" \
-  "$result_record_script"; do
+  "$result_record_script" \
+  "$apt_results_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -53,6 +55,9 @@ source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
 # shellcheck source=/dev/null
 source "$result_record_script" || fail "could not load result record helper"
+# shellcheck source=/dev/null
+source "$apt_results_script" || fail "could not load APT results helper"
+trap forge_apt_cleanup EXIT
 
 [[ "${CONFIG[UPDATE_HOST]}" == true ]] || fail "host updates are disabled by configuration"
 
@@ -93,6 +98,7 @@ finish_failed() {
   local finished_at
   local duration_seconds
 
+  forge_apt_finalize host
   finished_at="$(date +%s)" || finished_at="$started_at"
   duration_seconds=$((finished_at - started_at))
 
@@ -111,7 +117,7 @@ finish_failed() {
   printf 'Forge update summary: host %s FAILED at %s (exit code %s; no automatic rollback).\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result"
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-    forge_result_print host HOST "$hostname_fqdn" true true ERROR update_failed "$primary_result"
+    forge_result_print host HOST "$hostname_fqdn" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT"
   fi
   exit "$primary_result"
 }
@@ -122,6 +128,9 @@ stage_result=$?
 if (( stage_result != 0 )); then
   finish_failed requirements "$stage_result"
 fi
+
+forge_apt_begin host ||
+  printf 'WARNING: cannot capture host APT baseline; upgrade count will be unavailable\n' >&2
 
 if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then
   backup_output_file="$(mktemp)" || finish_failed backup 1
@@ -154,6 +163,7 @@ else
   record_skipped_stage backup disabled
 fi
 
+FORGE_APT_ACTIVE=true
 bash "$log_capture_script" "$log_file" os_update -- \
   bash "$os_update_script"
 stage_result=$?
@@ -201,6 +211,7 @@ else
     printf 'ERROR: could not log host reboot check warning\n' >&2
 fi
 
+forge_apt_finalize host
 finished_at="$(date +%s)" || finished_at="$started_at"
 duration_seconds=$((finished_at - started_at))
 
@@ -221,5 +232,5 @@ elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: Proxmox host reboot requirement could not be determined.\n' >&2
 fi
 if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-  forge_result_print host HOST "$hostname_fqdn" true true OK completed
+  forge_result_print host HOST "$hostname_fqdn" true true OK completed "" "$FORGE_APT_COUNT"
 fi

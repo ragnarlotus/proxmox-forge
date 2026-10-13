@@ -58,6 +58,7 @@ log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 result_record_script="$lib_dir/results/record.sh"
+apt_results_script="$lib_dir/results/apt.sh"
 
 for helper in \
   "$config_get_script" \
@@ -77,7 +78,8 @@ for helper in \
   "$log_init_script" \
   "$log_capture_script" \
   "$log_write_script" \
-  "$result_record_script"; do
+  "$result_record_script" \
+  "$apt_results_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -89,6 +91,9 @@ source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
 # shellcheck source=/dev/null
 source "$result_record_script" || fail "could not load result record helper"
+# shellcheck source=/dev/null
+source "$apt_results_script" || fail "could not load APT results helper"
+trap forge_apt_cleanup EXIT
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
 parse_record "$target_record"
@@ -245,6 +250,8 @@ finish_failed() {
   local duration_seconds
   local state_restore_result=0
 
+  # Measure after possible rollback but before restoring a stopped guest.
+  forge_apt_finalize "$vmid"
   if [[ "$failed_stage" != lifecycle_restore ]]; then
     restore_initial_state || state_restore_result=$?
   fi
@@ -271,7 +278,7 @@ finish_failed() {
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result"
+    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT"
   fi
   exit "$primary_result"
 }
@@ -339,6 +346,8 @@ if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]] \
 fi
 
 if [[ "$mutation_planned" == true ]]; then
+  forge_apt_begin "$vmid" ||
+    printf 'WARNING: cannot capture APT baseline for LXC %s; upgrade count will be unavailable\n' "$vmid" >&2
   if [[ "${CONFIG[CREATE_BACKUP_BEFORE_LXC_UPDATE]}" == true ]]; then
     backup_output_file="$(mktemp)" || finish_failed backup 1
 
@@ -404,6 +413,7 @@ else
 fi
 
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
+  FORGE_APT_ACTIVE=true
   bash "$log_capture_script" "$log_file" os_update -- \
     bash "$os_update_script" "$vmid" "$package_manager"
   stage_result=$?
@@ -443,6 +453,7 @@ else
 fi
 
 if [[ "${CONFIG[UPDATE_LXC_APPLICATION]}" == true ]]; then
+  if [[ "$application_update_planned" == true ]]; then FORGE_APT_ACTIVE=true; fi
   bash "$log_capture_script" "$log_file" application_update -- \
     bash "$application_update_script" "$vmid" "$application_updater"
   stage_result=$?
@@ -462,6 +473,7 @@ if [[ "${CONFIG[RUN_CUSTOM_SCRIPTS]}" != true ]]; then
 elif [[ "$custom_scripts_planned" != true ]]; then
   record_skipped_stage custom_scripts no_scripts
 else
+  FORGE_APT_ACTIVE=true
   bash "$log_capture_script" "$log_file" custom_scripts -- \
     bash "$custom_scripts_update_script" "$vmid" "${CONFIG[CUSTOM_SCRIPTS_DIR]}"
   stage_result=$?
@@ -525,6 +537,8 @@ else
     printf 'ERROR: could not log LXC reboot check warning\n' >&2
 fi
 
+# Finalize before stopping an initially stopped guest.
+forge_apt_finalize "$vmid"
 restore_initial_state
 stage_result=$?
 if (( stage_result != 0 )); then
@@ -552,5 +566,5 @@ elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
 fi
 if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-  forge_result_print lxc "$vmid" "$name" true true OK completed
+  forge_result_print lxc "$vmid" "$name" true true OK completed "" "$FORGE_APT_COUNT"
 fi
