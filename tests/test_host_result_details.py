@@ -170,7 +170,7 @@ class HostResultDetailsTests(unittest.TestCase):
         failed, _, _ = self.invoke(FORGE_TEST_OS_FAILURE="true", **enabled)
         self.assertEqual(failed.returncode, 42, failed.stderr)
         content = mail.read_text(encoding="utf-8")
-        self.assertIn("To: root\\n", content)
+        self.assertIn("To: root\n", content)
         self.assertIn("Subject: [Proxmox Forge] FAILED", content)
         self.assertIn("ERROR: os_update (exit 42): actual package dependency failure",
                       content)
