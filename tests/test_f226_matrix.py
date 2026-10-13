@@ -82,6 +82,20 @@ class FinalResultsMatrixTests(unittest.TestCase):
             f'SKIPPED={counts["SKIPPED"]} NOT_RUN={counts["NOT_RUN"]}'
         )
         self.assertEqual(table.count(expected_totals), 1, table)
+        # F157 must use these same records, not the workflow's technical
+        # success/failure line or a second independent guest counter.
+        incomplete = counts["ERROR"] + counts["NOT_RUN"]
+        outcome = ("PARTIAL" if counts["OK"] else "FAILED") if incomplete else "SUCCESS"
+        expected_global = (
+            f"result_global status={outcome} targets={len(rows)} "
+            f"selected={selected} attempted={attempted} "
+            f'succeeded={counts["OK"]} failed={counts["ERROR"]} '
+            f'skipped={counts["SKIPPED"]} not_run={counts["NOT_RUN"]}'
+        )
+        global_records = [line for line in result.stdout.splitlines()
+                          if line.startswith("result_global ")]
+        self.assertEqual(global_records, [expected_global], result.stdout)
+        self.assertEqual(result.stdout.count(f"Overall result: {outcome}"), 1)
         expected_guest_calls = [r["vmid"] for r in rows
                                 if r["type"] == "lxc" and r["attempted"] == "true"]
         self.assertEqual(self.changes(calls, "lxc"), expected_guest_calls)
