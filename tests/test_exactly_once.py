@@ -254,6 +254,14 @@ class ExactlyOnceTests(unittest.TestCase):
                 self.assertIn("111 | share |", result.stdout)
                 self.assertIn("Totals: targets=1 selected=1 attempted=1", result.stdout)
                 self.assertIn(f"ERROR={int(code != 0)} ", result.stdout)
+                global_status = "FAILED" if code else "SUCCESS"
+                self.assertIn(
+                    f"result_global status={global_status} targets=1 selected=1 "
+                    f"attempted=1 succeeded={int(code == 0)} failed={int(code != 0)} "
+                    "skipped=0 not_run=0",
+                    result.stdout,
+                )
+                self.assertEqual(result.stdout.count("result_global "), 1)
                 self.assertEqual(steps.count("application"), 1)
 
     def test_f226_explicit_stopped_lxc_returns_to_stopped_once(self):
