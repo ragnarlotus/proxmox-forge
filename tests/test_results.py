@@ -88,6 +88,12 @@ elif kind == "host":
     print(f"update={'success' if code == 0 else 'failed'} type=host")
     sys.exit(code)
 elif kind == "lxc":
+    if os.environ.get("FORGE_APP_RESULT_FILE"):
+        versions = json.loads(os.environ.get("FORGE_TEST_LXC_APP", "{}"))
+        before, after = versions.get(args[0], ["-", "-"])
+        Path(os.environ["FORGE_APP_RESULT_FILE"]).write_text(
+            f"{before}\t{after}\n"
+        )
     if os.environ.get("FORGE_APT_RESULT_FILE"):
         counts = json.loads(os.environ.get("FORGE_TEST_LXC_APT", "{}"))
         Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
@@ -187,6 +193,22 @@ class ResultAggregationTests(unittest.TestCase):
             if line.startswith("result_target "):
                 records.append(dict(field.split("=", 1) for field in line.split()[1:]))
         return records
+
+    def test_f222_bulk_keeps_app_versions_and_excludes_skipped_guests(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_LXC_APP=json.dumps({
+                "100": ["1.0", "1.2"], "111": ["3.0", "3.0"],
+            }), FORGE_TEST_EXCLUDE="115",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual([(r["vmid"], r["app_before"], r["app_after"]) for r in rows], [
+            ("HOST", "-", "-"),
+            ("100", "1.0", "1.2"),
+            ("111", "3.0", "3.0"),
+            ("115", "-", "-"),
+        ])
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"], ["100", "111"])
 
     def test_f221_bulk_records_keep_per_target_measured_apt_values(self):
         result, calls = self.invoke(
