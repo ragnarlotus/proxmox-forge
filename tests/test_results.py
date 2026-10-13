@@ -171,6 +171,81 @@ class ResultAggregationTests(unittest.TestCase):
             [(call["kind"], call["args"]) for call in calls], expected
         )
 
+    @staticmethod
+    def inventory(result):
+        records = []
+        for line in result.stdout.splitlines():
+            if line.startswith("result_target "):
+                records.append(dict(field.split("=", 1) for field in line.split()[1:]))
+        return records
+
+    def test_f220_mixed_inventory_order_and_skip_reasons(self):
+        result, calls = self.invoke(
+            FORGE_TEST_INVENTORY_VMIDS="120,115,113,111,100,10,9",
+            FORGE_TEST_STOPPED_VMIDS="113,9,10",
+            FORGE_TEST_TEMPLATE_VMIDS="120",
+            FORGE_TEST_EXCLUDE="115",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual([r["vmid"] for r in rows],
+                         ["9", "10", "100", "111", "113", "115", "120"])
+        self.assertEqual([(r["vmid"], r["status"], r["reason"]) for r in rows], [
+            ("9", "SKIPPED", "stopped"),
+            ("10", "SKIPPED", "stopped"),
+            ("100", "OK", "completed"),
+            ("111", "OK", "completed"),
+            ("113", "SKIPPED", "stopped"),
+            ("115", "SKIPPED", "excluded"),
+            ("120", "SKIPPED", "template"),
+        ])
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111"])
+
+    def test_f220_host_failure_marks_selected_lxcs_not_run(self):
+        result, calls = self.invoke("all", FORGE_TEST_HOST_CODE="42")
+        self.assertEqual(result.returncode, 42)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["status"], "ERROR")
+        self.assertEqual(rows[0]["exit_code"], "42")
+        self.assertEqual([r["status"] for r in rows[1:]],
+                         ["NOT_RUN", "NOT_RUN", "NOT_RUN"])
+        self.assertTrue(all(r["reason"] == "host_update_failed" for r in rows[1:]))
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+
+    def test_f220_preflight_blocked_marks_host_and_eligible_guests_not_run(self):
+        result, calls = self.invoke("all", FORGE_TEST_CONFLICT="true")
+        self.assertNotEqual(result.returncode, 0)
+        rows = self.inventory(result)
+        self.assertEqual([r["status"] for r in rows],
+                         ["NOT_RUN", "NOT_RUN", "NOT_RUN", "NOT_RUN"])
+        self.assertTrue(all(r["reason"] == "preflight_blocked" for r in rows))
+        self.assertNotIn("host", [c["kind"] for c in calls])
+
+    def test_f220_disabled_running_scope_and_host_disabled(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_RUNNING_LXC="false", FORGE_TEST_UPDATE_HOST="false"
+        )
+        self.assertEqual(result.returncode, 0)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["status"], "SKIPPED")
+        self.assertEqual(rows[0]["reason"], "host_disabled")
+        self.assertEqual([r["status"] for r in rows[1:]],
+                         ["SKIPPED", "SKIPPED", "SKIPPED"])
+        self.assertTrue(all(r["reason"] == "running_lxc_disabled" for r in rows[1:]))
+        self.assertNotIn("host", [c["kind"] for c in calls])
+
+    def test_f220_one_guest_failure_preserves_later_guest_results(self):
+        result, calls = self.invoke(
+            FORGE_TEST_LXC_CODES=json.dumps({"111": 42})
+        )
+        self.assertEqual(result.returncode, 1)
+        rows = self.inventory(result)
+        self.assertEqual([(r["status"], r.get("exit_code")) for r in rows],
+                         [("OK", None), ("ERROR", "42"), ("OK", None)])
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111", "115"])
+
     def test_all_lxcs_succeed(self):
         result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -177,7 +177,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("reboot_required=yes", result.stdout)
         self.assertEqual(steps.count("reboot"), 1)
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
-        self.assertIn("result_target type=lxc vmid=111 name=guest111 selected=true attempted=true status=OK reason=completed", result.stdout)
+        self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed", result.stdout)
 
     def test_failure_stops_later_stages_and_recovers_only_once(self):
         stages = ["backup", "snapshot", "os", "application", "custom", "health"]
