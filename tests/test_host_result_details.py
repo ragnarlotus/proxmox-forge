@@ -166,6 +166,14 @@ class HostResultDetailsTests(unittest.TestCase):
                 self.assertIn("HOST | host-test.example | 0 | —", result.stdout)
                 self.assertIn("Totals: targets=1 selected=1 attempted=1", result.stdout)
                 self.assertIn(f"ERROR={int(bool(code))} ", result.stdout)
+                global_status = "FAILED" if code else "SUCCESS"
+                self.assertIn(
+                    f"result_global status={global_status} targets=1 selected=1 "
+                    f"attempted=1 succeeded={int(not bool(code))} failed={int(bool(code))} "
+                    "skipped=0 not_run=0",
+                    result.stdout,
+                )
+                self.assertEqual(result.stdout.count("result_global "), 1)
 
     def test_bulk_mode_does_not_duplicate_host_target_record(self):
         handoff = self.root / "host-handoff"
