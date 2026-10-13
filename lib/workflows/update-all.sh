@@ -202,7 +202,7 @@ printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_target
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
   host_attempted=true
-  bash "$host_update_script"
+  FORGE_RESULTS_AGGREGATE=bulk bash "$host_update_script"
   host_result=$?
 
   if (( host_result != 0 )); then
@@ -234,7 +234,7 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
     result_attempted[$vmid]=true
-    bash "$lxc_update_script" "$vmid" scope
+    FORGE_RESULTS_AGGREGATE=bulk bash "$lxc_update_script" "$vmid" scope
     target_result=$?
 
     if (( target_result == 0 )); then

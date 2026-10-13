@@ -551,3 +551,6 @@ if [[ "$reboot_required" == yes ]]; then
 elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
 fi
+if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
+  forge_result_print lxc "$vmid" "$name" true true OK completed
+fi
