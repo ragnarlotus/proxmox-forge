@@ -235,6 +235,15 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertTrue(all(r["reason"] == "running_lxc_disabled" for r in rows[1:]))
         self.assertNotIn("host", [c["kind"] for c in calls])
 
+    def test_f220_selection_disagreement_fails_before_mutation(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_INVENTORY_VMIDS="100,111"
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("absent or not eligible", result.stderr)
+        self.assertNotIn("host", [c["kind"] for c in calls])
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+
     def test_f220_one_guest_failure_preserves_later_guest_results(self):
         result, calls = self.invoke(
             FORGE_TEST_LXC_CODES=json.dumps({"111": 42})

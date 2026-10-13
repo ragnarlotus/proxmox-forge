@@ -108,3 +108,5 @@ pct fstrim <VMID>
 This is storage maintenance, not backup pruning. It returns filesystem blocks that are no longer in use to the underlying storage where supported.
 
 A `fstrim` failure is logged and reported as a **warning**. Forge deliberately does not restore an otherwise healthy guest merely because trim failed.
+
+F220: completed individual LXC runs emit one structured `result_target` record with target and authoritative result. Bulk updates suppress nested guest records; the coordinator emits the consolidated records instead.

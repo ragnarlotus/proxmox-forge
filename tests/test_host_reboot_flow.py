@@ -139,6 +139,11 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertGreater([c["kind"] for c in calls].index("held"), [c["kind"] for c in calls].index("os"))
         self.assertEqual([c["kind"] for c in calls].count("os"), 1)
 
+    def test_bulk_execution_suppresses_nested_host_record(self):
+        result, calls = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("result_target ", result.stdout)
+
     def test_host_without_reboot_signal(self):
         result, calls = self.invoke(FORGE_TEST_REBOOT_STATE="no")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -166,6 +171,7 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertNotIn("reboot", [c["kind"] for c in calls])
         self.assertIn("held", [c["kind"] for c in calls])
         self.assertIn("update=failed type=host", result.stdout)
+        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=ERROR reason=update_failed exit_code=42", result.stdout)
 
 
 if __name__ == "__main__":

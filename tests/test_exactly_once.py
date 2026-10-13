@@ -179,6 +179,11 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
         self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed", result.stdout)
 
+    def test_bulk_execution_suppresses_nested_result_record(self):
+        result, steps, _ = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("result_target ", result.stdout)
+
     def test_failure_stops_later_stages_and_recovers_only_once(self):
         stages = ["backup", "snapshot", "os", "application", "custom", "health"]
         for stage in stages:
@@ -198,6 +203,10 @@ class ExactlyOnceTests(unittest.TestCase):
                 self.assertEqual(steps, expected)
                 self.assertNotIn("reboot", steps)
                 self.assertIn("update=failed", result.stdout)
+                self.assertIn(
+                    "result_target type=lxc vmid=111 name=share selected=true attempted=true status=ERROR reason=update_failed exit_code=42",
+                    result.stdout,
+                )
                 reported_stage = {"os": "os_update", "application": "application_update",
                                   "custom": "custom_scripts"}.get(stage, stage)
                 self.assertIn(

@@ -22,3 +22,5 @@ Forge does **not** reboot the Proxmox host automatically. After successful updat
 ## Held packages with available upgrades (F022)
 
 After the host APT update stage (successful or failed), Forge checks `apt-mark showhold` and, for each held package, compares `apt-cache policy`'s installed and candidate versions using `dpkg --compare-versions`. It warns **only** when newer candidates exist, and records their names and versions in the update log. Holds with no newer candidates are not reported. After a successful `apt-get update`, this uses refreshed package lists. If updating the APT indexes failed, available version information may be stale. Forge does not unhold anything, claim to have installed a held upgrade, or change the original update/recovery result. A detection failure is a nonfatal warning, never interpreted as zero pending holds.
+
+F220: completed individual host runs emit one structured `result_target` record with the target and authoritative result. Combined bulk runs suppress the nested host record; the coordinator emits it instead.
