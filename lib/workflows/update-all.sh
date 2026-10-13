@@ -59,7 +59,7 @@ source "$result_record_script" || fail "could not load result record helper"
 declare -a result_ids=()
 declare -A result_name=() result_policy=() result_status=()
 declare -A result_reason=() result_attempted=() result_exit=() result_apt=()
-declare -A result_app_before=() result_app_after=()
+declare -A result_app_before=() result_app_after=() result_app_repository=()
 inventory_ready=false
 inventory_output="$(bash "$inventory_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}")" ||
   fail "could not read complete LXC inventory"
@@ -81,6 +81,7 @@ while IFS=$'\t' read -r id name state policy; do
   result_apt[$id]="-"
   result_app_before[$id]="-"
   result_app_after[$id]="-"
+  result_app_repository[$id]="-"
   if [[ "$policy" == eligible ]]; then
     result_status[$id]=NOT_RUN
     result_reason[$id]=not_started
@@ -132,7 +133,7 @@ emit_final_inventory() {
     [[ "${result_policy[$id]}" == eligible ]] && selected=true
     forge_result_print lxc "$id" "${result_name[$id]}" "$selected" \
       "${result_attempted[$id]}" "${result_status[$id]}" "$reason" "${result_exit[$id]}" "${result_apt[$id]}" \
-      "${result_app_before[$id]}" "${result_app_after[$id]}" ||
+      "${result_app_before[$id]}" "${result_app_after[$id]}" "${result_app_repository[$id]}" ||
       printf 'ERROR: could not print result for LXC %s\n' "$id" >&2
   done
   if [[ -n "$apt_result_dir" ]]; then
@@ -264,12 +265,15 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     fi
 
     if [[ -n "$apt_result_dir" && -f "$apt_result_dir/app-$vmid" ]]; then
-      IFS=$'\t' read -r app_before app_after < "$apt_result_dir/app-$vmid"
+      IFS=$'\t' read -r app_before app_after app_repository < "$apt_result_dir/app-$vmid"
       if [[ "$app_before" == "-" || "$app_before" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]]; then
         if [[ "$app_after" == "-" || "$app_after" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]]; then
           result_app_before[$vmid]="$app_before"
           result_app_after[$vmid]="$app_after"
         fi
+      fi
+      if [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+        result_app_repository[$vmid]="$app_repository"
       fi
     fi
 
