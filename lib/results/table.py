@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""F225/F157: render and classify authoritative result_target records without updates."""
+"""F225/F157/F159: render one authoritative final-results snapshot without updates."""
 
 import os
 import re
@@ -128,6 +128,30 @@ def summarize(rows):
     return counts, selected, attempted, status
 
 
+
+def emit_failures(rows, width, enabled):
+    """F159: show only real errors and blocked targets from F225's rows.
+
+    The existing escaped result_detail is the sole diagnostic source. In
+    particular, recovery cannot overwrite the original failure, and skipped
+    guests and nonfatal warnings must not appear in this list.
+    """
+    affected = [row for row in rows if row["status"] in ("ERROR", "NOT_RUN")]
+    if not affected:
+        return
+    print(f"\nFailed and blocked targets ({len(affected)}):")
+    prefix = "    Detail: "
+    for row in affected:
+        name = clean(row["name"])
+        status = row["status"]
+        print(f'  {row["vmid"]} | {name} | {colored(status, status, enabled)}')
+        # Share precisely the decoded/sanitized detail used by the Result
+        # column. Wrap diagnostics on narrow terminals without truncation.
+        detail = fields(row)[5]
+        for index, part in enumerate(wrap(detail, max(32, width - len(prefix)))):
+            print((prefix if index == 0 else " " * len(prefix)) + part)
+
+
 def emit(rows, width, enabled):
     print("\nForge final results")
     values = [fields(row) for row in rows]
@@ -185,6 +209,7 @@ def emit(rows, width, enabled):
     )
     note = " (no targets selected)" if selected == 0 else ""
     print(f"Overall result: {status}{note}")
+    emit_failures(rows, width, enabled)
 
 
 def main():
