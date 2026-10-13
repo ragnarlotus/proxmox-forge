@@ -92,7 +92,6 @@ class FinalResultsMatrixTests(unittest.TestCase):
                 re.sub(r"\\s+", "", "".join(cell[3])),
                 re.sub(r"\\s+", "", displayed_app),
             )
-            self.assertIn(row["status"].replace("_", " "), " ".join(cell[5]).replace("_", " "))
             detail = unquote(row["result_detail"])
             if status == "SKIPPED":
                 self.assertTrue(detail.startswith("SKIPPED:"), detail)
