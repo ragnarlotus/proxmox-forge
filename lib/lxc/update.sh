@@ -57,6 +57,7 @@ reboot_script="$lib_dir/postflight/reboot-required.sh"
 log_init_script="$lib_dir/logging/init.sh"
 log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
+result_record_script="$lib_dir/results/record.sh"
 
 for helper in \
   "$config_get_script" \
@@ -75,7 +76,8 @@ for helper in \
   "$reboot_script" \
   "$log_init_script" \
   "$log_capture_script" \
-  "$log_write_script"; do
+  "$log_write_script" \
+  "$result_record_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -85,6 +87,8 @@ command -v tee >/dev/null 2>&1 || fail "tee is not available"
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
+# shellcheck source=/dev/null
+source "$result_record_script" || fail "could not load result record helper"
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
 parse_record "$target_record"
@@ -266,6 +270,9 @@ finish_failed() {
     "$vmid" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: LXC %s FAILED at %s (exit code %s).\n' \
     "$vmid" "$failed_stage" "$primary_result"
+  if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
+    forge_result_print lxc "$vmid" "$name" true true ERROR update_failed "$primary_result"
+  fi
   exit "$primary_result"
 }
 
@@ -543,4 +550,7 @@ if [[ "$reboot_required" == yes ]]; then
   printf 'NOTICE: LXC %s signals a restart is required; Forge will not restart it automatically.\n' "$vmid"
 elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: reboot requirement for LXC %s could not be determined.\n' "$vmid" >&2
+fi
+if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
+  forge_result_print lxc "$vmid" "$name" true true OK completed
 fi

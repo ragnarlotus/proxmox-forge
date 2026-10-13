@@ -68,12 +68,13 @@ class HostRebootFlowTests(unittest.TestCase):
             "logging/init.sh": "init",
             "logging/capture.sh": "capture",
             "logging/write.sh": "write",
+            "results/record.sh": None,
         }
         for path, kind in paths.items():
             dest = self.base / "lib" / path
             dest.parent.mkdir(parents=True, exist_ok=True)
             if kind is None:
-                dest.symlink_to(ROOT / "lib/host/update.sh")
+                dest.symlink_to(ROOT / "lib" / path)
             elif kind == "config":
                 dest.write_text(
                     'config_get() { declare -gA CONFIG=(\n'
@@ -131,11 +132,17 @@ class HostRebootFlowTests(unittest.TestCase):
         result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("reboot_required=yes", result.stdout)
+        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=OK reason=completed", result.stdout)
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
         self.assertEqual([c["kind"] for c in calls].count("held"), 1)
         self.assertGreater([c["kind"] for c in calls].index("held"), [c["kind"] for c in calls].index("os"))
         self.assertEqual([c["kind"] for c in calls].count("os"), 1)
+
+    def test_bulk_execution_suppresses_nested_host_record(self):
+        result, calls = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("result_target ", result.stdout)
 
     def test_host_without_reboot_signal(self):
         result, calls = self.invoke(FORGE_TEST_REBOOT_STATE="no")
@@ -164,6 +171,7 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertNotIn("reboot", [c["kind"] for c in calls])
         self.assertIn("held", [c["kind"] for c in calls])
         self.assertIn("update=failed type=host", result.stdout)
+        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=ERROR reason=update_failed exit_code=42", result.stdout)
 
 
 if __name__ == "__main__":
