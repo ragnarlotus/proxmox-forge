@@ -98,13 +98,31 @@ class ExactlyOnceTests(unittest.TestCase):
             "lxc/update/application.sh", "lxc/update/custom-scripts.sh",
             "lxc/update/fstrim.sh", "lxc/health.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh", "results/apt.sh",
+            "results/record.sh", "results/apt.sh", "results/application.sh",
         ]
         for path in paths:
             target = lib / path
             target.parent.mkdir(parents=True, exist_ok=True)
             if path in ("lxc/update.sh", "results/record.sh"):
                 target.symlink_to(ROOT / "lib" / path)
+            elif path == "results/application.sh":
+                target.write_text(
+                    'FORGE_APP_BEFORE="-"; FORGE_APP_AFTER="-"; FORGE_APP_FINISHED=false\n'
+                    'forge_app_begin() {\n'
+                    '  FORGE_APP_BEFORE="${FORGE_TEST_APP_BEFORE:-1.0}"\n'
+                    '}\n'
+                    'forge_app_finalize() {\n'
+                    '  [[ "$FORGE_APP_FINISHED" == true ]] && return 0\n'
+                    '  FORGE_APP_FINISHED=true\n'
+                    '  FORGE_APP_AFTER="${FORGE_TEST_APP_AFTER:-2.0}"\n'
+                    '  if [[ -n "${FORGE_TEST_FAIL_STAGE:-}" && "${FORGE_TEST_FAIL_RECOVERY:-}" != true && "${FORGE_TEST_FAIL_STAGE}" != fstrim && "${FORGE_TEST_FAIL_STAGE}" != held && "${FORGE_TEST_FAIL_STAGE}" != reboot ]]; then\n'
+                    '    FORGE_APP_AFTER="$FORGE_APP_BEFORE"\n'
+                    '  fi\n'
+                    '  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then\n'
+                    '    printf "%s\\t%s\\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" > "$FORGE_APP_RESULT_FILE"\n'
+                    '  fi\n'
+                    '}\n', encoding="utf-8",
+                )
             elif path == "results/apt.sh":
                 target.write_text(
                     'FORGE_APT_ACTIVE=false\n'
@@ -256,6 +274,26 @@ class ExactlyOnceTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertEqual(steps, ["backup", "snapshot", "os", "held", "recover"])
+
+    def test_application_versions_before_and_after_shared_result(self):
+        result, _, _ = self.invoke(FORGE_TEST_APP_BEFORE="1.2", FORGE_TEST_APP_AFTER="1.3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("app_before=1.2 app_after=1.3", result.stdout)
+
+    def test_app_version_after_rollback_matches_before(self):
+        result, _, _ = self.invoke(
+            FORGE_TEST_FAIL_STAGE="application", FORGE_TEST_APP_BEFORE="1.2",
+            FORGE_TEST_APP_AFTER="1.3",
+        )
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertIn("app_before=1.2 app_after=1.2", result.stdout)
+
+    def test_application_versions_unknown_if_unidentifiable(self):
+        result, _, _ = self.invoke(
+            FORGE_TEST_APP_BEFORE="-", FORGE_TEST_APP_AFTER="-"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("app_before=- app_after=-", result.stdout)
 
     def test_success_without_apt_changes_reports_zero(self):
         result, _, _ = self.invoke(FORGE_TEST_APT_COUNT="0")

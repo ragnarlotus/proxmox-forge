@@ -32,7 +32,7 @@ class ApplicationVersionTests(unittest.TestCase):
             'if kind=="head":\n'
             '    print(os.environ.get("APP_TEST_LAUNCHER",""))\n'
             'elif kind=="dpkg-query":\n'
-            '    print(os.environ.get("APP_TEST_OUTPUT","ii \\t1.0"))\n'
+            '    print(os.environ.get("APP_TEST_OUTPUT","ii \t1.0"))\n'
             'elif kind in ("caddy","pihole","node") or '
             '(kind in ("/opt/vaultwarden/bin/vaultwarden","/usr/bin/vaultwarden")):\n'
             '    print(os.environ.get("APP_TEST_OUTPUT",""))\n'
@@ -58,7 +58,7 @@ class ApplicationVersionTests(unittest.TestCase):
                 self.assertEqual(r.stdout.strip(), "plex")
         for launcher in ["https://example.com/ct/plex.sh",
                          "https://raw.githubusercontent.com/other/ProxmoxVE/main/ct/plex.sh",
-                         SCRIPT_URL.format("plex") + "\\n" + SCRIPT_URL.format("caddy"),
+                         SCRIPT_URL.format("plex") + "\n" + SCRIPT_URL.format("caddy"),
                          ""]:
             with self.subTest(launcher=launcher):
                 r = self.run_bash("forge_app_detect_slug 101 /usr/bin/update",
@@ -71,10 +71,10 @@ class ApplicationVersionTests(unittest.TestCase):
 
     def test_supported_app_probes(self):
         for slug, output, expected in [
-            ("plex", "ii \\t1.43.2.11", "1.43.2.11"),
-            ("audiobookshelf", "ii \\t2.33.0-1", "2.33.0-1"),
+            ("plex", "ii \t1.43.2.11", "1.43.2.11"),
+            ("audiobookshelf", "ii \t2.33.0-1", "2.33.0-1"),
             ("caddy", "v2.11.4 h1:sum", "v2.11.4"),
-            ("pihole", "Core version is v6.2\\nWeb version is v6.3", "v6.2"),
+            ("pihole", "Core version is v6.2\nWeb version is v6.3", "v6.2"),
             ("vaultwarden", "vaultwarden 1.35.0", "1.35.0"),
             ("docmost", "0.26.2", "0.26.2"),
             ("immich", "v3.3.0", "v3.3.0"),
@@ -87,8 +87,8 @@ class ApplicationVersionTests(unittest.TestCase):
 
     def test_unknown_or_unparseable_probes_do_not_invent_versions(self):
         for slug, value in [
-            ("otherapp", "1.2.3"), ("plex", "rc \\t2.0"),
-            ("plex", "ii \\t"), ("caddy", "caddy unknown"),
+            ("otherapp", "1.2.3"), ("plex", "rc \t2.0"),
+            ("plex", "ii \t"), ("caddy", "caddy unknown"),
             ("vaultwarden", "noise"), ("immich", "not a version"),
             ("pihole", "FTL version is v6.2"),
         ]:
@@ -97,15 +97,15 @@ class ApplicationVersionTests(unittest.TestCase):
                 self.assertNotEqual(r.returncode, 0)
 
     def test_before_after_updated_unchanged_and_rollback(self):
-        for before, after in [("ii \\t2.2.0", "ii \\t2.2.1"),
-                              ("ii \\t2.2.0", "ii \\t2.2.0"),
-                              ("ii \\t2.2.0", "ii \\t2.2.0")]:
+        for before, after in [("ii \t2.2.0", "ii \t2.2.1"),
+                              ("ii \t2.2.0", "ii \t2.2.0"),
+                              ("ii \t2.2.0", "ii \t2.2.0")]:
             with self.subTest(before=before, after=after):
                 r = self.run_bash(
                     'forge_app_begin 101 /usr/bin/update; '
                     'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
                     'forge_app_finalize 101; '
-                    'printf "%s|%s\\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+                    'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
                     APP_TEST_LAUNCHER=SCRIPT_URL.format("plex"),
                     APP_TEST_OUTPUT=before, APP_TEST_AFTER=after,
                 )
@@ -114,12 +114,12 @@ class ApplicationVersionTests(unittest.TestCase):
                                  f'{before.split(chr(9))[1]}|{after.split(chr(9))[1]}')
 
     def test_unavailable_after_or_before_is_unknown(self):
-        for before, after in [("ii \\t1.2", "rc \\t2.0"),
-                              ("rc \\t1.2", "ii \\t2.0")]:
+        for before, after in [("ii \t1.2", "rc \t2.0"),
+                              ("rc \t1.2", "ii \t2.0")]:
             r = self.run_bash(
                 'forge_app_begin 101 /usr/bin/update; '
                 'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
-                'forge_app_finalize 101; printf "%s|%s\\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+                'forge_app_finalize 101; printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
                 APP_TEST_LAUNCHER=SCRIPT_URL.format("plex"),
                 APP_TEST_OUTPUT=before, APP_TEST_AFTER=after,
             )
@@ -133,13 +133,13 @@ class ApplicationVersionTests(unittest.TestCase):
             'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
             'forge_app_finalize 101',
             APP_TEST_LAUNCHER=SCRIPT_URL.format("plex"),
-            APP_TEST_OUTPUT="ii \\t1.0",
-            APP_TEST_AFTER="ii \\t2.0",
+            APP_TEST_OUTPUT="ii \t1.0",
+            APP_TEST_AFTER="ii \t2.0",
             FORGE_RESULTS_AGGREGATE="bulk",
             FORGE_APP_RESULT_FILE=str(handoff),
         )
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(handoff.read_text(encoding="utf-8"), "1.0\\t2.0\\n")
+        self.assertEqual(handoff.read_text(encoding="utf-8"), "1.0\t2.0\n")
         self.assertEqual(r.stdout, "")
 
 
