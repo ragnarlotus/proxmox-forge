@@ -40,7 +40,28 @@ class FinalResultsMatrixTests(unittest.TestCase):
         self.assertEqual(result.stdout.count("Totals: targets="), 1)
         self.assertNotIn("\033[", result.stdout)  # redirected/non-TTY output
         table = result.stdout.split("Forge final results", 1)[1]
-        positions = []
+        # Parse the actual six-column grid, including physical continuation
+        # lines, so long FQDNs/versions cannot be dropped merely because they
+        # no longer fit into one terminal line.
+        text_lines = table.splitlines()
+        separator = next(i for i, line in enumerate(text_lines) if "-+-" in line)
+        displayed = []
+        for line in text_lines[separator + 1:]:
+            if "|" not in line:
+                break  # links legend or totals
+            parts = [part.strip() for part in line.split("|")]
+            self.assertEqual(len(parts), 6, (line, table))
+            if parts[0]:
+                displayed.append([[] for _ in range(6)])
+            else:
+                self.assertTrue(displayed, "orphan continuation row")
+            for idx, value in enumerate(parts):
+                if value:
+                    displayed[-1][idx].append(value)
+        self.assertEqual(len(displayed), len(rows), table)
+        for row, cells in zip(rows, displayed):
+            self.assertEqual("".join(cells[0]), row["vmid"])
+            self.assertEqual("".join(cells[1]), row["name"])
         for row in rows:
             status = row["status"]
             self.assertEqual(row["attempted"], str(status in ("OK", "ERROR")).lower())
@@ -64,21 +85,24 @@ class FinalResultsMatrixTests(unittest.TestCase):
                 else before if before == after
                 else f"{before} → {after}"
             )
-            pattern = (
-                rf'(?m)^{re.escape(row["vmid"])}\s+\|\s+'
-                rf'{re.escape(row["name"])}\s+\|\s+'
-                rf'{re.escape(displayed_apt)}\s+\|\s+'
-                rf'{re.escape(displayed_app)}\s+\|'
+            cell = next(cells for cells in displayed if "".join(cells[0]) == row["vmid"])
+            self.assertEqual("".join(cell[1]), row["name"])
+            self.assertEqual("".join(cell[2]), displayed_apt)
+            self.assertEqual(
+                re.sub(r"\\s+", "", "".join(cell[3])),
+                re.sub(r"\\s+", "", displayed_app),
             )
-            matches = list(re.finditer(pattern, table))
-            self.assertEqual(len(matches), 1, (pattern, table))
-            positions.append(matches[0].start())
+            self.assertIn(row["status"].replace("_", " "), " ".join(cell[5]).replace("_", " "))
             detail = unquote(row["result_detail"])
             if status == "SKIPPED":
                 self.assertTrue(detail.startswith("SKIPPED:"), detail)
             if status == "NOT_RUN":
                 self.assertTrue(detail.startswith("NOT RUN:"), detail)
-        self.assertEqual(positions, sorted(positions), "wrong table row order")
+        self.assertEqual(
+            ["".join(cells[0]) for cells in displayed],
+            [row["vmid"] for row in rows],
+            "wrong table row order",
+        )
         counts = Counter(row["status"] for row in rows)
         selected = sum(row["selected"] == "true" for row in rows)
         attempted = sum(row["attempted"] == "true" for row in rows)
