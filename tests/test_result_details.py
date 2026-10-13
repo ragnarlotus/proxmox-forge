@@ -36,7 +36,7 @@ class ActionableResultTests(unittest.TestCase):
         line = process.stdout.strip()
         self.assertTrue(line.startswith("result_target "), line)
         row = dict(field.split("=", 1) for field in line.split()[1:])
-        self.assertEqual(len(row), 15)
+        self.assertEqual(len(row), 15 if row["status"] == "ERROR" else 14)
         return row, unquote(row["result_detail"])
 
     def test_success_and_warning_are_not_misrepresented_as_error(self):
