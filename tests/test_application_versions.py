@@ -60,7 +60,7 @@ class ApplicationVersionTests(unittest.TestCase):
             '    print(os.environ.get("APP_TEST_LAUNCHER",""))\n'
             'elif kind=="dpkg-query":\n'
             '    print(os.environ.get("APP_TEST_OUTPUT","ii \t1.0"))\n'
-            'elif kind in ("caddy","pihole","node") or '
+            'elif kind in ("caddy","/usr/local/bin/pihole","node") or '
             '(kind in ("/opt/vaultwarden/bin/vaultwarden","/usr/bin/vaultwarden")):\n'
             '    print(os.environ.get("APP_TEST_OUTPUT",""))\n'
             'else:\n'
@@ -141,8 +141,11 @@ class ApplicationVersionTests(unittest.TestCase):
             ("plex", "ii \t1.43.2.11", "1.43.2.11"),
             ("audiobookshelf", "ii \t2.33.0-1", "2.33.0-1"),
             ("caddy", "v2.11.4 h1:sum", "v2.11.4"),
-            ("pihole", "Core version is v6.2\nWeb version is v6.3", "v6.2"),
+            ("pihole", "Core version is v6.4.3 (Latest: v6.4.3)\n"
+                       "Web version is v6.6 (Latest: v6.6)\n"
+                       "FTL version is v6.7.1 (Latest: v6.7.1)", "v6.4.3"),
             ("vaultwarden", "vaultwarden 1.35.0", "1.35.0"),
+            ("vaultwarden", "Vaultwarden 1.37.4\nWeb-Vault Version file missing", "1.37.4"),
             ("docmost", "0.26.2", "0.26.2"),
             ("immich", "v3.3.0", "v3.3.0"),
         ]:
@@ -158,10 +161,40 @@ class ApplicationVersionTests(unittest.TestCase):
             ("plex", "ii \t"), ("caddy", "caddy unknown"),
             ("vaultwarden", "noise"), ("immich", "not a version"),
             ("pihole", "FTL version is v6.2"),
+            ("vaultwarden", "Web-Vault Version file missing"),
+            ("vaultwarden", "Vaultwarden not-installed\nWeb-Vault Version file missing"),
+            ("vaultwarden", "Vaultwarden 1.37.4 invalid text"),
         ]:
             with self.subTest(slug=slug, output=value):
                 r = self.run_bash(f"forge_app_probe 101 {slug}", APP_TEST_OUTPUT=value)
                 self.assertNotEqual(r.returncode, 0)
+
+    def test_live_pihole_and_vaultwarden_outputs_have_verified_versions(self):
+        # The two actual outputs reported by CT 101 and CT 107 in October 2026.
+        for slug, raw, expected in [
+            (
+                "pihole",
+                "Core version is v6.4.3 (Latest: v6.4.3)\n"
+                "Web version is v6.6 (Latest: v6.6)\n"
+                "FTL version is v6.7.1 (Latest: v6.7.1)",
+                "v6.4.3",
+            ),
+            (
+                "vaultwarden",
+                "Vaultwarden 1.37.4\nWeb-Vault Version file missing",
+                "1.37.4",
+            ),
+        ]:
+            with self.subTest(slug=slug):
+                result = self.run_bash(
+                    f'forge_app_begin 101 /usr/bin/update; '
+                    'forge_app_finalize 101; '
+                    'printf "%s|%s\\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+                    APP_TEST_LAUNCHER=generated_launcher(slug),
+                    APP_TEST_OUTPUT=raw,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), f"{expected}|{expected}")
 
     def test_before_after_updated_unchanged_and_rollback(self):
         for before, after in [("ii \t2.2.0", "ii \t2.2.1"),
