@@ -64,9 +64,15 @@ class FinalResultsMatrixTests(unittest.TestCase):
                 else before if before == after
                 else f"{before} → {after}"
             )
-            cell = f'{row["vmid"]} | {row["name"]} | {displayed_apt} | {displayed_app}'
-            self.assertEqual(table.count(cell), 1, (cell, table))
-            positions.append(table.index(cell))
+            pattern = (
+                rf'(?m)^{re.escape(row["vmid"])}\s+\|\s+'
+                rf'{re.escape(row["name"])}\s+\|\s+'
+                rf'{re.escape(displayed_apt)}\s+\|\s+'
+                rf'{re.escape(displayed_app)}\s+\|'
+            )
+            matches = list(re.finditer(pattern, table))
+            self.assertEqual(len(matches), 1, (pattern, table))
+            positions.append(matches[0].start())
             detail = unquote(row["result_detail"])
             if status == "SKIPPED":
                 self.assertTrue(detail.startswith("SKIPPED:"), detail)
@@ -273,9 +279,10 @@ class FinalResultsMatrixTests(unittest.TestCase):
             [("1.0+debian-2", "1.0+debian-2", repository),
              ("2.0", "2.8", repository), ("-", "-", "-")],
         )
-        self.assertIn("100 | guest100 | 0 | 1.0+debian-2", table)
-        self.assertIn("111 | guest111 | 7 | 2.0 → 2.8", table)
-        self.assertEqual(table.count("Changelog: " + repository), 2)
+        self.assertRegex(table, r"(?m)^100\s+\|\s+guest100\s+\|\s+0\s+\|\s+1\.0\+debian-2\s+\|")
+        self.assertRegex(table, r"(?m)^111\s+\|\s+guest111\s+\|\s+7\s+\|\s+2\.0 → 2\.8\s+\|")
+        # Full official URLs are printed once each in the compact link legend.
+        self.assertEqual(table.count("Changelog: " + repository), 1)
         self.assertIn(message, table)
         self.assertIn("recovery succeeded", table)
         self.assertIn("recovery failed (exit 77)", table)
@@ -304,8 +311,8 @@ class FinalResultsMatrixTests(unittest.TestCase):
         self.assertEqual(rows[0]["apt_upgraded"], "-")
         self.assertEqual(rows[1]["apt_upgraded"], "0")
         self.assertEqual(rows[2]["apt_upgraded"], "8")
-        self.assertIn("100 | guest100 | — | —", table)
-        self.assertIn("111 | guest111 | 0 | —", table)
+        self.assertRegex(table, r"(?m)^100\s+\|\s+guest100\s+\|\s+—\s+\|\s+—\s+\|")
+        self.assertRegex(table, r"(?m)^111\s+\|\s+guest111\s+\|\s+0\s+\|\s+—\s+\|")
         self.assertEqual(rows[0]["app_repository"], "https://github.com/pi-hole/pi-hole")
 
     def test_invalid_duplicate_inventory_fails_before_any_mutation(self):
