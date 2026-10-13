@@ -31,6 +31,8 @@ conflicts_script="$lib_dir/config/conflicts.sh"
 root_space_script="$lib_dir/preflight/root-space.sh"
 memory_script="$lib_dir/preflight/memory.sh"
 lxc_update_script="$lib_dir/lxc/update.sh"
+inventory_script="$lib_dir/results/inventory.sh"
+result_record_script="$lib_dir/results/record.sh"
 
 for helper in \
   "$config_get_script" \
@@ -39,13 +41,92 @@ for helper in \
   "$conflicts_script" \
   "$root_space_script" \
   "$memory_script" \
-  "$lxc_update_script"; do
+  "$lxc_update_script" \
+  "$inventory_script" \
+  "$result_record_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
 # shellcheck source=/dev/null
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
+
+# F220: build a read-only inventory independently of the selected target scope.
+# Neither selection nor mutation semantics may depend on the reporting model.
+# shellcheck source=/dev/null
+source "$result_record_script" || fail "could not load result record helper"
+
+declare -a result_ids=()
+declare -A result_name=() result_policy=() result_status=()
+declare -A result_reason=() result_attempted=() result_exit=()
+inventory_ready=false
+inventory_output="$(bash "$inventory_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}")" ||
+  fail "could not read complete LXC inventory"
+
+while IFS=$'\t' read -r id name state policy; do
+  [[ -n "$id" ]] || continue
+  [[ "$id" =~ ^[0-9]+$ && "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+    fail "invalid LXC inventory record"
+  [[ -z "${result_name[$id]+x}" ]] || fail "duplicate LXC inventory VMID $id"
+  [[ "$state" == running || "$state" == stopped ]] || fail "invalid state for LXC $id"
+  case "$policy" in eligible|template|stopped|excluded|running_lxc_disabled) ;; *)
+    fail "invalid LXC inventory policy for $id"
+  esac
+  result_ids+=("$id")
+  result_name[$id]="$name"
+  result_policy[$id]="$policy"
+  result_attempted[$id]=false
+  result_exit[$id]=""
+  if [[ "$policy" == eligible ]]; then
+    result_status[$id]=NOT_RUN
+    result_reason[$id]=not_started
+  else
+    result_status[$id]=SKIPPED
+    result_reason[$id]="$policy"
+  fi
+done <<< "$inventory_output"
+
+host_name=""
+host_status=SKIPPED
+host_reason=host_disabled
+host_selected=false
+host_attempted=false
+host_exit=""
+if [[ "$mode" == all ]]; then
+  host_name="$(hostname -f)" || fail "could not read host FQDN for inventory"
+  [[ "$host_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "invalid host FQDN"
+  if [[ "${CONFIG[UPDATE_HOST]}" == true ]]; then
+    host_selected=true
+    host_status=NOT_RUN
+    host_reason=not_started
+  fi
+fi
+
+result_not_run_reason=preflight_blocked
+inventory_ready=true
+emit_final_inventory() {
+  trap - EXIT
+  [[ "$inventory_ready" == true ]] || return 0
+  if [[ "$mode" == all ]]; then
+    if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
+    forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
+      "$host_status" "$host_reason" "$host_exit" ||
+      printf 'ERROR: could not print host result record\n' >&2
+  fi
+  local id reason selected
+  for id in "${result_ids[@]}"; do
+    reason="${result_reason[$id]}"
+    if [[ "${result_status[$id]}" == NOT_RUN ]]; then reason="$result_not_run_reason"; fi
+    selected=false
+    [[ "${result_policy[$id]}" == eligible ]] && selected=true
+    forge_result_print lxc "$id" "${result_name[$id]}" "$selected" \
+      "${result_attempted[$id]}" "${result_status[$id]}" "$reason" "${result_exit[$id]}" ||
+      printf 'ERROR: could not print result for LXC %s\n' "$id" >&2
+  done
+  return 0
+}
+trap emit_final_inventory EXIT
+
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
@@ -67,8 +148,22 @@ while IFS= read -r target_record; do
   [[ -n "$vmid" ]] || fail "target record returned no vmid: $target_record"
   [[ "$vmid" =~ ^[0-9]+$ ]] || fail "target record returned invalid vmid '$vmid'"
 
+  [[ "${result_policy[$vmid]:-}" == eligible ]] ||
+    fail "selected LXC $vmid is absent or not eligible in the frozen inventory"
   vmids+=("$vmid")
 done <<< "$targets_output"
+
+# Assert reporting inventory agrees with effective selection before mutation.
+declare -A selected_vmids=()
+for vmid in "${vmids[@]}"; do
+  [[ -z "${selected_vmids[$vmid]+x}" ]] || fail "duplicate selected VMID $vmid"
+  selected_vmids[$vmid]=true
+done
+for vmid in "${result_ids[@]}"; do
+  if [[ "${result_policy[$vmid]}" == eligible && -z "${selected_vmids[$vmid]+x}" ]]; then
+    fail "eligible LXC $vmid missing from selected target set"
+  fi
+done
 
 # Verify all selected running LXCs before updating the host or any guest.
 for vmid in "${vmids[@]}"; do
@@ -106,16 +201,23 @@ printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_target
 
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
+  host_attempted=true
   bash "$host_update_script"
   host_result=$?
 
   if (( host_result != 0 )); then
+    host_status=ERROR
+    host_reason=update_failed
+    host_exit="$host_result"
+    result_not_run_reason=host_update_failed
     printf 'update_all=failed stage=host exit_code=%s lxc_started=false\n' "$host_result"
     printf '\nForge update summary: host FAILED (exit code %s); LXC updates not started (%s selected).\n' \
       "$host_result" "$lxc_targets"
     exit "$host_result"
   fi
 
+  host_status=OK
+  host_reason=completed
   printf 'update_all_stage=success stage=host exit_code=0\n'
 elif [[ "$mode" == all ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
@@ -131,13 +233,19 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
   for vmid in "${vmids[@]}"; do
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
+    result_attempted[$vmid]=true
     bash "$lxc_update_script" "$vmid" scope
     target_result=$?
 
     if (( target_result == 0 )); then
+      result_status[$vmid]=OK
+      result_reason[$vmid]=completed
       succeeded=$((succeeded + 1))
       printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
     else
+      result_status[$vmid]=ERROR
+      result_reason[$vmid]=update_failed
+      result_exit[$vmid]="$target_result"
       failed=$((failed + 1))
       failed_targets+=("$vmid (exit code $target_result)")
       printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
