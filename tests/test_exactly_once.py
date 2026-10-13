@@ -273,7 +273,7 @@ class ExactlyOnceTests(unittest.TestCase):
                 result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE=stage)
                 self.assertEqual(result.returncode, code, result.stderr)
                 self.assertEqual(result.stdout.count("Forge final results"), 1)
-                self.assertIn("111 | share |", result.stdout)
+                self.assertRegex(result.stdout, r"(?m)^111\s+\|\s+share\s+\|")
                 self.assertIn("Totals: targets=1 selected=1 attempted=1", result.stdout)
                 self.assertIn(f"ERROR={int(code != 0)} ", result.stdout)
                 global_status = "FAILED" if code else "SUCCESS"
@@ -292,7 +292,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.root.joinpath("guest-state").read_text(), "stopped")
         self.assertEqual(result.stdout.count("Forge final results"), 1)
-        self.assertIn("111 | share |", result.stdout)
+        self.assertRegex(result.stdout, r"(?m)^111\s+\|\s+share\s+\|")
         self.assertIn("final state: stopped", result.stdout)
         pct_actions = [call["args"][0] for call in calls
                        if call["component"] == "pct"]
