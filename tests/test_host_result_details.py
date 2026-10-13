@@ -71,11 +71,12 @@ class HostResultDetailsTests(unittest.TestCase):
             "preflight/held-packages.sh", "postflight/reboot-required.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
             "results/record.sh", "results/table.py", "results/apt.sh", "config/get.sh",
+            "notifications/send.py",
         ]
         for path in paths:
             dest = self.lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("host/update.sh", "results/record.sh", "results/table.py"):
+            if path in ("host/update.sh", "results/record.sh", "results/table.py", "notifications/send.py"):
                 dest.symlink_to(ROOT / "lib" / path)
             elif path == "logging/capture.sh":
                 dest.write_text(CAPTURE, encoding="utf-8")
@@ -91,6 +92,8 @@ class HostResultDetailsTests(unittest.TestCase):
                     'config_get() {\n'
                     '  declare -gA CONFIG=(\n'
                     '    [UPDATE_HOST]=true\n'
+                    '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
+                    '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
                     '    [LOG_DIR]="$FORGE_TEST_LOG_DIR"\n'
                     '    [LOG_KEEP]=5\n'
                     '    [CREATE_BACKUP_BEFORE_HOST_UPDATE]=false\n'
@@ -153,6 +156,26 @@ class HostResultDetailsTests(unittest.TestCase):
             "OK; WARNING: held-package inspection failed (exit 7); "
             "reboot requirement unknown (check exit 9)",
         )
+
+
+    def test_f153_individual_host_sends_one_failure_mail_when_opted_in(self):
+        sender = self.bin / "sendmail"
+        sender.write_text('#!/bin/sh\ncat > "$FORGE_TEST_MAIL_LOG"\n', encoding="utf-8")
+        sender.chmod(0o755)
+        mail = self.root / "host-mail.txt"
+        enabled = {"FORGE_TEST_EMAIL_NOTIFICATIONS": "true",
+                   "FORGE_TEST_MAIL_LOG": str(mail)}
+        success, _, _ = self.invoke(**enabled)
+        self.assertEqual(success.returncode, 0, success.stderr)
+        self.assertFalse(mail.exists(), "errors-only sent a success message")
+        failed, _, _ = self.invoke(FORGE_TEST_OS_FAILURE="true", **enabled)
+        self.assertEqual(failed.returncode, 42, failed.stderr)
+        content = mail.read_text(encoding="utf-8")
+        self.assertIn("To: root\n", content)
+        self.assertIn("Subject: [Proxmox Forge] FAILED", content)
+        self.assertIn("ERROR: os_update (exit 42): actual package dependency failure",
+                      content)
+        self.assertEqual(failed.stdout.count("Forge final results"), 1)
 
     def test_f225_host_success_and_failure_have_one_table(self):
         for failed, expected_status, code in [

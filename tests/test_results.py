@@ -140,6 +140,7 @@ class ResultAggregationTests(unittest.TestCase):
             "results/inventory.sh": "inventory",
             "results/record.sh": None,
             "results/table.py": None,
+            "notifications/send.py": None,
         }
         for path, kind in paths.items():
             dest = lib / path
@@ -152,6 +153,8 @@ class ResultAggregationTests(unittest.TestCase):
                     '  declare -gA CONFIG=(\n'
                     '    [UPDATE_HOST]="$FORGE_TEST_UPDATE_HOST"\n'
                     '    [UPDATE_RUNNING_LXC]="$FORGE_TEST_RUNNING_LXC"\n'
+                    '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
+                    '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
                     '    [EXCLUDE]="$FORGE_TEST_EXCLUDE"\n'
                     '    [MIN_ROOT_FREE_MB]=1024\n'
                     '    [MIN_MEM_AVAILABLE_MB]=128\n'
@@ -176,6 +179,8 @@ class ResultAggregationTests(unittest.TestCase):
             "FORGE_TEST_CALLS": str(self.calls_file),
             "FORGE_TEST_UPDATE_HOST": "true",
             "FORGE_TEST_RUNNING_LXC": "true",
+            "FORGE_TEST_EMAIL_NOTIFICATIONS": "false",
+            "FORGE_TEST_NOTIFY_ONLY_ERRORS": "true",
             "FORGE_TEST_EXCLUDE": "",
             "FORGE_TEST_VMIDS": "100,111,115",
         })
