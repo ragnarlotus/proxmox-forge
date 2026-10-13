@@ -31,6 +31,12 @@ def record(vmid="101", name="pihole", status="OK", reason="completed",
 
 
 class ConsoleTableTests(unittest.TestCase):
+    def assert_compact_row(self, output, vmid, name, apt, app):
+        expected = (rf"(?m)^{re.escape(vmid)}\s+\|\s+{re.escape(name)}"
+                    rf"\s+\|\s+{re.escape(apt)}\s+\|\s+"
+                    rf"{re.escape(app)}\s+\|")
+        self.assertRegex(output, expected)
+
     def render(self, records, width=110, color="never", **env):
         data = "\n".join(records) + "\n"
         return subprocess.run(
@@ -53,8 +59,8 @@ class ConsoleTableTests(unittest.TestCase):
                       apt="12", before="-", after="-", url="-")
         result = self.render([host])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("HOST | bv.deulo.com | 12 | —", result.stdout)
-        self.assertIn("Changelog: —", result.stdout)
+        self.assert_compact_row(result.stdout, "HOST", "bv.deulo.com", "12", "—")
+        self.assertNotIn("Changelog links:", result.stdout)
         self.assertIn("Totals: targets=1 selected=1 attempted=1 "
                       "OK=1 ERROR=0 SKIPPED=0 NOT_RUN=0", result.stdout)
 
@@ -77,9 +83,12 @@ class ConsoleTableTests(unittest.TestCase):
         self.assertIn("ERROR: os_update (exit 42); recovery succeeded", r.stdout)
         self.assertIn("SKIPPED: container is stopped", r.stdout)
         self.assertIn("NOT RUN: host update failed", r.stdout)
-        self.assertLess(r.stdout.index("9 | old"), r.stdout.index("10 | ok"))
-        self.assertLess(r.stdout.index("10 | ok"), r.stdout.index("100 | failed"))
-        self.assertLess(r.stdout.index("100 | failed"), r.stdout.index("111 | blocked"))
+        self.assert_compact_row(r.stdout, "9", "old", "—", "—")
+        self.assert_compact_row(r.stdout, "10", "ok", "3", "v6.4.3")
+        self.assert_compact_row(r.stdout, "100", "failed", "0", "v6.4.3")
+        self.assertLess(r.stdout.index("9  "), r.stdout.index("10 "))
+        self.assertLess(r.stdout.index("10 "), r.stdout.index("100"))
+        self.assertLess(r.stdout.index("100"), r.stdout.index("111"))
         self.assertIn("Totals: targets=4 selected=3 attempted=2 "
                       "OK=1 ERROR=1 SKIPPED=1 NOT_RUN=1", r.stdout)
 
@@ -90,16 +99,16 @@ class ConsoleTableTests(unittest.TestCase):
             record(vmid="102", name="unknown", before="-", after="-", url="-", apt="-"),
         ])
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("100 | unchanged | 0 | 2.0", r.stdout)
-        self.assertIn("101 | changed | 0 | 1.0 → 3.0", r.stdout)
-        self.assertIn("102 | unknown | — | —", r.stdout)
+        self.assert_compact_row(r.stdout, "100", "unchanged", "0", "2.0")
+        self.assert_compact_row(r.stdout, "101", "changed", "0", "1.0 → 3.0")
+        self.assert_compact_row(r.stdout, "102", "unknown", "—", "—")
         self.assertIn("Changelog: https://github.com/pi-hole/pi-hole", r.stdout)
-        self.assertIn("Changelog: —", r.stdout)
+        self.assertEqual(r.stdout.count("Changelog: https://github.com/pi-hole/pi-hole"), 1)
 
     def test_unknown_app_does_not_invent_a_repository_or_zero_apt(self):
         r = self.render([record(apt="-", before="-", after="-", url="-")])
-        self.assertIn("101 | pihole | — | —", r.stdout)
-        self.assertIn("Changelog: —", r.stdout)
+        self.assert_compact_row(r.stdout, "101", "pihole", "—", "—")
+        self.assertNotIn("Changelog links:", r.stdout)
 
     def test_recovery_failure_and_warning_remain_in_result_not_status(self):
         r = self.render([
@@ -145,8 +154,59 @@ class ConsoleTableTests(unittest.TestCase):
                         width=72)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("Changelog: " + link, r.stdout)
-        self.assertIn("    Result: ", r.stdout)
+        self.assertIn("VMID |", r.stdout)
+        self.assertIn("-+-", r.stdout)
+        self.assertIn("| Result", r.stdout)
+        self.assertIn("Changelog links:", r.stdout)
         self.assertNotIn("\x1b", r.stdout)
+
+    def test_compact_grid_is_aligned_and_width_bounded(self):
+        rows = [
+            record(vmid="HOST", type_="host", name="bv.deulos.com",
+                   apt="2", before="-", after="-", url="-"),
+            record(vmid="104", name="immich", apt="5",
+                   before="3.3.0", after="3.3.1",
+                   url="https://github.com/immich-app/immich"),
+            record(vmid="110", name="whisparr", status="SKIPPED",
+                   reason="stopped", selected=False, attempted=False,
+                   apt="-", before="-", after="-", url="-",
+                   detail="SKIPPED: container is stopped"),
+        ]
+        for width in (60, 72, 80, 100, 110, 120, 165):
+            with self.subTest(width=width):
+                result = self.render(rows, width=width)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                content = result.stdout.split("Forge final results", 1)[1]
+                grid = content.split("Changelog links:", 1)[0].splitlines()
+                header = next(line for line in grid if line.startswith("VMID"))
+                separator = next(line for line in grid if "-+-" in line)
+                self.assertEqual(len(header), len(separator))
+                self.assertLessEqual(len(header), width)
+                self.assertEqual(header.count("|"), 5)
+                self.assertEqual(separator.count("+"), 5)
+                self.assertIn("Changelog: https://github.com/immich-app/immich",
+                              result.stdout)
+                self.assertIn("Overall result: SUCCESS", result.stdout)
+                self.assertIn("targets=3 selected=2 attempted=2", result.stdout)
+                for line in grid:
+                    if line and not line.startswith("Totals:"):
+                        self.assertLessEqual(len(line), width, line)
+
+    def test_compact_url_references_are_unique_and_keep_full_clickable_links(self):
+        url = "https://github.com/" + "very-long-organization/" * 3 + "repository"
+        records = [
+            record(vmid="100", url=url),
+            record(vmid="101", url=url),
+            record(vmid="102", url="https://github.com/pi-hole/pi-hole"),
+        ]
+        r = self.render(records, width=100)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Changelog links:", r.stdout)
+        self.assertEqual(r.stdout.count("Changelog: " + url), 1)
+        self.assertEqual(r.stdout.count("Changelog: https://github.com/pi-hole/pi-hole"), 1)
+        self.assertEqual(r.stdout.count("[1]"), 3)  # 2 rows and footnote
+        self.assertEqual(r.stdout.count("[2]"), 2)  # 1 row and footnote
+        self.assertEqual(r.stdout.count("Forge final results"), 1)
 
     def test_terminal_color_automatic_and_no_color_plain(self):
         data = [record(status="ERROR", reason="update_failed", exit_code="2",
