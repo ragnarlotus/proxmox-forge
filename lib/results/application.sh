@@ -13,6 +13,27 @@ forge_app_detect_slug() {
 
   # Inspect, never execute, the installed Community Scripts update launcher.
   script="$(pct exec "$vmid" -- head -c 8192 /usr/bin/update </dev/null 2>/dev/null)" || return 1
+  # Current generated launchers use variables rather than an expanded ct/*.sh
+  # URL. Never source or execute a launcher to learn its application identity.
+  if grep -Fxq '# Community-Scripts update entrypoint (generated - do not edit by hand).' <<< "$script"; then
+    local slug_line name_line slug name
+    [[ "$(grep -c '^export SCRIPT_SLUG=' <<< "$script")" == 1 ]] || return 1
+    [[ "$(grep -c '^export UPDATE_SCRIPT_NAME=' <<< "$script")" == 1 ]] || return 1
+    [[ "$(grep -c '^export COMMUNITY_SCRIPTS_URL=' <<< "$script")" == 1 ]] || return 1
+    [[ "$(grep -Fxc 'export COMMUNITY_SCRIPTS_URL="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main"' <<< "$script")" == 1 ]] || return 1
+    [[ "$script" == *'${COMMUNITY_SCRIPTS_URL}/ct/${UPDATE_SCRIPT_NAME}.sh'* ]] || return 1
+
+    slug_line="$(grep -E '^export SCRIPT_SLUG="[a-z0-9_-]+"$' <<< "$script")" || return 1
+    name_line="$(grep -E '^export UPDATE_SCRIPT_NAME="[a-z0-9_-]+"$' <<< "$script")" || return 1
+    slug="${slug_line#export SCRIPT_SLUG=\"}"
+    slug="${slug%\"}"
+    name="${name_line#export UPDATE_SCRIPT_NAME=\"}"
+    name="${name%\"}"
+    [[ "$slug" == "$name" ]] || return 1
+    printf '%s\n' "$slug"
+    return 0
+  fi
+
   matches="$(printf '%s\n' "$script" |
     grep -Eo 'https?://(raw\.githubusercontent\.com/(community-scripts/ProxmoxVE|tteck/Proxmox)/((refs/heads/)?main)|github\.com/(community-scripts/ProxmoxVE|tteck/Proxmox)/raw/main)/ct/[a-z0-9_-]+\.sh' |
     sed -E 's@^.*/ct/([a-z0-9_-]+)\.sh$@\1@' | LC_ALL=C sort -u)" || return 1
