@@ -33,6 +33,9 @@ elif kind == "capture":
 elif kind == "requirements":
     print("requirements=ok type=host")
 elif kind == "os":
+    Path(os.environ["FORGE_TEST_DPKG_STATE"]).write_text(
+        "demo\t" + os.environ.get("FORGE_TEST_AFTER_VERSION", "1.2") + "\tii \n"
+    )
     sys.exit(int(os.environ.get("FORGE_TEST_OS_FAIL", "0")))
 elif kind == "held":
     if os.environ.get("FORGE_TEST_HELD_FAIL") == "true":
@@ -69,6 +72,7 @@ class HostRebootFlowTests(unittest.TestCase):
             "logging/capture.sh": "capture",
             "logging/write.sh": "write",
             "results/record.sh": None,
+            "results/apt.sh": None,
         }
         for path, kind in paths.items():
             dest = self.base / "lib" / path
@@ -103,6 +107,14 @@ class HostRebootFlowTests(unittest.TestCase):
             'printf "bv.deulo.com\\n"\n', encoding="utf-8",
         )
         hostname.chmod(0o755)
+        fake_query = tools / "dpkg-query"
+        fake_query.write_text(
+            '#!/bin/bash\n'
+            '[[ "$1" == -W && "$2" == -f=* ]] || exit 91\n'
+            'cat "$FORGE_TEST_DPKG_STATE"\n', encoding="utf-8",
+        )
+        fake_query.chmod(0o755)
+        self.dpkg_state = self.base / "dpkg-state"
         guard = self.base / "guard.sh"
         guard.write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
         helper = self.base / "helper.py"
@@ -115,11 +127,13 @@ class HostRebootFlowTests(unittest.TestCase):
             "FORGE_TEST_CALLS": str(self.calls),
             "FORGE_TEST_LOG": str(log_path / "common.log"),
             "FORGE_TEST_LOG_DIR": str(self.base / "log"),
+            "FORGE_TEST_DPKG_STATE": str(self.dpkg_state),
             "PATH": f"{tools}:{os.environ['PATH']}",
         }
 
     def invoke(self, **extra):
         self.calls.unlink(missing_ok=True)
+        self.dpkg_state.write_text("demo\t1.0\tii \n", encoding="utf-8")
         result = subprocess.run(
             ["bash", str(self.base / "lib/host/update.sh")],
             env={**self.env, **extra},
@@ -132,7 +146,7 @@ class HostRebootFlowTests(unittest.TestCase):
         result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("reboot_required=yes", result.stdout)
-        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=OK reason=completed", result.stdout)
+        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=OK reason=completed apt_upgraded=1", result.stdout)
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
         self.assertEqual([c["kind"] for c in calls].count("held"), 1)
@@ -143,6 +157,11 @@ class HostRebootFlowTests(unittest.TestCase):
         result, calls = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("result_target ", result.stdout)
+
+    def test_unchanged_packages_report_zero(self):
+        result, _ = self.invoke(FORGE_TEST_AFTER_VERSION="1.0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("apt_upgraded=0", result.stdout)
 
     def test_host_without_reboot_signal(self):
         result, calls = self.invoke(FORGE_TEST_REBOOT_STATE="no")
@@ -171,7 +190,7 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertNotIn("reboot", [c["kind"] for c in calls])
         self.assertIn("held", [c["kind"] for c in calls])
         self.assertIn("update=failed type=host", result.stdout)
-        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=ERROR reason=update_failed exit_code=42", result.stdout)
+        self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=ERROR reason=update_failed exit_code=42 apt_upgraded=1", result.stdout)
 
 
 if __name__ == "__main__":

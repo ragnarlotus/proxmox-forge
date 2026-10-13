@@ -98,13 +98,33 @@ class ExactlyOnceTests(unittest.TestCase):
             "lxc/update/application.sh", "lxc/update/custom-scripts.sh",
             "lxc/update/fstrim.sh", "lxc/health.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh",
+            "results/record.sh", "results/apt.sh",
         ]
         for path in paths:
             target = lib / path
             target.parent.mkdir(parents=True, exist_ok=True)
             if path in ("lxc/update.sh", "results/record.sh"):
                 target.symlink_to(ROOT / "lib" / path)
+            elif path == "results/apt.sh":
+                target.write_text(
+                    'FORGE_APT_ACTIVE=false\n'
+                    'FORGE_APT_COUNT="-"; FORGE_APT_FINISHED=false\n'
+                    'forge_apt_begin() { :; }\n'
+                    'forge_apt_cleanup() { :; }\n'
+                    'forge_apt_finalize() {\n'
+                    '  [[ "$FORGE_APT_FINISHED" == true ]] && return 0\n'
+                    '  FORGE_APT_FINISHED=true\n'
+                    '  if [[ "$FORGE_APT_ACTIVE" == true ]]; then\n'
+                    '    FORGE_APT_COUNT="${FORGE_TEST_APT_COUNT:-2}"\n'
+                    '    if [[ -n "${FORGE_TEST_FAIL_STAGE:-}" && "${FORGE_TEST_FAIL_RECOVERY:-}" != true && "${FORGE_TEST_FAIL_STAGE}" != fstrim && "${FORGE_TEST_FAIL_STAGE}" != held && "${FORGE_TEST_FAIL_STAGE}" != reboot ]]; then\n'
+                    '      FORGE_APT_COUNT="${FORGE_TEST_ROLLED_BACK_APT_COUNT:-0}"\n'
+                    '    fi\n'
+                    '  fi\n'
+                    '  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APT_RESULT_FILE:-}" ]]; then\n'
+                    '    printf "%s\\n" "$FORGE_APT_COUNT" > "$FORGE_APT_RESULT_FILE"\n'
+                    '  fi\n'
+                    '}\n', encoding="utf-8",
+                )
             elif path == "config/get.sh":
                 target.write_text(
                     'config_get() {\n'
@@ -177,7 +197,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("reboot_required=yes", result.stdout)
         self.assertEqual(steps.count("reboot"), 1)
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
-        self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed", result.stdout)
+        self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed apt_upgraded=2", result.stdout)
 
     def test_bulk_execution_suppresses_nested_result_record(self):
         result, steps, _ = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
@@ -237,6 +257,23 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertEqual(steps, ["backup", "snapshot", "os", "held", "recover"])
 
+    def test_success_without_apt_changes_reports_zero(self):
+        result, _, _ = self.invoke(FORGE_TEST_APT_COUNT="0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("apt_upgraded=0", result.stdout)
+
+    def test_failure_after_successful_rollback_has_zero_persisted_upgrades(self):
+        result, _, _ = self.invoke(FORGE_TEST_FAIL_STAGE="custom")
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertIn("exit_code=42 apt_upgraded=0", result.stdout)
+
+    def test_failed_rollback_preserves_partial_upgrade_count(self):
+        result, _, _ = self.invoke(
+            FORGE_TEST_FAIL_STAGE="os", FORGE_TEST_FAIL_RECOVERY="true"
+        )
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertIn("exit_code=42 apt_upgraded=2", result.stdout)
+
     def test_nonfatal_fstrim_failure_is_not_retried(self):
         result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE="fstrim")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -275,6 +312,7 @@ class ExactlyOnceTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(steps, ["reboot"])
+        self.assertIn("apt_upgraded=-", result.stdout)
 
 
 if __name__ == "__main__":
