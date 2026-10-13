@@ -80,6 +80,13 @@ elif kind == "preflight":
         if vmid in args:
             print(f"backup_fallback={vmid}")
 elif kind == "host":
+    if os.environ.get("FORGE_RESULT_DETAIL_FILE"):
+        detail, stage, recovery = json.loads(
+            os.environ.get("FORGE_TEST_HOST_DETAIL", '["OK", "-", "-"]')
+        )
+        Path(os.environ["FORGE_RESULT_DETAIL_FILE"]).write_text(
+            f"{detail}\t{stage}\t{recovery}\n"
+        )
     if os.environ.get("FORGE_APT_RESULT_FILE"):
         Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
             os.environ.get("FORGE_TEST_HOST_APT", "3") + "\n"
@@ -88,6 +95,12 @@ elif kind == "host":
     print(f"update={'success' if code == 0 else 'failed'} type=host")
     sys.exit(code)
 elif kind == "lxc":
+    if os.environ.get("FORGE_RESULT_DETAIL_FILE"):
+        details = json.loads(os.environ.get("FORGE_TEST_LXC_DETAIL", "{}"))
+        detail, stage, recovery = details.get(args[0], ["OK", "-", "-"])
+        Path(os.environ["FORGE_RESULT_DETAIL_FILE"]).write_text(
+            f"{detail}\t{stage}\t{recovery}\n"
+        )
     if os.environ.get("FORGE_APP_RESULT_FILE"):
         versions = json.loads(os.environ.get("FORGE_TEST_LXC_APP", "{}"))
         before, after, repository = versions.get(args[0], ["-", "-", "-"])
@@ -209,6 +222,67 @@ class ResultAggregationTests(unittest.TestCase):
             ("115", "-", "-"),
         ])
         self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"], ["100", "111"])
+
+    def test_f224_mixed_host_lxc_failure_details_and_skips(self):
+        result, calls = self.invoke(
+            "all",
+            FORGE_TEST_LXC_CODES=json.dumps({"111": 42}),
+            FORGE_TEST_LXC_DETAIL=json.dumps({
+                "111": [
+                    "ERROR%3A%20application_update%20%28exit%2042%29%3B%20recovery%20failed%20%28exit%2043%29",
+                    "application_update", "failed:43",
+                ],
+            }),
+            FORGE_TEST_EXCLUDE="115",
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual(
+            [(r["vmid"], r["status"], r["failed_stage"], r["recovery"]) for r in rows],
+            [
+                ("HOST", "OK", "-", "-"),
+                ("100", "OK", "-", "-"),
+                ("111", "ERROR", "application_update", "failed:43"),
+                ("115", "SKIPPED", "-", "-"),
+            ],
+        )
+        self.assertEqual(
+            rows[2]["result_detail"],
+            "ERROR%3A%20application_update%20%28exit%2042%29%3B%20recovery%20failed%20%28exit%2043%29",
+        )
+        self.assertEqual(
+            [c["args"][0] for c in calls if c["kind"] == "lxc"], ["100", "111"],
+        )
+
+    def test_f224_preflight_not_run_includes_known_blocking_guest(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_LOW_SPACE_VMID="111",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        rows = self.inventory(result)
+        self.assertTrue(all(r["status"] == "NOT_RUN" for r in rows))
+        self.assertTrue(all(
+            "LXC%20111%20root%20space%20preflight%20failed" in r["result_detail"]
+            for r in rows[1:]
+        ))
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+
+    def test_f224_host_failure_handoff_annotates_blocked_guests(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_HOST_CODE="42",
+            FORGE_TEST_HOST_DETAIL=json.dumps([
+                "ERROR%3A%20os_update%20%28exit%2042%29", "os_update", "-",
+            ]),
+        )
+        self.assertEqual(result.returncode, 42)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["failed_stage"], "os_update")
+        self.assertEqual(rows[0]["result_detail"], "ERROR%3A%20os_update%20%28exit%2042%29")
+        self.assertTrue(all(
+            r["status"] == "NOT_RUN" and "host%20update%20failed" in r["result_detail"]
+            for r in rows[1:]
+        ))
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
 
     def test_f223_repo_present_when_unchanged_or_version_unknown_in_bulk(self):
         result, calls = self.invoke(
