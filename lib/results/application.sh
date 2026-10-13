@@ -48,7 +48,7 @@ forge_app_probe() {
     plex)             output="$(pct exec "$vmid" -- dpkg-query -W '-f=${db:Status-Abbrev}\t${Version}\n' plexmediaserver </dev/null 2>/dev/null)" || return 1 ;;
     audiobookshelf)   output="$(pct exec "$vmid" -- dpkg-query -W '-f=${db:Status-Abbrev}\t${Version}\n' audiobookshelf </dev/null 2>/dev/null)" || return 1 ;;
     caddy)            output="$(pct exec "$vmid" -- caddy version </dev/null 2>/dev/null)" || return 1 ;;
-    pihole)           output="$(pct exec "$vmid" -- pihole -v </dev/null 2>/dev/null)" || return 1 ;;
+    pihole)           output="$(pct exec "$vmid" -- /usr/local/bin/pihole -v </dev/null 2>/dev/null)" || return 1 ;;
     vaultwarden)      output="$(pct exec "$vmid" -- /opt/vaultwarden/bin/vaultwarden --version </dev/null 2>/dev/null)" ||
                         output="$(pct exec "$vmid" -- /usr/bin/vaultwarden --version </dev/null 2>/dev/null)" || return 1 ;;
     docmost)          output="$(pct exec "$vmid" -- node -p "require('/opt/docmost/apps/server/package.json').version" </dev/null 2>/dev/null)" || return 1 ;;
@@ -71,7 +71,11 @@ forge_app_probe() {
       version="${BASH_REMATCH[2]}"
       ;;
     vaultwarden)
-      [[ "$output" =~ ^vaultwarden[[:space:]]+(v?[0-9][A-Za-z0-9._+~-]*)[[:space:]]*$ ]] || return 1
+      # The executable prints its main version on the first line and may
+      # follow it with independent Web-Vault information or warnings.
+      local first_line
+      first_line="${output%%$'\n'*}"
+      [[ "$first_line" =~ ^[Vv]aultwarden[[:space:]]+(v?[0-9][A-Za-z0-9._+~-]*)$ ]] || return 1
       version="${BASH_REMATCH[1]}"
       ;;
     docmost|immich)
