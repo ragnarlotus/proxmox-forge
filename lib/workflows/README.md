@@ -88,6 +88,18 @@ The same F220 `result_target` records now include `failed_stage=<stage|->`, `rec
 
 Nested host/LXC coordinators write their escaped result text/stage/recovery in the existing disposable bulk handoff directory, rather than printing a duplicate result record or changing live log capture. Missing handoff metadata falls back to confirmed status/reason/code. Per-guest preflight blockers identify a known failing VMID and check category when available; no updates start after these checks fail. F225 console table, totals and colours are still pending.
 
+## Global result (F157 implementation; F226 acceptance pending)
+
+The **same** read-only `lib/results/table.py` renderer that prints F225's rows and totals now derives a single F157 global result from those parsed `result_target` records. The console emits one `result_global status=SUCCESS|FAILED|PARTIAL targets=N selected=N attempted=N succeeded=N failed=N skipped=N not_run=N` record after the table totals, followed by an `Overall result:` label. There is no notification renderer, new collector, extra Proxmox command, or independent target-counting path.
+
+- **SUCCESS:** no selected target failed or remained eligible-but-unattempted. Intentionally stopped, excluded, template and disabled scopes are `SKIPPED`, not failures. An empty inventory or all-skipped run is `SUCCESS (no targets selected)`; it does **not** imply a package was updated.
+- **FAILED:** one or more `ERROR` or `NOT_RUN` outcomes and **zero** `OK` target outcomes. This includes all failed guests, host failure before guests, and blocked preflights.
+- **PARTIAL:** at least one `OK` and at least one `ERROR` or `NOT_RUN`. A successful host with every selected guest failing is PARTIAL, not SUCCESS.
+
+Recovery success never changes the failed target to OK; informational warnings on an OK result do not become failures. F147's existing basic technical summary and CLI exit codes remain unchanged: a mixed batch still exits nonzero even though its F157 **per-target** global status is PARTIAL. The machine-readable `result_global` is intended for future F159/email presentation without adding another aggregation model; no emails are sent by F157. If optional table presentation fails, it warns without masking the authoritative existing structured target records or update exit code.
+
+F226 verifies global consistency against all expected individual rows and simulated operations, including empty, skipped, preflight-blocked, mixed, recovery and failure outcomes, as an acceptance prerequisite for F225/F157.
+
 ## Rich console results (F225 implementation; F226 acceptance pending)
 
 The `lib/results/table.py` read-only renderer consumes the exact `result_target` records already produced by F220–F224. After the current structured output and F147 summary, each supported completed run now emits **one** `Forge final results` table with `VMID | Name | APT | Application version | Changelog | Result` plus totals of actual records and selections. This is a presentation of the existing authoritative rows, not a second aggregation or notification. A measured 0 differs from unmeasurable `—`; known unchanged application versions appear once, real changes as `before → after`, official source repositories use full links, and unknown metadata displays as `—`.
