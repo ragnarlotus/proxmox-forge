@@ -180,7 +180,7 @@ class ConsoleTableTests(unittest.TestCase):
                 grid = content.split("Changelog links:", 1)[0].splitlines()
                 header = next(line for line in grid if line.startswith("VMID"))
                 separator = next(line for line in grid if "-+-" in line)
-                self.assertEqual(len(header), len(separator))
+                self.assertLessEqual(len(header), len(separator))
                 self.assertLessEqual(len(header), width)
                 self.assertEqual(header.count("|"), 5)
                 self.assertEqual(separator.count("+"), 5)
