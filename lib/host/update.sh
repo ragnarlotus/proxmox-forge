@@ -82,6 +82,7 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 
 started_at="$(date +%s)" || fail "could not create host update start timestamp"
 backup_file=""
+result_warning=""
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -95,9 +96,15 @@ record_skipped_stage() {
 finish_failed() {
   local failed_stage="$1"
   local primary_result="$2"
+  local explicit_error="${3:-}"
+  local failure_error
   local finished_at
   local duration_seconds
 
+  failure_error="$explicit_error"
+  if [[ -z "$failure_error" ]]; then
+    failure_error="$(forge_result_stage_error "$log_file" "$failed_stage")"
+  fi
   forge_apt_finalize host
   finished_at="$(date +%s)" || finished_at="$started_at"
   duration_seconds=$((finished_at - started_at))
@@ -116,9 +123,8 @@ finish_failed() {
     "$hostname_fqdn" "$failed_stage" "$primary_result" "$log_file"
   printf 'Forge update summary: host %s FAILED at %s (exit code %s; no automatic rollback).\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result"
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-    forge_result_print host HOST "$hostname_fqdn" true true ERROR update_failed "$primary_result" "$FORGE_APT_COUNT"
-  fi
+  forge_result_publish host HOST "$hostname_fqdn" true true ERROR update_failed "$primary_result" \
+    "$FORGE_APT_COUNT" "-" "-" "-" "$failed_stage" "$failure_error" "-" "$result_warning"
   exit "$primary_result"
 }
 
@@ -153,7 +159,7 @@ if [[ "${CONFIG[CREATE_BACKUP_BEFORE_HOST_UPDATE]}" == true ]]; then
     bash "$log_write_script" "$log_file" ERROR backup_artifact_error \
       "type=host" \
       "reason=missing_or_invalid_path" || true
-    finish_failed backup 1
+    finish_failed backup 1 "backup artifact path missing or invalid"
   fi
 
   bash "$log_write_script" "$log_file" INFO backup_artifact \
@@ -174,6 +180,7 @@ bash "$log_capture_script" "$log_file" held_packages -- \
   bash "$held_packages_script" host
 held_result=$?
 if (( held_result != 0 )); then
+  result_warning="held-package inspection failed (exit $held_result)"
   printf 'WARNING: could not inspect held APT packages on Proxmox host (exit code %s)\n' "$held_result" >&2
   bash "$log_write_script" "$log_file" WARN held_packages \
     "type=host" "status=unknown" "exit_code=$held_result" || \
@@ -205,6 +212,8 @@ if (( reboot_check_result == 0 )) && [[ "$reboot_record" =~ ^reboot_required=(ye
   bash "$log_write_script" "$log_file" INFO reboot_status \
     "type=host" "reboot_required=$reboot_required" || fail "could not log host reboot status"
 else
+  if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+  result_warning+="reboot requirement unknown (check exit $reboot_check_result)"
   printf 'WARNING: could not determine host reboot requirement (exit code %s)\n' "$reboot_check_result" >&2
   bash "$log_write_script" "$log_file" WARN reboot_status \
     "type=host" "reboot_required=unknown" "check_exit_code=$reboot_check_result" || \
@@ -231,6 +240,5 @@ if [[ "$reboot_required" == yes ]]; then
 elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: Proxmox host reboot requirement could not be determined.\n' >&2
 fi
-if [[ "${FORGE_RESULTS_AGGREGATE:-}" != bulk ]]; then
-  forge_result_print host HOST "$hostname_fqdn" true true OK completed "" "$FORGE_APT_COUNT"
-fi
+forge_result_publish host HOST "$hostname_fqdn" true true OK completed "" \
+  "$FORGE_APT_COUNT" "-" "-" "-" "-" "" "-" "$result_warning"
