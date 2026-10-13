@@ -43,7 +43,7 @@ case "$(basename "$0")" in
     ;;
   reboot-required.sh)
     if [[ "$FORGE_TEST_REBOOT_FAILURE" == true ]]; then exit 9; fi
-    printf 'reboot_required=no type=host\n'
+    printf 'reboot_required=no type=host marker=no\n'
     ;;
   *) exit 95 ;;
 esac
