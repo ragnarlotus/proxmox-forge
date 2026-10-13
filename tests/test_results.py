@@ -90,9 +90,9 @@ elif kind == "host":
 elif kind == "lxc":
     if os.environ.get("FORGE_APP_RESULT_FILE"):
         versions = json.loads(os.environ.get("FORGE_TEST_LXC_APP", "{}"))
-        before, after = versions.get(args[0], ["-", "-"])
+        before, after, repository = versions.get(args[0], ["-", "-", "-"])
         Path(os.environ["FORGE_APP_RESULT_FILE"]).write_text(
-            f"{before}\t{after}\n"
+            f"{before}\t{after}\t{repository}\n"
         )
     if os.environ.get("FORGE_APT_RESULT_FILE"):
         counts = json.loads(os.environ.get("FORGE_TEST_LXC_APT", "{}"))
@@ -197,7 +197,7 @@ class ResultAggregationTests(unittest.TestCase):
     def test_f222_bulk_keeps_app_versions_and_excludes_skipped_guests(self):
         result, calls = self.invoke(
             "all", FORGE_TEST_LXC_APP=json.dumps({
-                "100": ["1.0", "1.2"], "111": ["3.0", "3.0"],
+                "100": ["1.0", "1.2", "-"], "111": ["3.0", "3.0", "-"],
             }), FORGE_TEST_EXCLUDE="115",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -209,6 +209,52 @@ class ResultAggregationTests(unittest.TestCase):
             ("115", "-", "-"),
         ])
         self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"], ["100", "111"])
+
+    def test_f223_repo_present_when_unchanged_or_version_unknown_in_bulk(self):
+        result, calls = self.invoke(
+            "all",
+            FORGE_TEST_LXC_APP=json.dumps({
+                "100": ["1.0", "1.0", "https://github.com/pi-hole/pi-hole"],
+                "111": ["-", "-", "https://github.com/Whisparr/Whisparr"],
+                "115": ["2.0", "2.1", "-"],
+            }),
+            FORGE_TEST_LXC_CODES=json.dumps({"111": 42}),
+            FORGE_TEST_EXCLUDE="115",
+        )
+        self.assertEqual(result.returncode, 1)
+        rows = self.inventory(result)
+        self.assertEqual(
+            [(row["vmid"], row["app_repository"], row["status"]) for row in rows],
+            [
+                ("HOST", "-", "OK"),
+                ("100", "https://github.com/pi-hole/pi-hole", "OK"),
+                ("111", "https://github.com/Whisparr/Whisparr", "ERROR"),
+                ("115", "-", "SKIPPED"),
+            ],
+        )
+        self.assertEqual(
+            [c["args"][0] for c in calls if c["kind"] == "lxc"],
+            ["100", "111"],
+        )
+
+    def test_f223_malformed_bulk_repo_does_not_discard_valid_versions(self):
+        result, calls = self.invoke(
+            FORGE_TEST_LXC_APP=json.dumps({
+                "100": ["1.0", "2.0", "https://malicious.example/hello"],
+                "111": ["-", "-", "-"],
+                "115": ["-", "-", "-"],
+            }),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["app_repository"], "-")
+        self.assertEqual(
+            (rows[0]["app_before"], rows[0]["app_after"]), ("1.0", "2.0")
+        )
+        self.assertEqual(
+            [c["args"][0] for c in calls if c["kind"] == "lxc"],
+            ["100", "111", "115"],
+        )
 
     def test_f221_bulk_records_keep_per_target_measured_apt_values(self):
         result, calls = self.invoke(
