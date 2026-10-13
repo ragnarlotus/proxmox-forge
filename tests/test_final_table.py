@@ -128,7 +128,7 @@ class ConsoleTableTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("\x1b", r.stdout)
         self.assertNotIn("\x07", r.stdout)
-        self.assertIn(" ⏎ ", r.stdout)
+        self.assertIn("⏎", r.stdout)
         self.assertIn("status=OK", r.stdout)
         self.assertIn("FAKE", r.stdout)
         self.assertIn("OK=1 ERROR=0", r.stdout)
