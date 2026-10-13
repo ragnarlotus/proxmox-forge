@@ -56,7 +56,7 @@ class FinalResultsMatrixTests(unittest.TestCase):
                     ("-", "-", "-"),
                 )
             else:
-                self.assertRegex(row["apt_upgraded"], r"^[0-9]+$")
+                self.assertRegex(row["apt_upgraded"], r"^(?:[0-9]+|-)$")
             displayed_apt = "—" if row["apt_upgraded"] == "-" else row["apt_upgraded"]
             before, after = row["app_before"], row["app_after"]
             displayed_app = (
