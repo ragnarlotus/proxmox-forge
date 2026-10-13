@@ -158,7 +158,7 @@ def compact_widths(values, width):
     minimums = [4, 4, 3, 19, 9, 6]  # Header sizes; total including separators = 60.
     maximums = [6, 20, 5, 29, 9, 44]
     desired = [
-        min(maximums[i], max(minimums[i], *(len(c[i]) for c in values)))
+        min(maximums[i], max([minimums[i], *(len(c[i]) for c in values)]))
         for i in range(6)
     ]
     sizes = minimums[:]
