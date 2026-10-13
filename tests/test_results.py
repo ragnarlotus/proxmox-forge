@@ -218,7 +218,9 @@ class ResultAggregationTests(unittest.TestCase):
             ("all", {"FORGE_TEST_CONFLICT": "true"}, 1, 4, 0),
             ("all", {"FORGE_TEST_RUNNING_LXC": "false"}, 0, 4, 0),
             ("all", {"FORGE_TEST_EXCLUDE": "111,115"}, 0, 4, 0),
-            ("lxc", {"FORGE_TEST_STOPPED_VMIDS": "111"}, 0, 3, 0),
+            ("lxc", {"FORGE_TEST_VMIDS": "100,115",
+                     "FORGE_TEST_INVENTORY_VMIDS": "100,111,115",
+                     "FORGE_TEST_STOPPED_VMIDS": "111"}, 0, 3, 0),
             ("lxc", {"FORGE_TEST_LXC_CODES": json.dumps({
                 "100": 22, "111": 33, "115": 44})}, 1, 3, 3),
         ]

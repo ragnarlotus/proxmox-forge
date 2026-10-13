@@ -221,6 +221,7 @@ class ExactlyOnceTests(unittest.TestCase):
     def test_f225_individual_lxc_success_or_failure_has_one_table(self):
         for stage, code in [("", 0), ("application", 42)]:
             with self.subTest(stage=stage):
+                self.calls_path.unlink(missing_ok=True)
                 result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE=stage)
                 self.assertEqual(result.returncode, code, result.stderr)
                 self.assertEqual(result.stdout.count("Forge final results"), 1)
