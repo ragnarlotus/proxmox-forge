@@ -140,6 +140,7 @@ class ResultAggregationTests(unittest.TestCase):
             "results/inventory.sh": "inventory",
             "results/record.sh": None,
             "results/table.py": None,
+            "notifications/send.py": None,
         }
         for path, kind in paths.items():
             dest = lib / path
