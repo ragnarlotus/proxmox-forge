@@ -139,6 +139,7 @@ class ResultAggregationTests(unittest.TestCase):
             "lxc/update.sh": "lxc",
             "results/inventory.sh": "inventory",
             "results/record.sh": None,
+            "results/table.py": None,
         }
         for path, kind in paths.items():
             dest = lib / path

@@ -70,12 +70,12 @@ class HostResultDetailsTests(unittest.TestCase):
             "backup/host/create.sh", "host/update/os.sh",
             "preflight/held-packages.sh", "postflight/reboot-required.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh", "results/apt.sh", "config/get.sh",
+            "results/record.sh", "results/table.py", "results/apt.sh", "config/get.sh",
         ]
         for path in paths:
             dest = self.lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("host/update.sh", "results/record.sh"):
+            if path in ("host/update.sh", "results/record.sh", "results/table.py"):
                 dest.symlink_to(ROOT / "lib" / path)
             elif path == "logging/capture.sh":
                 dest.write_text(CAPTURE, encoding="utf-8")

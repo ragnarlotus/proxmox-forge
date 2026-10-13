@@ -72,6 +72,7 @@ class HostRebootFlowTests(unittest.TestCase):
             "logging/capture.sh": "capture",
             "logging/write.sh": "write",
             "results/record.sh": None,
+            "results/table.py": None,
             "results/apt.sh": None,
         }
         for path, kind in paths.items():
