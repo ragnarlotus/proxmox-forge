@@ -57,7 +57,7 @@ class ClusterDatabaseBackupTests(unittest.TestCase):
     def test_snapshot_rejects_corrupt_database_and_existing_destination(self):
         corrupt = self.base / "corrupt.db"
         corrupt.write_bytes(b"not sqlite\n")
-        failed = self.run_snapshot(source=corrupt)
+        failed = self.run_snapshot(source=corrupt, destination=self.base / "bad-copy.db")
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn("ERROR: cannot back up", failed.stderr)
         self.assertNotIn("ok", failed.stdout)
