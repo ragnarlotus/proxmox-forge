@@ -21,6 +21,15 @@ The mandatory base archive paths are:
 /opt/proxmox-forge/health.d/
 ```
 
+The `/var/lib/pve-cluster/config.db` member is captured through SQLite's online
+backup API, not by reading the live database file with `tar`. This includes
+committed transactions still in the SQLite WAL and creates a consistent,
+integrity-checked standalone `config.db` without stopping `pve-cluster`.
+The live `config.db`, `config.db-wal`, `config.db-shm`, and
+`config.db-journal` files are excluded from direct archiving; the snapshot
+is placed at the same archive path used by the existing restore tool. Failure
+to snapshot or validate the database prevents host updates.
+
 When present, the optional host-local `/opt/proxmox-forge/forge.conf` is also included automatically. Forge's versioned source files are not included by default and should be restored from Git.
 
 `HOST_BACKUP_EXTRA_PATHS` may append host-local files or directories to this set without replacing the mandatory paths. Its value is a comma-separated list of absolute paths, for example:
