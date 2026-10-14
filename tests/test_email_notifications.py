@@ -132,7 +132,7 @@ class BulkNotificationTests(unittest.TestCase):
         self.assertNotIn("host", [c["kind"] for c in calls])
         self.assertNotIn("lxc", [c["kind"] for c in calls])
 
-    def test_host_failure_keeps_exit_42_and_does_not_notify_each_guest(self):
+    def test_host_failure_keeps_exit_42_and_sends_one_partial_summary(self):
         self.prepare_mail()
         result, calls = self.invoke(
             "all", FORGE_TEST_EMAIL_NOTIFICATIONS="true",
@@ -142,10 +142,12 @@ class BulkNotificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertEqual(len(self.messages()), 1)
         email = self.messages()[0]["email"]
-        self.assertIn("Subject: [Proxmox Forge] FAILED", email)
+        self.assertIn("Subject: [Proxmox Forge] PARTIAL", email)
         self.assertIn("ERROR: os_update (exit 42)", email)
-        self.assertIn("NOT RUN: host update failed", email)
-        self.assertNotIn("lxc", [c["kind"] for c in calls])
+        self.assertIn("Overall result: PARTIAL", email)
+        self.assertNotIn("NOT RUN: host update failed", email)
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111", "115"])
 
     def test_sendmail_failure_is_warning_and_never_masks_original_exit(self):
         self.prepare_mail()
