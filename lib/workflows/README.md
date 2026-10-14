@@ -2,21 +2,22 @@
 
 ## Bulk-update failure model
 
-`forge update all` deliberately has asymmetric host and guest semantics. `forge lxc update all` follows the LXC stage only:
+`forge update all` performs the host stage first, followed by the independent
+LXC stage. `forge lxc update all` runs only the LXC stage:
 
 ```text
 freeze effective running-LXC VMID scope
         │
         ▼
-check recovery compatibility of every selected LXC
+check root space, memory and recovery compatibility for selected LXCs
    │
    ├─ conflict → abort before host or guest mutation
    │
    ▼
-update host
+update host (if enabled)
    │
-   ├─ failure → abort global run before any LXC starts
-   │
+   ├─ failure → preserve host ERROR and its actual exit code
+   │             continue with the preflight-approved LXCs
    ▼
 update LXCs serially
    │
@@ -28,11 +29,16 @@ update LXCs serially
 aggregate final result
 ```
 
-This means `continue after guest failure` never means `convert failure into success`. The selected running LXCs are checked for root free space and available memory before any host/guest mutation; the centralized read-only recovery conflict checker then runs once for the complete scope. Individual LXC requirements repeat both resource checks immediately before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` permits backup-only recovery for snapshot-incompatible LXCs only when preflight safety requirements pass; setting it to `false` blocks those LXCs. Stopped LXCs are excluded from bulk scope.
+Host backup/requirements/OS failures never turn into success and do not cancel
+otherwise eligible LXC updates. A failed host still makes the combined command
+exit nonzero (preserving its original failure code); the authoritative result
+table shows host `ERROR` and each guest's actual `OK` or `ERROR`, with an
+overall `PARTIAL` when at least one guest succeeds. Global selection, resource,
+and recovery preflight failures still block **all** mutation. The selected running LXCs are checked for root free space and available memory before any host/guest mutation; the centralized read-only recovery conflict checker then runs once for the complete scope. Individual LXC requirements repeat both resource checks immediately before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` permits backup-only recovery for snapshot-incompatible LXCs only when preflight safety requirements pass; setting it to `false` blocks those LXCs. Stopped LXCs are excluded from bulk scope.
 
 ## Final result summary
 
-Forge prints a human-readable summary after individual host or LXC updates and after bulk runs. Bulk summaries include host status, selected/succeeded/failed LXC counts, and individual failed VMIDs with their exit codes. If the host update fails, the summary states that LXC updates did not start. Disabled scopes are distinguished from failed updates.
+Forge prints a human-readable summary after individual host or LXC updates and after bulk runs. Bulk summaries include host status, selected/succeeded/failed LXC counts, and individual failed VMIDs with their exit codes. If the host update fails, the summary reports its failure separately from the LXC results and retains a nonzero command exit status. Disabled scopes are distinguished from failed updates.
 
 The readable summary is additional terminal output; existing structured `update=...` and `update_all=...` records, log records, failure aggregation and exit codes retain their previous semantics.
 
@@ -54,7 +60,7 @@ There is not yet a repeatable automated unit/integration/end-to-end test suite. 
 
 ## Final-results inventory (F220)
 
-Bulk runs snapshot all local LXC identities, states and selection classifications via the read-only `lib/results/inventory.sh` helper, including stopped, excluded, templates and disabled scopes. The **actual update scope** still comes exclusively from `lxc/list-targets.sh`; disagreements block mutation before updates. Once finished (including blocked preflight or failed host update), the coordinator emits one `result_target` machine-readable line per applicable host/LXC, sorted by numeric VMID. Each record stores ID, name, selected/attempted, `OK`, `ERROR`, `SKIPPED` or `NOT_RUN`, a stable reason and the original exit code on attempted failures. Skip precedence is template, stopped, excluded, disabled. A host failure marks still-eligible guests `NOT_RUN reason=host_update_failed`; preflight failure marks them `NOT_RUN reason=preflight_blocked`.
+Bulk runs snapshot all local LXC identities, states and selection classifications via the read-only `lib/results/inventory.sh` helper, including stopped, excluded, templates and disabled scopes. The **actual update scope** still comes exclusively from `lxc/list-targets.sh`; disagreements block mutation before updates. Once finished (including blocked preflight or failed host update), the coordinator emits one `result_target` machine-readable line per applicable host/LXC, sorted by numeric VMID. Each record stores ID, name, selected/attempted, `OK`, `ERROR`, `SKIPPED` or `NOT_RUN`, a stable reason and the original exit code on attempted failures. Skip precedence is template, stopped, excluded, disabled. A host failure no longer blocks eligible guests: they retain their own attempted `OK`/`ERROR` result. Preflight failure before updates still marks them `NOT_RUN reason=preflight_blocked`.
 
 These **intermediate structured records feed F225**; they are not a second F157 notification or a finished results table. F147 human summaries and original exit codes are unchanged.
 

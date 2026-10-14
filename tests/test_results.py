@@ -353,7 +353,7 @@ class ResultAggregationTests(unittest.TestCase):
         ))
         self.assertNotIn("lxc", [c["kind"] for c in calls])
 
-    def test_f224_host_failure_handoff_annotates_blocked_guests(self):
+    def test_f224_host_failure_handoff_preserves_host_error_and_guest_results(self):
         result, calls = self.invoke(
             "all", FORGE_TEST_HOST_CODE="42",
             FORGE_TEST_HOST_DETAIL=json.dumps([
@@ -365,10 +365,12 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(rows[0]["failed_stage"], "os_update")
         self.assertEqual(rows[0]["result_detail"], "ERROR%3A%20os_update%20%28exit%2042%29")
         self.assertTrue(all(
-            r["status"] == "NOT_RUN" and "host%20update%20failed" in r["result_detail"]
+            r["status"] == "OK" and r["reason"] == "completed"
             for r in rows[1:]
         ))
-        self.assertNotIn("lxc", [c["kind"] for c in calls])
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111", "115"])
+        self.assertIn("result_global status=PARTIAL", result.stdout)
 
     def test_f223_repo_present_when_unchanged_or_version_unknown_in_bulk(self):
         result, calls = self.invoke(
@@ -451,7 +453,7 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42)
         rows = self.inventory(result)
         self.assertEqual(rows[0]["apt_upgraded"], "3")
-        self.assertTrue(all(r["apt_upgraded"] == "-" for r in rows[1:]))
+        self.assertEqual([r["apt_upgraded"] for r in rows[1:]], ["0", "0", "-", "0"])
 
     def test_f220_mixed_inventory_order_and_skip_reasons(self):
         result, calls = self.invoke(
@@ -476,16 +478,17 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
                          ["100", "111"])
 
-    def test_f220_host_failure_marks_selected_lxcs_not_run(self):
+    def test_f220_host_failure_does_not_block_selected_lxcs(self):
         result, calls = self.invoke("all", FORGE_TEST_HOST_CODE="42")
         self.assertEqual(result.returncode, 42)
         rows = self.inventory(result)
         self.assertEqual(rows[0]["status"], "ERROR")
         self.assertEqual(rows[0]["exit_code"], "42")
-        self.assertEqual([r["status"] for r in rows[1:]],
-                         ["NOT_RUN", "NOT_RUN", "NOT_RUN"])
-        self.assertTrue(all(r["reason"] == "host_update_failed" for r in rows[1:]))
-        self.assertNotIn("lxc", [c["kind"] for c in calls])
+        self.assertEqual([r["status"] for r in rows[1:]], ["OK", "OK", "OK"])
+        self.assertTrue(all(r["reason"] == "completed" for r in rows[1:]))
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111", "115"])
+        self.assertIn("result_global status=PARTIAL", result.stdout)
 
     def test_f220_preflight_blocked_marks_host_and_eligible_guests_not_run(self):
         result, calls = self.invoke("all", FORGE_TEST_CONFLICT="true")
@@ -581,7 +584,7 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertIn("update_all=failed stage=lxc total=3 succeeded=0 failed=3 exit_code=1",
                       result.stdout)
 
-    def test_host_failure_preserves_code_and_stops_guest_updates(self):
+    def test_host_failure_preserves_code_and_continues_guest_updates(self):
         result, calls = self.invoke(
             "all", FORGE_TEST_HOST_CODE="42"
         )
@@ -596,10 +599,60 @@ class ResultAggregationTests(unittest.TestCase):
             ("memory", ["115", "128"]),
             ("preflight", ["100", "111", "115"]),
             ("host", []),
+            ("lxc", ["100", "scope"]),
+            ("lxc", ["111", "scope"]),
+            ("lxc", ["115", "scope"]),
         ])
-        self.assertIn("update_all=failed stage=host exit_code=42 lxc_started=false",
+        self.assertIn("update_all=failed stage=host exit_code=42 lxc_started=true lxc_succeeded=3 lxc_failed=0",
                       result.stdout)
-        self.assertIn("Forge update summary: host FAILED (exit code 42); LXC updates not started (3 selected).", result.stdout)
+        self.assertIn("Forge update summary: host FAILED (exit code 42); 3 LXCs selected, 3 succeeded, 0 failed; overall PARTIAL.", result.stdout)
+
+
+    def test_host_failure_with_guest_failures_continues_and_preserves_first_error(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_HOST_CODE="42",
+            FORGE_TEST_LXC_CODES=json.dumps({"111": 17}),
+        )
+        self.assertEqual(result.returncode, 42)
+        self.assertEqual([c["args"][0] for c in calls if c["kind"] == "lxc"],
+                         ["100", "111", "115"])
+        self.assertEqual(
+            [(r["vmid"], r["status"], r.get("exit_code")) for r in self.inventory(result)],
+            [("HOST", "ERROR", "42"), ("100", "OK", None),
+             ("111", "ERROR", "17"), ("115", "OK", None)],
+        )
+        self.assertIn("result_global status=PARTIAL", result.stdout)
+        self.assertIn("lxc_succeeded=2 lxc_failed=1", result.stdout)
+
+    def test_host_failure_with_disabled_lxc_scope_still_fails(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_HOST_CODE="42", FORGE_TEST_RUNNING_LXC="false",
+        )
+        self.assertEqual(result.returncode, 42)
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+        self.assertEqual([r["status"] for r in self.inventory(result)],
+                         ["ERROR", "SKIPPED", "SKIPPED", "SKIPPED"])
+        self.assertIn("result_global status=FAILED", result.stdout)
+
+    def test_host_failure_with_empty_running_scope_still_fails(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_HOST_CODE="42", FORGE_TEST_VMIDS="",
+        )
+        self.assertEqual(result.returncode, 42)
+        self.assertNotIn("lxc", [c["kind"] for c in calls])
+        self.assertEqual([r["status"] for r in self.inventory(result)], ["ERROR"])
+        self.assertIn("result_global status=FAILED", result.stdout)
+
+    def test_host_failure_with_all_guests_failed_is_not_partially_successful(self):
+        result, calls = self.invoke(
+            "all", FORGE_TEST_HOST_CODE="42",
+            FORGE_TEST_LXC_CODES=json.dumps({"100": 4, "111": 5, "115": 6}),
+        )
+        self.assertEqual(result.returncode, 42)
+        self.assertEqual(len([c for c in calls if c["kind"] == "lxc"]), 3)
+        self.assertEqual([r["status"] for r in self.inventory(result)],
+                         ["ERROR", "ERROR", "ERROR", "ERROR"])
+        self.assertIn("result_global status=FAILED", result.stdout)
 
     def test_successful_host_then_partial_lxc_failure(self):
         result, calls = self.invoke(
