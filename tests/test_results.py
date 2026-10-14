@@ -46,7 +46,7 @@ if kind == "inventory":
 
 with Path(os.environ["FORGE_TEST_CALLS"]).open("a") as log:
     log.write(json.dumps({"kind": kind, "args": args,
-                          "fallback": os.environ.get("FORGE_LXC_BACKUP_ONLY_VMIDS", "")}) + "\n")
+                          "backup_only": os.environ.get("FORGE_LXC_BACKUP_PREFLIGHT_OK", "")}) + "\n")
 
 if kind == "list":
     if args != [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]:
@@ -76,9 +76,6 @@ elif kind == "preflight":
     if os.environ.get("FORGE_TEST_CONFLICT") == "true":
         print("CONFLICT: LXC 111: unsafe restore", file=sys.stderr)
         sys.exit(1)
-    for vmid in filter(None, os.environ.get("FORGE_TEST_FALLBACK", "").split(",")):
-        if vmid in args:
-            print(f"backup_fallback={vmid}")
 elif kind == "host":
     if os.environ.get("FORGE_RESULT_DETAIL_FILE"):
         detail, stage, recovery = json.loads(
@@ -719,14 +716,13 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertNotIn("host", [c["kind"] for c in calls])
         self.assertIn("update_all=start mode=lxc update_host=false", result.stdout)
 
-    def test_fallback_plan_applies_only_to_selected_guest(self):
-        result, calls = self.invoke(FORGE_TEST_FALLBACK="111")
+    def test_backup_only_preflight_applies_to_all_selected_guests(self):
+        result, calls = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         updates = [c for c in calls if c["kind"] == "lxc"]
         self.assertEqual(len(updates), 3)
-        self.assertTrue(all(c["fallback"].strip() == "111" for c in updates))
-        self.assertIn("INFO: LXC 111 will use the existing vzdump backup for recovery",
-                      result.stdout)
+        self.assertTrue(all(c["backup_only"] == "true" for c in updates))
+        self.assertNotIn("backup_fallback=", result.stdout)
 
     def test_excluded_vmids_never_reach_mutating_stages(self):
         result, calls = self.invoke("all", FORGE_TEST_EXCLUDE="111,115")

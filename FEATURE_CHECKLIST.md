@@ -76,21 +76,21 @@ Forge performs updates rather than checking what is available in advance. Reposi
 
 > Root space (F064) and available memory (F066) are enforced preflight requirements. F068/F069 remain deferred as previously agreed.
 
-## H. Snapshot, backup and rollback
+## H. Backup and recovery
 
-- [x] **F077** Optional pre-update backup.
-- [x] **F078** Require snapshot/backup according to policy.
+- [x] **F077** Proxmox-native pre-update backup, required for LXC mutations in backup-only mode.
+- [x] **F078** Require validated same-run `vzdump` backup before LXC mutations; no persistent snapshots created.
 - [x] **F079** Select backup storage. Current implementation derives it from the authoritative Proxmox backup configuration instead of maintaining a second Forge storage policy.
 - [x] **F080** Support applicable backup modes: snapshot/suspend/stop. Current LXC backup execution inherits supported options from the applicable Proxmox backup job.
-- [x] **F082** Verify snapshot/backup actually completed successfully.
+- [x] **F082** Verify backup actually completed successfully.
 - [x] **F083** Record the exact recovery artifact identifier.
 - [x] **F086** Configurable automatic rollback after failure.
-- [x] **F087** Retention/cleanup policy for snapshots created by Forge. Prunes only older `Update_*` LXC snapshots to the `keep-last` limit of the applicable Proxmox backup job, preserving manually named snapshots and retaining the new snapshot after success or rollback.
+- [x] **F087** Retention delegated to the applicable Proxmox backup job. Forge does not create, prune or delete persistent LXC snapshots; existing `Update_*` snapshots are preserved until manually removed.
 - [x] **F088** Never remove the recovery artifact before the final result is known.
 
 > Guest rollback capabilities do not apply to the Proxmox host itself.
 >
-> By default, `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` uses persistent `Update_*` snapshots and `pct rollback` where supported. Snapshot-incompatible LXCs may instead use their same-run `vzdump` backup, but only if the centralized preflight confirms an applicable backup job, backup creation is enabled, and no existing persistent snapshots would be destroyed. The advanced restore helper rechecks snapshots before any `pct restore --force`. Forge applies the job's `keep-last` value to its own `Update_*` snapshots; Proxmox backup pruning does not manage persistent snapshots. Setting `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false` disables the backup-only fallback and blocks snapshot-incompatible targets. Bulk preflight covers only selected running LXCs, excluding stopped containers.
+> Forge uses only the same-run `vzdump` backup for LXC recovery, regardless of snapshot support. `CREATE_BACKUP_BEFORE_LXC_UPDATE=true` and an applicable Proxmox backup job are mandatory for updates. With `ROLLBACK_ON_FAILURE=true`, automatic `pct restore --force` is permitted only for a storage-backed rootfs with no existing persistent LXC snapshots; the preflight blocks unsafe cases before mutation and the restore helper rechecks before forcing replacement. Forge never deletes old `Update_*` or manual snapshots; they must be reviewed/removed manually before enabling safe automatic recovery. Proxmox's backup job controls storage, mode and retention; temporary `vzdump --mode snapshot` snapshots are not persistent Forge snapshots. Bulk preflight covers selected running LXCs, not stopped containers.
 
 ## I. Guest lifecycle
 
@@ -189,7 +189,7 @@ The final summary is a **per-execution results table**, inspired by the presenta
 ## T. Tests and quality
 
 - [x] **F206** Exit-code propagation tests. Eight automated test cases use the real stage-output capture and LXC OS/application/custom-script helpers with fake `pct` commands to verify success/failure exit codes (including controlled exit 42), stdout/stderr preservation, APT-stage failure isolation, and stopping subsequent custom scripts after failure. GitHub Actions runs them alongside F209/F213 without accessing Proxmox.
-- [x] **F207** Tests proving each mutating operation executes only once. Eight automated cases exercise the real LXC update orchestrator with isolated helper fakes (single backup/snapshot/OS/application/custom-script/health/fstrim stage, one recovery attempt, failure short-circuit, backup-only fallback and no mutation when stages are disabled) and the real Proxmox host APT updater with a fake `apt-get` (each package stage once, no retry after failure). GitHub Actions verifies these paths without modifying host or guest systems.
+- [x] **F207** Tests proving each mutating operation executes only once. Eight automated cases exercise the real LXC update orchestrator with isolated helper fakes (single backup/OS/application/custom-script/health/fstrim stage, one backup restore attempt, failure short-circuit, backup-only recovery and no mutation when stages are disabled) and the real Proxmox host APT updater with a fake `apt-get` (each package stage once, no retry after failure). GitHub Actions verifies these paths without modifying host or guest systems.
 - [x] **F209** Configuration tests. Twelve automated cases exercise the real defaults/local-override loader and validator (valid configuration, precedence, invalid syntax, duplicate/unknown/missing keys, booleans, paths and retention). GitHub Actions runs them and checks Bash syntax on pushes to `main` and pull requests, without contacting Proxmox.
 - [x] **F211** Result aggregation tests. Automated cases exercise the real host/LXC bulk-update coordinator with isolated helper fakes: all-success, single/multiple/all guest failures, continued processing after a guest fails, authoritative host failure exit code with continued guest updates, host-then-guest partial failure, preflight blocking before mutation, empty/disabled scopes, mode-specific host exclusion, snapshot-incompatible fallback plan propagation and invalid target records. GitHub Actions verifies exit statuses, counts, ordering and final result reporting without accessing Proxmox.
 - [x] **F213** Integration tests with mocks/fakes. Eleven automated integration cases exercise the real LXC recovery preflight and configuration loading against fake `pvesh`, `pct` and `hostname` commands: snapshot-supported vs. snapshot-incompatible guests, same-run `vzdump` fallback, existing snapshots, combined conflicts, policy opt-out, disabled backup, missing/ambiguous jobs, invalid retention, API failures and invalid rootfs. Unexpected/mutating Proxmox calls are rejected by the test doubles. These tests run in GitHub Actions alongside F209 without connecting to Proxmox.

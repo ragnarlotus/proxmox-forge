@@ -228,22 +228,12 @@ for vmid in "${vmids[@]}"; do
   }
 done
 
-# All recovery conflicts must be resolved before the host or any LXC changes.
-recovery_plan="$(bash "$conflicts_script" "${vmids[@]}")" || {
-  result_not_run_detail="LXC recovery protection conflicts detected"
+# Validate backup-only recovery for every selected LXC before mutations.
+bash "$conflicts_script" "${vmids[@]}" || {
+  result_not_run_detail="LXC backup-only recovery protection conflicts detected"
   fail "LXC protection conflicts detected; no updates started"
 }
-
-FORGE_LXC_BACKUP_ONLY_VMIDS=""
-while IFS= read -r record; do
-  [[ -n "$record" ]] || continue
-  [[ "$record" == backup_fallback=* ]] || fail "invalid recovery plan: $record"
-  vmid="${record#backup_fallback=}"
-  [[ "$vmid" =~ ^[0-9]+$ ]] || fail "invalid recovery plan VMID"
-  FORGE_LXC_BACKUP_ONLY_VMIDS+=" $vmid"
-  printf 'INFO: LXC %s will use the existing vzdump backup for recovery\n' "$vmid"
-done <<<"$recovery_plan"
-export FORGE_LXC_BACKUP_ONLY_VMIDS
+export FORGE_LXC_BACKUP_PREFLIGHT_OK=true
 
 lxc_targets="${#vmids[@]}"
 host_failure_code=0

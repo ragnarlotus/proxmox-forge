@@ -95,15 +95,27 @@ The top-level `forge` script locates the rest of the project relative to itself;
 
 ## LXC recovery policy
 
-`BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` is the default. Forge uses a persistent Proxmox `Update_*` snapshot for snapshot-capable LXCs and, when safe, the same-run Proxmox `vzdump` backup for snapshot-incompatible LXCs. The read-only `forge validate-config` command reports snapshot/backup-policy conflicts among running LXCs selected for bulk updates and blocks unsafe runs before any host or guest mutation.
+Forge creates a new `vzdump` recovery backup before any LXC mutation. The
+applicable enabled Proxmox backup job determines its **storage, backup mode,
+compression and retention**; Forge does not create persistent `Update_*`
+snapshots or call `pct rollback`. A Proxmox job in `snapshot` mode may use
+a **temporary** storage snapshot while producing the compressed archive; it
+removes that temporary snapshot after backup completion.
 
-To require persistent snapshots for every selected LXC and block snapshot-incompatible targets, set the optional local override:
+With `ROLLBACK_ON_FAILURE=true`, the same-run `vzdump` archive can be
+restored automatically if a mandatory stage fails, using the guarded advanced
+`pct restore --force` helper and the usual functional health check. The
+original update failure stays failed even if recovery succeeds. This requires
+`CREATE_BACKUP_BEFORE_LXC_UPDATE=true`, an applicable Proxmox backup job, a
+storage-backed rootfs and **no pre-existing persistent guest snapshots**
+that forced restore could destroy. The preflight blocks unsafe updates and
+`restore.sh` rechecks immediately before restoration. Forge never deletes
+old snapshots automatically. After verifying their backups, users may choose
+to remove old snapshots manually before the next update.
 
-```bash
-BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false
-```
-
-The backup-only recovery fallback requires `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`, a valid applicable Proxmox backup job, and **no existing persistent snapshots that a forced restore could destroy**. The advanced restore helper preserves excluded storage-backed volumes and checks for persistent snapshots again before restoring. Running LXCs remain the only automatic targets; stopped LXCs are checked only when explicitly requested. See [Configuration](lib/config/README.md) and [Backup and recovery](lib/backup/README.md).
+Running LXCs remain the automatic scope; stopped LXCs are updated only by
+explicit request. See [Configuration](lib/config/README.md) and
+[Backup and recovery](lib/backup/README.md).
 
 ## Updating Forge itself
 
