@@ -44,7 +44,7 @@ while (( $# )); do
   esac
 done
 
-for command_name in hostname tar find install date rm; do
+for command_name in hostname tar find install date rm mktemp python3; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command is not available: $command_name"
 done
 
@@ -52,8 +52,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not de
 backup_lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine backup library directory"
 read_storage_script="$backup_lib_dir/read-storage.sh"
 storage_path_script="$backup_lib_dir/storage-path.sh"
+snapshot_db_script="$script_dir/snapshot-db.py"
 
-for helper in "$read_storage_script" "$storage_path_script"; do
+for helper in "$read_storage_script" "$storage_path_script" "$snapshot_db_script"; do
   [[ -r "$helper" ]] || fail "required backup helper is not readable: $helper"
 done
 
@@ -109,7 +110,26 @@ fi
 umask 027
 install -d -m 0750 "$backup_dir" || fail "could not create host backup directory: $backup_dir"
 
-tar -czf "$backup_file" "${include[@]}"
+# config.db is a live SQLite database. Archiving its WAL/SHM files directly
+# races with pmxcfs writes and can produce an inconsistent backup. Snapshot it
+# through SQLite's online backup API without touching the running original.
+snapshot_dir="$(mktemp -d)" || fail "could not create cluster database snapshot directory"
+cleanup_snapshot() {
+  rm -rf -- "$snapshot_dir"
+}
+trap cleanup_snapshot EXIT
+install -d -m 0700 "$snapshot_dir/var/lib/pve-cluster" || fail "could not stage cluster database snapshot"
+python3 "$snapshot_db_script" /var/lib/pve-cluster/config.db \
+  "$snapshot_dir/var/lib/pve-cluster/config.db" || fail "could not snapshot live cluster database"
+
+# Exclude only the original live SQLite files; append the validated standalone
+# snapshot under the same member name expected by the host restore utility.
+tar -czf "$backup_file" \
+  --exclude=/var/lib/pve-cluster/config.db \
+  --exclude=/var/lib/pve-cluster/config.db-wal \
+  --exclude=/var/lib/pve-cluster/config.db-shm \
+  --exclude=/var/lib/pve-cluster/config.db-journal \
+  "${include[@]}" -C "$snapshot_dir" var/lib/pve-cluster/config.db
 backup_result=$?
 if (( backup_result != 0 )); then
   rm -f -- "$backup_file"
