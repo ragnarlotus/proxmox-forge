@@ -31,16 +31,6 @@ elif name == "pvesh" and args == [
     "get", "/cluster/backup", "--output-format", "json"
 ]:
     print(json.dumps(fixture["jobs"]))
-elif name == "pvesh" and len(args) == 6 and args[0] == "get" and (
-    args[2:] == ["--feature", "snapshot", "--output-format", "json"]
-):
-    parts = args[1].split("/")
-    if len(parts) == 6 and parts[1:4] == ["nodes", "bv", "lxc"] and parts[-1] == "feature":
-        vmid = parts[4]
-        if vmid in fixture["features"]:
-            print(json.dumps({"hasFeature": fixture["features"][vmid]}))
-            sys.exit(0)
-    sys.exit(91)
 elif name == "pvesh" and len(args) == 4 and args[0] == "get" and (
     args[2:] == ["--output-format", "json"]
 ):
@@ -85,12 +75,13 @@ BASE = {
         "storage": "backups",
         "prune-backups": "keep-last=3",
     }],
-    "features": {"100": 1, "111": 0, "113": 0},
     "snapshots": {
+        "100": [{"name": "current"}],
         "111": [{"name": "current"}],
         "113": [{"name": "Update_20260614_073449"}, {"name": "current"}],
     },
     "configs": {
+        "100": "rootfs: local-lvm:vm-100-disk-0,size=12G\n",
         "111": "rootfs: local-lvm:vm-111-disk-0,size=20G\n"
                "mp0: /mnt/nvme500/snowshare-uploads,mp=/opt/snowshare_data,backup=0\n",
         "113": "rootfs: local-lvm:vm-113-disk-0,size=28G\n",
@@ -152,46 +143,37 @@ class RecoveryPreflightTests(unittest.TestCase):
             )
             return result, calls
 
-    def test_snapshot_capable_guest_needs_no_backup_fallback(self):
-        result, calls = self.invoke(["100"])
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "")
-        self.assertFalse(any(c[0] == "pct" for c in calls))
-
-    def test_snapshot_incompatible_guest_uses_backup_by_default(self):
+    def test_all_selected_guests_use_backup_only_independent_of_snapshot_support(self):
         result, calls = self.invoke(["100", "111"])
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "backup_fallback=111")
+        self.assertEqual(result.stdout, "")
+        self.assertIn(["pct", "config", "100"], calls)
         self.assertIn(["pct", "config", "111"], calls)
+        self.assertFalse(any("feature" in str(c) for c in calls))
 
-    def test_existing_snapshots_block_restore(self):
+    def test_existing_snapshots_block_automatic_restore_without_deletion(self):
         result, calls = self.invoke(["113"])
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("backup restore would destroy existing persistent snapshots",
-                      result.stderr)
+        self.assertIn("would destroy existing persistent snapshots", result.stderr)
+        self.assertIn("review/remove them manually", result.stderr)
         self.assertEqual(result.stdout, "")
         self.assertNotIn(["pct", "config", "113"], calls)
 
-    def test_all_conflicts_block_partial_recovery_plan(self):
+    def test_conflicts_block_partial_scope(self):
         result, _ = self.invoke(["111", "113"])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("CONFLICT: LXC 113:", result.stderr)
         self.assertEqual(result.stdout, "")
 
-    def test_explicit_opt_out_rejects_unsupported_snapshots(self):
-        result, calls = self.invoke(
-            ["111"], override="BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false\n"
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false", result.stderr)
-        self.assertFalse(any(c[0] == "pct" for c in calls))
-
-    def test_backup_disabled_rejects_fallback(self):
-        result, _ = self.invoke(
-            ["111"], override="CREATE_BACKUP_BEFORE_LXC_UPDATE=false\n"
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("requires CREATE_BACKUP_BEFORE_LXC_UPDATE=true", result.stderr)
+    def test_backup_disabled_rejected_even_if_rollback_disabled(self):
+        for disabled in (
+            "CREATE_BACKUP_BEFORE_LXC_UPDATE=false\n",
+            "CREATE_BACKUP_BEFORE_LXC_UPDATE=false\nROLLBACK_ON_FAILURE=false\n",
+        ):
+            with self.subTest(disabled=disabled):
+                result, _ = self.invoke(["100"], override=disabled)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("require CREATE_BACKUP_BEFORE_LXC_UPDATE=true", result.stderr)
 
     def test_backup_policy_missing_or_ambiguous(self):
         for jobs, expected in (
@@ -203,19 +185,15 @@ class RecoveryPreflightTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(expected, result.stderr)
 
-    def test_invalid_backup_retention_rejected(self):
-        jobs = [{**BASE["jobs"][0], "prune-backups": "keep-last=0"}]
+    def test_retention_is_owned_by_proxmox_not_forge_snapshots(self):
+        jobs = [{**BASE["jobs"][0], "prune-backups": "keep-daily=7"}]
         result, _ = self.invoke(["111"], changes={"jobs": jobs})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("keep-last greater than zero", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_snapshot_api_failure_blocks_fallback(self):
-        result, _ = self.invoke(
-            ["111"], changes={"snapshots": {}}
-        )
+    def test_snapshot_listing_failure_blocks_safe_recovery(self):
+        result, _ = self.invoke(["111"], changes={"snapshots": {}})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("CONFLICT: LXC 111:", result.stderr)
-        self.assertEqual(result.stdout, "")
 
     def test_rootfs_must_be_storage_backed(self):
         result, _ = self.invoke(
@@ -224,12 +202,25 @@ class RecoveryPreflightTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("storage-backed rootfs", result.stderr)
 
-    def test_unavailable_feature_response_blocks_update(self):
+    def test_backup_only_updates_can_disable_automatic_restore(self):
+        result, calls = self.invoke(
+            ["113"], override="ROLLBACK_ON_FAILURE=false\n"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any(c[0] == "pct" for c in calls))
+        self.assertFalse(any("snapshot" in str(c) for c in calls))
+
+    def test_snapshot_feature_probe_is_never_called(self):
+        result, calls = self.invoke(["100", "111"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(any("feature" in str(c) for c in calls))
+
+    def test_invalid_snapshot_metadata_blocks_auto_restore(self):
         result, _ = self.invoke(
-            ["111"], changes={"features": {"111": 2}}
+            ["100"], changes={"snapshots": {"100": [{"name": "current"}, {"invalid": True}]}}
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("invalid snapshot feature response", result.stderr)
+        self.assertIn("persistent snapshots", result.stderr)
 
 
 if __name__ == "__main__":
