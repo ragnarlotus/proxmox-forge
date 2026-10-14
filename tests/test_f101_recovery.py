@@ -21,8 +21,7 @@ args = sys.argv[1:]
 with Path(os.environ["FORGE_TEST_CALLS"]).open("a") as stream:
     stream.write(json.dumps(["pct", *args[:4]]) + "\n")
 
-if args in (["stop", "111"], ["rollback", "111", "Update_test"],
-            ["start", "111"]):
+if args in (["stop", "111"], ["start", "111"]):
     sys.exit(0)
 if args[:3] != ["exec", "111", "--"]:
     sys.exit(f"unexpected pct: {args}")
@@ -70,7 +69,10 @@ class FunctionalRecoveryTests(unittest.TestCase):
         )
         backup = self.base / "lib" / "backup" / "lxc"
         backup.mkdir(parents=True)
-        (backup / "restore.sh").write_text("#!/bin/bash\nexit 97\n", encoding="utf-8")
+        (backup / "restore.sh").write_text(
+            '#!/bin/bash\nprintf \'["restore","%s","%s"]\\n\' "$1" "$2" >> "$FORGE_TEST_CALLS"\n',
+            encoding="utf-8",
+        )
         logs = self.base / "lib" / "logging"
         logs.mkdir(parents=True)
         (logs / "capture.sh").write_text(CAPTURE, encoding="utf-8")
@@ -100,8 +102,8 @@ class FunctionalRecoveryTests(unittest.TestCase):
     def recover(self):
         return subprocess.run(
             ["bash", str(self.base / "lib/lxc/recover.sh"),
-             "111", "backups:backup/test.tar.zst", "Update_test",
-             str(self.log), "true", "snapshot", "health", "42"],
+             "111", "backups:backup/test.tar.zst",
+             str(self.log), "true", "health", "42"],
             cwd=self.base, env=self.env,
             capture_output=True, text=True, check=False,
         )
@@ -118,7 +120,8 @@ class FunctionalRecoveryTests(unittest.TestCase):
         self.assertIn("functional-restored", result.stdout)
         self.assertIn("functional_health=ok vmid=111 count=1", result.stdout)
         calls = self.pct_calls()
-        self.assertEqual(sum(c[:2] == ["pct", "rollback"] for c in calls), 1)
+        self.assertEqual(sum(c[:2] == ["restore", "111"] for c in calls), 1)
+        self.assertEqual(sum(c[:2] == ["pct", "rollback"] for c in calls), 0)
         self.assertEqual(sum(c[:2] == ["pct", "start"] for c in calls), 1)
         self.assertEqual(sum(c[4:] == ["bash"] for c in calls), 1)
         self.assertIn("recovery_end vmid=111 status=success", self.events.read_text())
@@ -133,7 +136,8 @@ class FunctionalRecoveryTests(unittest.TestCase):
         self.assertIn("recovery_end vmid=111 status=failed step=health exit_code=23",
                       self.events.read_text())
         calls = self.pct_calls()
-        self.assertEqual(sum(c[:2] == ["pct", "rollback"] for c in calls), 1)
+        self.assertEqual(sum(c[:2] == ["restore", "111"] for c in calls), 1)
+        self.assertEqual(sum(c[:2] == ["pct", "rollback"] for c in calls), 0)
 
 
 if __name__ == "__main__":
