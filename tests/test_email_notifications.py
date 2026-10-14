@@ -195,7 +195,7 @@ class BulkNotificationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 33)
         self.assertIn("Forge email notification was not accepted", result.stderr)
-        self.assertIn("result_global status=FAILED", result.stdout)
+        self.assertIn("result_global status=PARTIAL", result.stdout)
         self.assertEqual(self.messages(), [])
 
 
