@@ -139,6 +139,18 @@ class RunLoggingTests(unittest.TestCase):
             self.assertEqual(output.count("result_global status=SUCCESS"), 1)
             self.assertIn("101", output)
 
+    def test_preflight_failure_is_recorded_before_target_logging(self):
+        run = self.open_run()
+        env = {**self.env, "FORGE_RUN_LOG": str(run)}
+        result = self.command(
+            ROOT / "lib/workflows/update-all.sh", "invalid", env=env,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported update mode", result.stderr)
+        logged = run.read_text()
+        self.assertIn("level=ERROR event=run_error", logged)
+        self.assertIn("unsupported", logged)
+
     def test_cli_run_start_end_and_original_failure_code(self):
         # Copy only the real public CLI/config/runtime/logging entrypoint, and
         # replace the sole update target with an inert failing test double.
