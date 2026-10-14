@@ -60,6 +60,7 @@ trap cleanup_capture EXIT
 # Standalone CR means "rewrite this line", so only the latest visible version is
 # kept in the log instead of turning every progress redraw into a fake new line.
 LC_ALL=C python3 -u -c '
+import os
 import sys
 
 src = sys.stdin.buffer
@@ -68,10 +69,29 @@ state = "text"
 line = bytearray()
 pending_cr = False
 
+# The existing sanitizer remains the single source of log text. Fan out only
+# finalized, control-free lines; do not alter the producer/terminal stream.
+run_path, target_path = sys.argv[1:]
+run_log = None
+if run_path and run_path != target_path:
+    try:
+        fd = os.open(run_path, os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0))
+        run_log = os.fdopen(fd, "wb", buffering=0)
+    except OSError as exc:
+        print(f"WARNING: cannot open Forge run log: {exc}", file=sys.stderr)
+
 def emit_line():
-    dst.write(line)
-    dst.write(bytes((0x0A,)))
+    global run_log
+    payload = bytes(line) + bytes((0x0A,))
+    dst.write(payload)
     dst.flush()
+    if run_log is not None:
+        try:
+            run_log.write(payload)
+        except OSError as exc:
+            print(f"WARNING: cannot write Forge run log: {exc}", file=sys.stderr)
+            run_log.close()
+            run_log = None
     line.clear()
 
 while True:
@@ -140,7 +160,9 @@ while True:
 
 if pending_cr or line:
     emit_line()
-' <"$log_pipe" >>"$log_file" &
+if run_log is not None:
+    run_log.close()
+' "${FORGE_RUN_LOG:-}" "$log_file" <"$log_pipe" >>"$log_file" &
 sanitize_pid=$!
 
 # Preserve the producer terminal stream, including colors, CR redraws and normal

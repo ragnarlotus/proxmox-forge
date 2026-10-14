@@ -40,6 +40,10 @@ forge_result_print() {
   record+="$extra"
   FORGE_RESULT_LAST_RECORD="$record"
   printf '%s\n' "$record"
+  if [[ -n "${FORGE_RUN_LOG:-}" ]]; then
+    printf '%s\n' "$record" >> "$FORGE_RUN_LOG" || \
+      printf 'WARNING: could not append result to Forge run log\n' >&2
+  fi
 }
 
 # Only values safe for single-token result_target records pass unchanged.

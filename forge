@@ -2,9 +2,19 @@
 # Description: Main Forge CLI orchestrator. Acquires the single global Forge run lock, snapshots the effective configuration for the run, then dispatches commands without implementing domain logic.
 
 set -u
+# Never inherit an external path as the authoritative log for a new run.
+unset FORGE_RUN_LOG
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
+  # Failures before a target log exists must still be diagnosable in F141.
+  if [[ -n "${FORGE_RUN_LOG:-}" ]]; then
+    printf -v run_error '%q' "$*"
+    if ! printf '%s level=ERROR event=run_error message=%s\n' \
+      "$(date --iso-8601=seconds)" "$run_error" >> "$FORGE_RUN_LOG"; then
+      printf 'WARNING: could not record Forge run error: %s\n' "$FORGE_RUN_LOG" >&2
+    fi
+  fi
   exit 1
 }
 
@@ -57,6 +67,12 @@ if ! flock -n "$LOCK_FD"; then
 fi
 
 cleanup_run_state() {
+  local exit_code=$?
+  if [[ -n "${FORGE_RUN_LOG:-}" ]]; then
+    bash "$FORGE_DIR/lib/logging/write.sh" "$FORGE_RUN_LOG" INFO run_end \
+      "run_id=$run_id" "exit_code=$exit_code" || \
+      printf 'WARNING: could not record Forge run completion: %s\n' "$FORGE_RUN_LOG" >&2
+  fi
   : > "$LOCK_FILE" 2>/dev/null || true
 }
 trap cleanup_run_state EXIT
@@ -124,6 +140,22 @@ case "${1:-}" in
     config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
     write_runtime_state
     export FORGE_RUNTIME_CONFIG_READY=true
+    ;;
+esac
+
+# F141: open one run log only for update commands, after validated configuration
+# is loaded but before any update preflight or mutation. Utility commands do not
+# create execution logs.
+case "${1:-}:${2:-}" in
+  host:update|lxc:update|update:all)
+    run_log_init="$FORGE_DIR/lib/logging/init.sh"
+    run_log_write="$FORGE_DIR/lib/logging/write.sh"
+    [[ -r "$run_log_init" && -r "$run_log_write" ]] || fail "run logging helpers are unavailable"
+    run_log="$(bash "$run_log_init" "${CONFIG[LOG_DIR]}" "${CONFIG[LOG_KEEP]}" run "$run_id")" || \
+      fail "could not initialize general log for Forge run"
+    export FORGE_RUN_LOG="$run_log"
+    bash "$run_log_write" "$run_log" INFO run_start \
+      "run_id=$run_id" "command=$command_name" || fail "could not record Forge run start"
     ;;
 esac
 

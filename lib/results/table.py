@@ -2,6 +2,7 @@
 """F225/F157/F159: render one authoritative final-results snapshot without updates."""
 
 import os
+from contextlib import redirect_stdout
 import re
 import shutil
 import sys
@@ -263,7 +264,19 @@ def emit(rows, width, enabled):
 def main():
     records = [line for line in sys.stdin if line.startswith("result_target ")]
     rows = [parse(line) for line in records]
-    emit(rows, display_width(), color_enabled())
+    width = display_width()
+    enabled = color_enabled()
+    # F141: persist the same presentation as plain text, while preserving the
+    # original terminal output/TTY detection and its single visible table.
+    run_log = os.environ.get("FORGE_RUN_LOG")
+    if run_log:
+        try:
+            with open(run_log, "a", encoding="utf-8") as logfile:
+                with redirect_stdout(logfile):
+                    emit(rows, width, False)
+        except OSError as exc:
+            print(f"WARNING: could not write Forge run summary: {exc}", file=sys.stderr)
+    emit(rows, width, enabled)
 
 
 if __name__ == "__main__":

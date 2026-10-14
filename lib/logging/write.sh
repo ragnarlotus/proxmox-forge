@@ -40,6 +40,15 @@ line+=$'\n'
 
 printf '%s' "$line" >> "$log_file" || fail "could not append to log file: $log_file"
 
+# F141: mirror the same structured event to the run log without replacing
+# the per-target record or changing an update's authoritative result.
+if [[ -n "${FORGE_RUN_LOG:-}" && "$FORGE_RUN_LOG" != "$log_file" ]]; then
+  if ! printf '%s' "$line" >> "$FORGE_RUN_LOG"; then
+    printf 'WARNING: could not append structured event to Forge run log: %s\n' \
+      "$FORGE_RUN_LOG" >&2
+  fi
+fi
+
 if [[ "$level" == ERROR && -n "${FORGE_ERROR_LOG:-}" ]]; then
   [[ -f "$FORGE_ERROR_LOG" ]] || fail "error log file does not exist: $FORGE_ERROR_LOG"
   [[ -w "$FORGE_ERROR_LOG" ]] || fail "error log file is not writable: $FORGE_ERROR_LOG"

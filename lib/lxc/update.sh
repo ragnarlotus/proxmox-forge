@@ -11,6 +11,14 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
+  # Failures before a target log exists must still be diagnosable in F141.
+  if [[ -n "${FORGE_RUN_LOG:-}" ]]; then
+    printf -v run_error '%q' "$*"
+    if ! printf '%s level=ERROR event=run_error message=%s\n' \
+      "$(date --iso-8601=seconds)" "$run_error" >> "$FORGE_RUN_LOG"; then
+      printf 'WARNING: could not record Forge run error: %s\n' "$FORGE_RUN_LOG" >&2
+    fi
+  fi
   exit 1
 }
 

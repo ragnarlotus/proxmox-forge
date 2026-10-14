@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Initializes Forge logging under the local Proxmox FQDN, using persistent host common/error logs and timestamped per-LXC logs with retention.
+# Description: Initializes Forge logging under the local Proxmox FQDN, using persistent host logs, per-LXC logs and one retained log for each Forge update run.
 
 set -u
 
@@ -66,6 +66,24 @@ case "$scope" in
 
     for ((i = log_keep; i < ${#logs[@]}; i++)); do
       rm -f -- "$target_dir/${logs[i]}" || fail "could not remove old log: $target_dir/${logs[i]}"
+    done
+
+    printf '%s\n' "$log_file"
+    ;;
+  run)
+    [[ "$identifier" == "${FORGE_RUN_ID:-}" ]] || fail "run log identifier does not match active Forge run"
+    [[ "$identifier" =~ ^[0-9]{8}T[0-9]{6}-[0-9]+$ ]] || fail "invalid run log identifier"
+    target_dir="$log_dir/$pve_fqdn/runs"
+    install -d -m 0750 "$target_dir" || fail "could not create run log directory: $target_dir"
+    log_file="$target_dir/$identifier.log"
+    [[ ! -e "$log_file" ]] || fail "run log already exists: $log_file"
+    install -m 0640 /dev/null "$log_file" || fail "could not create run log: $log_file"
+
+    mapfile -t logs < <(
+      find "$target_dir" -maxdepth 1 -type f -name '*.log' -printf '%f\n' | LC_ALL=C sort -r
+    )
+    for ((i = log_keep; i < ${#logs[@]}; i++)); do
+      rm -f -- "$target_dir/${logs[i]}" || fail "could not remove old run log: $target_dir/${logs[i]}"
     done
 
     printf '%s\n' "$log_file"
