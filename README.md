@@ -28,12 +28,13 @@ Forge currently supports:
 - per-target logging and deterministic terminal capture;
 - one global execution lock preventing overlapping Forge runs.
 
+Forge is an updater, not a tool for querying pending upgrades: standalone package-update discovery, preview/check, speculative upgrade plans, CVE reporting and package-level selection are outside its scope. APT repository metadata is refreshed as part of actual OS updates.
+
 Not implemented yet:
 
 - QEMU VM updates;
 - external-host/SSH updates;
 - cluster-wide orchestration;
-- package update preview/discovery, CVE reporting or package-level selection;
 - scheduling/background execution;
 - a Web UI;
 - automatic Proxmox host rollback;
