@@ -34,7 +34,7 @@ otherwise eligible LXC updates. A failed host still makes the combined command
 exit nonzero (preserving its original failure code); the authoritative result
 table shows host `ERROR` and each guest's actual `OK` or `ERROR`, with an
 overall `PARTIAL` when at least one guest succeeds. Global selection, resource,
-and recovery preflight failures still block **all** mutation. The selected running LXCs are checked for root free space and available memory before any host/guest mutation; the centralized read-only recovery conflict checker then runs once for the complete scope. Individual LXC requirements repeat both resource checks immediately before mutation. The default `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` permits backup-only recovery for snapshot-incompatible LXCs only when preflight safety requirements pass; setting it to `false` blocks those LXCs. Stopped LXCs are excluded from bulk scope.
+and recovery preflight failures still block **all** mutation. The selected running LXCs are checked for root free space and available memory before any host/guest mutation; the centralized read-only recovery conflict checker then runs once for the complete scope. Individual LXC requirements repeat both resource checks immediately before mutation. Forge now uses only same-run `vzdump` archives for LXC recovery, regardless of snapshot support. With automatic recovery enabled, old persistent LXC snapshots must be removed manually before an update because forced restore would destroy them. Stopped LXCs are excluded from bulk scope.
 
 ## Final result summary
 
