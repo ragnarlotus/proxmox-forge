@@ -53,7 +53,6 @@ target_script="$script_dir/get-target.sh"
 state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
 backup_create_script="$lib_dir/backup/lxc/create.sh"
-snapshot_create_script="$lib_dir/backup/lxc/snapshot.sh"
 recovery_script="$script_dir/recover.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
@@ -75,7 +74,6 @@ for helper in \
   "$state_script" \
   "$requirements_script" \
   "$backup_create_script" \
-  "$snapshot_create_script" \
   "$recovery_script" \
   "$os_update_script" \
   "$application_update_script" \
@@ -134,12 +132,8 @@ esac
 
 initial_state="$state"
 
-# The entrypoint has already checked compatibility for this selected VMID.
-[[ "${FORGE_LXC_BACKUP_ONLY_VMIDS+x}" == x ]] || fail "LXC recovery preflight was not completed"
-recovery_mode=snapshot
-if [[ " ${FORGE_LXC_BACKUP_ONLY_VMIDS} " == *" $vmid "* ]]; then
-  recovery_mode=backup
-fi
+# The CLI/bulk coordinator already checked backup-only recovery safety.
+[[ "${FORGE_LXC_BACKUP_PREFLIGHT_OK:-}" == true ]] || fail "LXC backup-only recovery preflight was not completed"
 
 log_file="$(
   bash "$log_init_script" \
@@ -157,7 +151,6 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
 
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
-snapshot_name=""
 package_manager=""
 application_updater=""
 custom_scripts_planned=false
@@ -263,12 +256,11 @@ restore_initial_state() {
 run_recovery() {
   local failed_stage="$1" primary_result="$2" recovery_code=0
   bash "$recovery_script" \
-    "$vmid" "$backup_volume" "$snapshot_name" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
-    "$recovery_mode" "$failed_stage" "$primary_result" || recovery_code=$?
+    "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
+    "$failed_stage" "$primary_result" || recovery_code=$?
   if [[ "${CONFIG[ROLLBACK_ON_FAILURE]}" != true ]]; then
     result_recovery=disabled
-  elif [[ ( "$recovery_mode" == snapshot && -z "$snapshot_name" ) ||
-          ( "$recovery_mode" == backup && -z "$backup_volume" ) ]]; then
+  elif [[ -z "$backup_volume" ]]; then
     result_recovery=unavailable
   elif (( recovery_code != 0 )); then
     result_recovery="failed:$recovery_code"
@@ -427,37 +419,15 @@ if [[ "$mutation_planned" == true ]]; then
       "vmid=$vmid" \
       "backup=$backup_volume" || finish_failed backup 1
   else
-    record_skipped_stage backup disabled
+    finish_failed backup 1 "backup-only updates require CREATE_BACKUP_BEFORE_LXC_UPDATE=true"
   fi
 else
   record_skipped_stage backup no_mutating_stages
 fi
 
-if [[ "$mutation_planned" == true && "$recovery_mode" == snapshot ]]; then
-  snapshot_output_file="$(mktemp)" || finish_failed snapshot 1
-  bash "$log_capture_script" "$log_file" snapshot -- \
-    bash -o pipefail -c 'bash "$1" "$2" | tee "$3"' \
-      _ "$snapshot_create_script" "$vmid" "$snapshot_output_file"
-  stage_result=$?
-
-  if (( stage_result != 0 )); then
-    rm -f "$snapshot_output_file"
-    finish_failed snapshot "$stage_result"
-  fi
-
-  snapshot_record="$(grep '^snapshot=success ' "$snapshot_output_file" | tail -n 1)"
-  rm -f "$snapshot_output_file"
-  parse_record "$snapshot_record"
-  snapshot_name="${RECORD_FIELDS[name]:-}"
-
-  if [[ -z "$snapshot_name" ]]; then
-    bash "$log_write_script" "$log_file" ERROR snapshot_artifact_error \
-      "vmid=$vmid" "reason=missing_name" || true
-    finish_failed snapshot 1 "snapshot name missing from completed snapshot"
-  fi
-elif [[ "$mutation_planned" == true ]]; then
+if [[ "$mutation_planned" == true ]]; then
   [[ -n "$backup_volume" ]] || finish_failed backup 1
-  record_skipped_stage snapshot backup_fallback
+  record_skipped_stage snapshot backup_only
 else
   record_skipped_stage snapshot no_mutating_stages
 fi
