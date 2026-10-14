@@ -38,7 +38,15 @@ Because `forge.conf` is Git-ignored, normal `git pull --ff-only` updates do not 
 
 ## Current configuration keys
 
-LXC requirements checks are mandatory before backup or mutation and cannot be disabled. `forge validate-config` additionally checks backup-policy and persistent-snapshot compatibility for the running LXCs in automatic update scope. Both bulk and explicit LXC updates run the same read-only conflict check before any update begins. Stopped LXCs are checked only when explicitly selected. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, snapshot-incompatible selected LXCs are allowed only when the recovery backup is enabled and no persistent snapshots would be destroyed. `validate-config` does not modify containers.
+LXC requirements checks are mandatory before backup or mutation.
+`forge validate-config` checks backup-policy and backup-only recovery
+compatibility for the running LXCs in automatic scope. With automatic
+recovery enabled, selected guests retaining persistent snapshots block
+updates because `pct restore --force` could destroy those snapshots. Forge
+never removes them. Bulk and explicit LXC updates perform the same check;
+stopped LXCs are checked only when explicitly selected. Backup creation is
+required before LXC mutation even if automatic rollback is disabled.
+`validate-config` is read-only.
 
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
@@ -51,8 +59,7 @@ LXC requirements checks are mandatory before backup or mutation and cannot be di
 | `CUSTOM_SCRIPTS_DIR` | Absolute path | Absolute directory containing per-target custom scripts. |
 | `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Boolean: `true` or `false` | Create and validate a host configuration backup before host package changes. |
 | `HOST_BACKUP_EXTRA_PATHS` | Empty string or comma-separated absolute paths | Optional paths appended to the fixed host-backup path set. Example: `/opt/custom,/srv/config`. |
-| `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Boolean: `true` or `false` | Create a Proxmox recovery backup before LXC mutation. |
-| `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE` | Boolean: `true` or `false` | Default `true`; when safe, use the same-run `vzdump` backup instead of a persistent snapshot for unsupported LXCs. Set `false` to require persistent snapshots and block snapshot-incompatible targets. |
+| `CREATE_BACKUP_BEFORE_LXC_UPDATE` | Boolean: `true` or `false` | Must be `true` for LXC updates; create a same-run Proxmox recovery backup before mutation. |
 | `ROLLBACK_ON_FAILURE` | Boolean: `true` or `false` | Attempt same-run guest recovery after eligible update/health failures. |
 | `HEALTH_CHECK` | Boolean: `true` or `false` | Verify target health after mutation, including optional functional scripts. |
 | `HEALTH_SCRIPTS_DIR` | Absolute path | Directory containing optional `<VMID>/*.sh` guest functional checks (default `/opt/proxmox-forge/health.d`). Missing per-target directory means generic health checks only. |
