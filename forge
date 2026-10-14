@@ -2,6 +2,8 @@
 # Description: Main Forge CLI orchestrator. Acquires the single global Forge run lock, snapshots the effective configuration for the run, then dispatches commands without implementing domain logic.
 
 set -u
+# Never inherit an external path as the authoritative log for a new run.
+unset FORGE_RUN_LOG
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -86,7 +88,6 @@ export FORGE_RUNTIME_GUARD="$RUNTIME_GUARD_SCRIPT"
 unset FORGE_RUNTIME_CONFIG_READY
 unset FORGE_LXC_ENVIRONMENT_READY
 unset FORGE_LXC_BACKUP_ONLY_VMIDS
-unset FORGE_RUN_LOG
 
 HELP_SCRIPT="$FORGE_DIR/lib/cli/help.sh"
 CONFIG_GET_SCRIPT="$FORGE_DIR/lib/config/get.sh"
