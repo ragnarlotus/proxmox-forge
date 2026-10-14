@@ -246,6 +246,8 @@ done <<<"$recovery_plan"
 export FORGE_LXC_BACKUP_ONLY_VMIDS
 
 lxc_targets="${#vmids[@]}"
+host_failure_code=0
+lxc_started=false
 update_host=false
 if [[ "$mode" == all && "${CONFIG[UPDATE_HOST]}" == true ]]; then
   update_host=true
@@ -281,16 +283,18 @@ if [[ "$update_host" == true ]]; then
     host_status=ERROR
     host_reason=update_failed
     host_exit="$host_result"
-    result_not_run_reason=host_update_failed
-    printf 'update_all=failed stage=host exit_code=%s lxc_started=false\n' "$host_result"
-    printf '\nForge update summary: host FAILED (exit code %s); LXC updates not started (%s selected).\n' \
-      "$host_result" "$lxc_targets"
-    exit "$host_result"
+    host_failure_code="$host_result"
+    # Host and LXC recovery points are independent. The already validated
+    # guest scope must continue even when host backup/update fails.
+    printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=%s\n' \
+      "$host_result" "${CONFIG[UPDATE_RUNNING_LXC]}"
+    printf 'WARNING: host update failed (exit code %s); continuing with selected LXCs\n' \
+      "$host_result" >&2
+  else
+    host_status=OK
+    host_reason=completed
+    printf 'update_all_stage=success stage=host exit_code=0\n'
   fi
-
-  host_status=OK
-  host_reason=completed
-  printf 'update_all_stage=success stage=host exit_code=0\n'
 elif [[ "$mode" == all ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
 fi
@@ -305,6 +309,7 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
   for vmid in "${vmids[@]}"; do
     printf 'update_all_target=start vmid=%s\n' "$vmid"
 
+    lxc_started=true
     result_attempted[$vmid]=true
     FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" \
       FORGE_APP_RESULT_FILE="${apt_result_dir:+$apt_result_dir/app-$vmid}" \
@@ -358,21 +363,36 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
   if (( failed != 0 )); then
     printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
       "$lxc_targets" "$succeeded" "$failed"
-    printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
-      "$lxc_targets" "$succeeded" "$failed"
-    printf '\nForge update summary: '
-    if [[ "$mode" == all ]]; then
-      if [[ "$update_host" == true ]]; then
-        printf 'host SUCCESS; '
+    if (( host_failure_code != 0 )); then
+      printf 'update_all=failed stage=host exit_code=%s lxc_started=%s lxc_succeeded=%s lxc_failed=%s\n' \
+        "$host_failure_code" "$lxc_started" "$succeeded" "$failed"
+      printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
+      if (( succeeded > 0 )); then
+        overall_status=PARTIAL
       else
-        printf 'host skipped; '
+        overall_status=FAILED
       fi
+    else
+      printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+        "$lxc_targets" "$succeeded" "$failed"
+      printf '\nForge update summary: '
+      if [[ "$mode" == all ]]; then
+        if [[ "$update_host" == true ]]; then
+          printf 'host SUCCESS; '
+        else
+          printf 'host skipped; '
+        fi
+      fi
+      overall_status=FAILED
     fi
-    printf '%s LXCs selected, %s succeeded, %s failed; overall FAILED.\n' \
-      "$lxc_targets" "$succeeded" "$failed"
+    printf '%s LXCs selected, %s succeeded, %s failed; overall %s.\n' \
+      "$lxc_targets" "$succeeded" "$failed" "$overall_status"
     for failed_target in "${failed_targets[@]}"; do
       printf '  Failed LXC: %s\n' "$failed_target"
     done
+    if (( host_failure_code != 0 )); then
+      exit "$host_failure_code"
+    fi
     exit 1
   fi
 
@@ -380,6 +400,26 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     "$lxc_targets" "$succeeded"
 else
   printf 'update_all_stage=skipped stage=lxc reason=running_lxc_disabled\n'
+fi
+
+# A failed host always makes the combined CLI run fail, even if every
+# selected guest updated successfully. Preserve the original host exit code.
+if (( host_failure_code != 0 )); then
+  printf 'update_all=failed stage=host exit_code=%s lxc_started=%s lxc_succeeded=%s lxc_failed=0\n' \
+    "$host_failure_code" "$lxc_started" "$succeeded"
+  if (( succeeded > 0 )); then
+    overall_status=PARTIAL
+  else
+    overall_status=FAILED
+  fi
+  printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
+  if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+    printf '%s LXCs selected, %s succeeded, 0 failed; overall %s.\n' \
+      "$lxc_targets" "$succeeded" "$overall_status"
+  else
+    printf 'LXC updates skipped (disabled); overall FAILED.\n'
+  fi
+  exit "$host_failure_code"
 fi
 
 printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
