@@ -60,6 +60,7 @@ trap cleanup_capture EXIT
 # Standalone CR means "rewrite this line", so only the latest visible version is
 # kept in the log instead of turning every progress redraw into a fake new line.
 LC_ALL=C python3 -u -c '
+import os
 import sys
 
 src = sys.stdin.buffer
@@ -74,7 +75,8 @@ run_path, target_path = sys.argv[1:]
 run_log = None
 if run_path and run_path != target_path:
     try:
-        run_log = open(run_path, "ab", buffering=0)
+        fd = os.open(run_path, os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0))
+        run_log = os.fdopen(fd, "wb", buffering=0)
     except OSError as exc:
         print(f"WARNING: cannot open Forge run log: {exc}", file=sys.stderr)
 
