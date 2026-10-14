@@ -134,7 +134,7 @@ Forge performs updates rather than checking what is available in advance. Reposi
 
 ## N. Logging, history and reporting
 
-- [ ] **F141** General log per run.
+- [x] **F141** General log per update run. Each explicit host, LXC or bulk update creates a distinct, access-restricted `LOG_DIR/<PVE_FQDN>/runs/<FORGE_RUN_ID>.log` before update preflight; failure to initialize this log blocks mutation. The run log mirrors existing per-target structured events and sanitized stage output as stages complete, records authoritative `result_target` rows and a plain-text rendering of the same F225/F157 final table, and adds run start/end events with the actual CLI exit code. It does not replace per-host/LXC logs, repeat update stages, intercept/modify terminal output or change update/rollback decisions. `LOG_KEEP` also retains the newest general run logs. Best-effort secondary write failures are warned about without masking the real update exit code; early invalid CLI/configuration calls do not create update logs. Regression tests cover run retention, non-overwrite, mirrored events, ANSI/CR handling, TTY colour, target exit codes and CLI run completion.
 - [x] **F142** Independent log per target.
 - [x] **F144** Precise timestamps.
 - [x] **F145** Persist exit codes.
