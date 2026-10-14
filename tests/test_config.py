@@ -17,7 +17,7 @@ DEFAULTS = ROOT / "forge.conf.default"
 CONFIG_PROBE = r"""
 source "$1/lib/config/get.sh" || exit 1
 config_get_files "$2" "$3" || exit 1
-printf 'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=%s\n' "${CONFIG[BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE]}"
+printf 'CREATE_BACKUP_BEFORE_LXC_UPDATE=%s\n' "${CONFIG[CREATE_BACKUP_BEFORE_LXC_UPDATE]}"
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
 printf 'EMAIL_NOTIFICATIONS=%s\n' "${CONFIG[EMAIL_NOTIFICATIONS]}"
 printf 'NOTIFY_ONLY_ERRORS=%s\n' "${CONFIG[NOTIFY_ONLY_ERRORS]}"
@@ -68,7 +68,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_defaults_without_local_file(self):
         result = self.load()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true\n", result.stdout)
+        self.assertIn("CREATE_BACKUP_BEFORE_LXC_UPDATE=true\n", result.stdout)
         self.assertIn("UPDATE_HOST=true\n", result.stdout)
         self.assertIn("EMAIL_NOTIFICATIONS=false\n", result.stdout)
         self.assertIn("NOTIFY_ONLY_ERRORS=true\n", result.stdout)
@@ -81,12 +81,12 @@ class ConfigurationTests(unittest.TestCase):
     def test_local_overrides_defaults(self):
         result = self.load(
             'UPDATE_HOST=false\nLOG_KEEP=12\n'
-            'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false\n'
+            'CREATE_BACKUP_BEFORE_LXC_UPDATE=false\n'
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("UPDATE_HOST=false\n", result.stdout)
         self.assertIn("LOG_KEEP=12\n", result.stdout)
-        self.assertIn("BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=false\n", result.stdout)
+        self.assertIn("CREATE_BACKUP_BEFORE_LXC_UPDATE=false\n", result.stdout)
 
     def test_notification_flags_independent_overrides_and_validation(self):
         for override, expected_email, expected_errors_only in (
@@ -151,6 +151,12 @@ class ConfigurationTests(unittest.TestCase):
     def test_unknown_key_rejected(self):
         self.assert_invalid("UNSUPPORTED_OPTION=true\n", "unknown configuration key")
 
+    def test_obsolete_snapshot_fallback_setting_is_rejected(self):
+        self.assert_invalid(
+            "BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true\n",
+            "unknown configuration key",
+        )
+
     def test_duplicate_local_key_rejected(self):
         self.assert_invalid(
             "UPDATE_HOST=true\nUPDATE_HOST=false\n",
@@ -171,19 +177,18 @@ class ConfigurationTests(unittest.TestCase):
                 self.assert_invalid(line, "ERROR:")
 
     def test_invalid_booleans_rejected(self):
-        for key in ("UPDATE_HOST", "BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE",
-                    "ROLLBACK_ON_FAILURE", "CREATE_BACKUP_BEFORE_LXC_UPDATE"):
+        for key in ("UPDATE_HOST", "ROLLBACK_ON_FAILURE", "CREATE_BACKUP_BEFORE_LXC_UPDATE"):
             with self.subTest(key=key):
                 self.assert_invalid(f"{key}=yes\n", f"{key} must be true or false")
 
     def test_missing_required_key_rejected(self):
         original = DEFAULTS.read_text(encoding="utf-8")
         modified = original.replace(
-            "BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true\n", ""
+            "CREATE_BACKUP_BEFORE_LXC_UPDATE=true\n", ""
         )
         self.assertNotEqual(modified, original)
         self.assert_invalid(
-            None, "missing required configuration key 'BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE'",
+            None, "missing required configuration key 'CREATE_BACKUP_BEFORE_LXC_UPDATE'",
             modified,
         )
 
