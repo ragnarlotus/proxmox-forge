@@ -114,19 +114,16 @@ CREATE_BACKUP_BEFORE_HOST_UPDATE=true
 # Example: HOST_BACKUP_EXTRA_PATHS="/opt/custom,/srv/config"
 HOST_BACKUP_EXTRA_PATHS=""
 
-# Create a recovery backup immediately before the LXC update starts.
+# Required: create a recovery backup immediately before an LXC mutation.
 #
 # Proxmox is authoritative for backup behaviour. Forge must read and respect
 # the existing Proxmox guest/storage/backup configuration instead of defining
 # its own backup mode, storage or mount-point inclusion policy.
 CREATE_BACKUP_BEFORE_LXC_UPDATE=true
 
-# Allow same-run vzdump backup recovery when Proxmox cannot create a persistent
-# snapshot. The preflight must verify an applicable backup policy and that
-# no existing persistent snapshots could be lost by pct restore --force.
-# Enabled by default; set false to require persistent snapshots for every
-# selected LXC and block updates of snapshot-incompatible containers.
-BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true
+# Forge uses only the same-run vzdump backup for recovery; it creates no
+# persistent LXC snapshots. With rollback enabled, preflight refuses an
+# overwrite restore that would destroy existing persistent snapshots.
 
 # If a required update/health stage fails and a safe same-run recovery point is
 # available, Forge attempts to restore that guest before continuing. This does
