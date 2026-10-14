@@ -22,6 +22,8 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **Validate before mutation** — load and validate the complete configuration and determine the selected target identities/scope before the first mutating operation; mutable LXC properties such as current state and template status are revalidated when each guest update begins.
 - [x] **Initial invocation model** — no scheduler, background job, daemon or Web UI. Every initial-scope run starts from an explicit user invocation.
 
+Forge performs updates rather than checking what is available in advance. Repository metadata is refreshed as part of actual package updates; standalone pending-update discovery, package previews and pre-execution update-plan generation are intentionally outside the product scope.
+
 ---
 
 ## A. Discovery and inventory
@@ -33,17 +35,9 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **F007** Detect target OS, distribution and version.
 - [x] **F010** Inventory available application/special updater mechanisms.
 
-## B. Update discovery
+## B. Package-update diagnostics
 
-- [ ] **F013** Refresh package repository metadata before checking.
-- [ ] **F014** Detect available updates without installing them.
-- [ ] **F015** Report the number of available updates per target.
-- [ ] **F016** Report the exact list of affected packages.
-- [ ] **F017** Report installed version → candidate version.
-- [ ] **F018** Distinguish security updates.
 - [x] **F022** Detect actionable held APT upgrades. After the OS APT stage (using refreshed lists when `apt-get update` succeeds), Forge checks only explicitly held packages with a newer APT candidate (`apt-mark showhold`, `apt-cache policy`, `dpkg --compare-versions`); reports affected package, installed and candidate versions, and count. No noise for holds without available upgrades, no unhold or impact on update/recovery exit status. On OS failures findings provide diagnosis; on Community Scripts updater failures they are context only, not proof of causation. If LXC OS updates are disabled but the app updater is active, cached candidate versions are checked before the app stage. Automated regression tests cover both flows, empty/non-outdated holds, diagnostic failures and warnings.
-- [ ] **F023** Provide a completely read-only preview/check mode.
-- [ ] **F024** Generate an exact update plan before execution.
 
 ## C. Selection and policies
 
@@ -226,16 +220,15 @@ The final summary is a **per-execution results table**, inspired by the presenta
 
 # Product capability model
 
-Forge is organised conceptually around six major capabilities:
+Forge is organised conceptually around five major capabilities:
 
 - [x] **DISCOVER** — determine which update targets exist. Current implementation covers the local Proxmox host and LXCs.
-- [ ] **PLAN** — determine exactly what will be done and under which policy.
 - [x] **PROTECT** — run preflight checks and establish a recovery point/state before mutation.
 - [x] **EXECUTE** — perform the update exactly once using the correct mechanism.
 - [x] **VERIFY** — determine the technical and functional result after the change.
 - [x] **REPORT** — report exactly what happened, including every relevant failure.
 
-Two cross-cutting foundations support all six:
+Two cross-cutting foundations support all five:
 
 - [x] **CONFIGURATION** — defines Forge behaviour explicitly.
 - [x] **RESULT MODEL** — preserves reality across layers so a failure cannot silently become success.
