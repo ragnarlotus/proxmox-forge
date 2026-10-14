@@ -69,12 +69,12 @@ Forge performs updates rather than checking what is available in advance. Reposi
 
 - [x] **F064** Check free filesystem space. `MIN_ROOT_FREE_MB` (default 1024 MiB) enforces free space on `/` for host/LXC updates. Bulk runs check all selected running LXCs before host/guest changes, and individual target requirements check before mutation.
 - [x] **F066** Check available memory. Configurable `MIN_MEM_AVAILABLE_MB` (128 MiB by default) enforces a minimum `MemAvailable` for the Proxmox host and running LXCs; bulk operations check selected LXC memory before any host/guest mutation and individual target requirements recheck immediately before updates. Missing/invalid readings block mutation. The real inspection shell payload and preflight paths are covered by automated regression tests.
-- [ ] **F068** Check real LVM-thin `Data%` / `Meta%` usage.
+- **F068 — DESCARTADO (2026-10-15).** No implementar una comprobación propia de LVM-thin `Data%` / `Meta%` en Forge. Proxmox ya expone estas métricas y Forge ha dejado de crear snapshots persistentes: sus puntos de recuperación son backups `vzdump` en el almacenamiento configurado en Proxmox.
 - [ ] **F069** Check storage required for snapshots/backups.
 - [x] **F071** Detect package-manager locks/conflicting processes.
 - [x] **F075** A failed mandatory preflight blocks the update.
 
-> Root space (F064) and available memory (F066) are enforced preflight requirements. F068/F069 remain deferred as previously agreed.
+> Root space (F064) and available memory (F066) are enforced preflight requirements. F068 was explicitly dropped from the roadmap; F069 remains deferred.
 
 ## H. Backup and recovery
 
