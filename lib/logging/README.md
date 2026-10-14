@@ -20,7 +20,26 @@ LXC logs:
 LOG_DIR/<PVE_FQDN>/lxc/<VMID>/<TIMESTAMP>.log
 ```
 
-`LOG_KEEP` controls retention of timestamped per-LXC logs.
+General update-run logs:
+
+```text
+LOG_DIR/<PVE_FQDN>/runs/<FORGE_RUN_ID>.log
+```
+
+Each `forge host update`, `forge lxc update TARGET|all` or `forge update all`
+creates one general log before update preflights or mutations. `LOG_KEEP`
+retains the newest general logs independently of the per-LXC retention.
+
+The general log includes `run_start`/`run_end` (with CLI exit code),
+the structured host/LXC events, sanitized stage output, authoritative
+`result_target` records and a plain-text copy of the final six-column
+table/global status. It does not replace the existing target logs; it does
+not duplicate stage execution or intercept the terminal (TTY colours and
+progress remain unchanged). Initial log creation failures block the update;
+secondary log write failures are warned about without changing the update
+result. The logfile has mode 0640 inside a 0750 directory.
+
+`LOG_KEEP` also controls retention of timestamped per-LXC logs.
 
 Forge records structured events with ISO timestamps, event names, fields, exit codes and durations where available. After the APT OS stage (or before an application-only update), it captures read-only F022 `held_upgrade_pending` records (package, installed and candidate versions), a pending count, and a warning **only when a newer candidate is blocked by an explicit hold**. Holds with no newer candidates are silent. Query failures are visible warnings, not a clean zero-hold result. Host `ERROR` events are mirrored to `error.log`.
 
