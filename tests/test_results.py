@@ -453,7 +453,7 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42)
         rows = self.inventory(result)
         self.assertEqual(rows[0]["apt_upgraded"], "3")
-        self.assertTrue(all(r["apt_upgraded"] == "-" for r in rows[1:]))
+        self.assertEqual([r["apt_upgraded"] for r in rows[1:]], ["0", "0", "-", "0"])
 
     def test_f220_mixed_inventory_order_and_skip_reasons(self):
         result, calls = self.invoke(
