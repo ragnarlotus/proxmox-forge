@@ -181,12 +181,32 @@ class FinalResultsMatrixTests(unittest.TestCase):
              [("HOST", "OK", "completed"),
               ("100", "ERROR", "update_failed"), ("111", "ERROR", "update_failed"),
               ("115", "ERROR", "update_failed")]),
-            ("host fails before guests", "all",
+            ("host fails, guests succeed", "all",
              {"FORGE_TEST_HOST_CODE": "42"}, 42,
              [("HOST", "ERROR", "update_failed"),
-              ("100", "NOT_RUN", "host_update_failed"),
-              ("111", "NOT_RUN", "host_update_failed"),
-              ("115", "NOT_RUN", "host_update_failed")]),
+              ("100", "OK", "completed"),
+              ("111", "OK", "completed"),
+              ("115", "OK", "completed")]),
+            ("host and one guest fail, later guest still updates", "all",
+             {"FORGE_TEST_HOST_CODE": "42", "FORGE_TEST_LXC_CODES": '{"111":17}'}, 42,
+             [("HOST", "ERROR", "update_failed"),
+              ("100", "OK", "completed"),
+              ("111", "ERROR", "update_failed"),
+              ("115", "OK", "completed")]),
+            ("host and all guests fail", "all",
+             {"FORGE_TEST_HOST_CODE": "42",
+              "FORGE_TEST_LXC_CODES": '{"100":4,"111":5,"115":6}'}, 42,
+             [("HOST", "ERROR", "update_failed"),
+              ("100", "ERROR", "update_failed"),
+              ("111", "ERROR", "update_failed"),
+              ("115", "ERROR", "update_failed")]),
+            ("host fails with guest scope disabled", "all",
+             {"FORGE_TEST_HOST_CODE": "42", "FORGE_TEST_RUNNING_LXC": "false"}, 42,
+             [("HOST", "ERROR", "update_failed"),
+              ("100", "SKIPPED", "running_lxc_disabled"),
+              ("111", "SKIPPED", "running_lxc_disabled"),
+              ("115", "SKIPPED", "running_lxc_disabled")]),
+
             ("preflight conflict", "all",
              {"FORGE_TEST_CONFLICT": "true"}, 1,
              [("HOST", "NOT_RUN", "preflight_blocked"),
@@ -241,16 +261,16 @@ class FinalResultsMatrixTests(unittest.TestCase):
               ("111", "OK", "completed"),
               ("113", "SKIPPED", "stopped"),
               ("120", "SKIPPED", "template")]),
-            ("host failure with skipped and blocked guests", "all",
+            ("host failure with skipped and completed guests", "all",
              {"FORGE_TEST_HOST_CODE": "27", "FORGE_TEST_VMIDS": "100,115",
               "FORGE_TEST_INVENTORY_VMIDS": "100,111,113,115",
               "FORGE_TEST_STOPPED_VMIDS": "113",
               "FORGE_TEST_EXCLUDE": "guest111"}, 27,
              [("HOST", "ERROR", "update_failed"),
-              ("100", "NOT_RUN", "host_update_failed"),
+              ("100", "OK", "completed"),
               ("111", "SKIPPED", "excluded"),
               ("113", "SKIPPED", "stopped"),
-              ("115", "NOT_RUN", "host_update_failed")]),
+              ("115", "OK", "completed")]),
         ]
         for label, mode, opts, code, expected in tests:
             with self.subTest(label=label):
@@ -374,7 +394,7 @@ class FinalResultsMatrixTests(unittest.TestCase):
         self.assertEqual(result.returncode, 47)
         self.assertIn("final table rendering failed", result.stderr)
         self.assertEqual(len(self.inventory(result)), 4)
-        self.assertEqual(self.changes(calls, "lxc"), [])
+        self.assertEqual(self.changes(calls, "lxc"), ["100", "111", "115"])
         self.assertEqual(len([c for c in calls if c["kind"] == "host"]), 1)
 
     def test_terminal_colour_is_only_presentation(self):
