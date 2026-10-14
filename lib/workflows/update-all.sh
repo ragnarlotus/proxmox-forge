@@ -299,9 +299,9 @@ elif [[ "$mode" == all ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
 fi
 
+succeeded=0
+failed=0
 if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
-  succeeded=0
-  failed=0
   failed_targets=()
 
   printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
