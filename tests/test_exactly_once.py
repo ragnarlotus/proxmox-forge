@@ -53,7 +53,6 @@ elif name == "check-requirements.sh":
 else:
     components = {
         "create.sh": "backup",
-        "snapshot.sh": "snapshot",
         "os.sh": "os",
         "application.sh": "application",
         "custom-scripts.sh": "custom",
@@ -77,8 +76,6 @@ else:
     if component == "backup":
         print("backup=success vmid=111 storage=backups "
               "volume=backups:backup/vzdump-lxc-111-test.tar.zst")
-    elif component == "snapshot":
-        print("snapshot=success vmid=111 name=Update_test")
     elif component == "reboot":
         print("reboot_required=yes type=lxc vmid=111 marker=yes")
     elif component == "held":
@@ -117,7 +114,7 @@ class ExactlyOnceTests(unittest.TestCase):
         paths = [
             "lxc/update.sh", "config/get.sh", "lxc/get-target.sh",
             "lxc/get-state.sh", "workflows/check-requirements.sh",
-            "backup/lxc/create.sh", "backup/lxc/snapshot.sh",
+            "backup/lxc/create.sh",
             "lxc/recover.sh", "postflight/reboot-required.sh", "preflight/held-packages.sh", "lxc/update/os.sh",
             "lxc/update/application.sh", "lxc/update/custom-scripts.sh",
             "lxc/update/fstrim.sh", "lxc/health.sh",
@@ -209,7 +206,7 @@ class ExactlyOnceTests(unittest.TestCase):
             "FORGE_RUNTIME_GUARD": str(guard),
             "PATH": f"{bin_path}:{os.environ['PATH']}",
             "FORGE_TEST_STATE_FILE": str(self.root / "guest-state"),
-            "FORGE_LXC_BACKUP_ONLY_VMIDS": "",
+            "FORGE_LXC_BACKUP_PREFLIGHT_OK": "true",
             "FORGE_TEST_HELPER": str(self.helper),
             "FORGE_TEST_CALLS": str(self.calls_path),
             "FORGE_TEST_LOG": str(self.root / "update.log"),
@@ -238,7 +235,7 @@ class ExactlyOnceTests(unittest.TestCase):
         result, steps, _ = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            steps, ["backup", "snapshot", "os", "held", "application",
+            steps, ["backup", "os", "held", "application",
                     "custom", "health", "fstrim", "reboot"],
         )
         self.assertIn("update=success", result.stdout)
@@ -308,7 +305,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertNotIn("Forge final results", result.stdout)
 
     def test_failure_stops_later_stages_and_recovers_only_once(self):
-        stages = ["backup", "snapshot", "os", "application", "custom", "health"]
+        stages = ["backup", "os", "application", "custom", "health"]
         for stage in stages:
             with self.subTest(stage=stage):
                 self.calls_path.unlink(missing_ok=True)
@@ -321,7 +318,9 @@ class ExactlyOnceTests(unittest.TestCase):
                     expected.append("recover")
                     recover = [c for c in calls if c["component"] == "recover"]
                     self.assertEqual(len(recover), 1)
-                    self.assertEqual(recover[0]["args"][5], "snapshot")
+                    self.assertEqual(len(recover[0]["args"]), 6)
+                    self.assertEqual(recover[0]["args"][1],
+                                     "backups:backup/vzdump-lxc-111-test.tar.zst")
                     self.assertEqual(recover[0]["args"][-1], "42")
                 self.assertEqual(steps, expected)
                 self.assertNotIn("reboot", steps)
@@ -337,18 +336,16 @@ class ExactlyOnceTests(unittest.TestCase):
                     result.stdout,
                 )
 
-    def test_fallback_uses_one_backup_no_snapshot_and_one_restore_attempt(self):
-        result, steps, calls = self.invoke(
-            FORGE_LXC_BACKUP_ONLY_VMIDS=" 111",
-            FORGE_TEST_FAIL_STAGE="custom",
-        )
+    def test_all_updates_use_one_backup_no_snapshot_and_one_restore_attempt(self):
+        result, steps, calls = self.invoke(FORGE_TEST_FAIL_STAGE="custom")
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertEqual(
             steps, ["backup", "os", "held", "application", "custom", "recover"]
         )
+        self.assertNotIn("snapshot", steps)
         recover = [c for c in calls if c["component"] == "recover"]
         self.assertEqual(len(recover), 1)
-        self.assertEqual(recover[0]["args"][5], "backup")
+        self.assertEqual(len(recover[0]["args"]), 6)
         self.assertEqual(recover[0]["args"][1],
                          "backups:backup/vzdump-lxc-111-test.tar.zst")
         self.assertEqual(recover[0]["args"][-1], "42")
@@ -358,7 +355,7 @@ class ExactlyOnceTests(unittest.TestCase):
             FORGE_TEST_FAIL_STAGE="os", FORGE_TEST_FAIL_RECOVERY="true",
         )
         self.assertEqual(result.returncode, 42, result.stderr)
-        self.assertEqual(steps, ["backup", "snapshot", "os", "held", "recover"])
+        self.assertEqual(steps, ["backup", "os", "held", "recover"])
 
     def test_application_versions_before_and_after_shared_result(self):
         result, _, _ = self.invoke(FORGE_TEST_APP_BEFORE="1.2", FORGE_TEST_APP_AFTER="1.3")
@@ -460,7 +457,7 @@ class ExactlyOnceTests(unittest.TestCase):
         result, steps, _ = self.invoke(FORGE_TEST_FAIL_STAGE="fstrim")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            steps, ["backup", "snapshot", "os", "held", "application",
+            steps, ["backup", "os", "held", "application",
                     "custom", "health", "fstrim", "reboot"],
         )
         self.assertIn("WARNING: post-update fstrim failed", result.stderr)
