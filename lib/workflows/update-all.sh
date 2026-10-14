@@ -286,10 +286,15 @@ if [[ "$update_host" == true ]]; then
     host_failure_code="$host_result"
     # Host and LXC recovery points are independent. The already validated
     # guest scope must continue even when host backup/update fails.
-    printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=%s\n' \
-      "$host_result" "${CONFIG[UPDATE_RUNNING_LXC]}"
-    printf 'WARNING: host update failed (exit code %s); continuing with selected LXCs\n' \
-      "$host_result" >&2
+    if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true && "$lxc_targets" -gt 0 ]]; then
+      printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=true\n' \
+        "$host_result"
+      printf 'WARNING: host update failed (exit code %s); continuing with selected LXCs\n' \
+        "$host_result" >&2
+    else
+      printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=false\n' \
+        "$host_result"
+    fi
   else
     host_status=OK
     host_reason=completed
