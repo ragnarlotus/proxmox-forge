@@ -168,6 +168,7 @@ LOG_DIR="/var/log/proxmox-forge"
 #   LOG_DIR/<PVE_FQDN>/host/error.log
 # LXC logs are stored as:
 #   LOG_DIR/<PVE_FQDN>/lxc/<VMID>/<TIMESTAMP>.log
+# General update run logs are stored as:
 #   LOG_DIR/<PVE_FQDN>/runs/<RUN_ID>.log
 # LOG_KEEP applies independently to timestamped LXC logs and general run logs.
 LOG_KEEP=8
