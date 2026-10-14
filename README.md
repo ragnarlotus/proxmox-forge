@@ -26,6 +26,7 @@ Forge currently supports:
 - APT `autoremove` maintenance;
 - post-update LXC `fstrim`;
 - per-target logging and deterministic terminal capture;
+- one retained chronological general log per update execution (including sanitized stage output, target results and final table);
 - one global execution lock preventing overlapping Forge runs.
 
 Forge is an updater, not a tool for querying pending upgrades: standalone package-update discovery, preview/check, speculative upgrade plans, CVE reporting and package-level selection are outside its scope. APT repository metadata is refreshed as part of actual OS updates.
