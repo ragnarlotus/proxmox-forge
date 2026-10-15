@@ -1,8 +1,8 @@
 # Forge — Feature Checklist
 
-Practical capability checklist for Forge's Proxmox host and LXC updater, plus a small set of relevant future improvements (including possible VM support).
+Practical capability checklist for Forge's Proxmox host and LXC updater, including agreed improvements and separately identified future candidates from comparisons with other updaters.
 
-Speculative features, duplicate entries, incompatible policies and unrelated platform/tooling proposals have been removed. Existing feature IDs are intentionally preserved for historical traceability, so gaps are expected. Unchecked items are candidates, not commitments.
+Existing feature IDs are intentionally preserved for historical traceability, so gaps are expected. Unchecked items are candidates, not commitments. The comparison candidates at the end do not supersede the current scope constraints or approve implementation.
 
 Implemented means the capability exists in the current `main` branch at the scope described. Partial plumbing, collected-but-unused data, or behaviour that only happens incidentally is not marked as implemented.
 
@@ -215,6 +215,43 @@ The final summary is a **per-execution results table**, inspired by the presenta
 - [x] **F217** Preserve native terminal colours, formatting and carriage-return progress while preventing producer `CSI 3 J` sequences from deleting Forge's existing terminal scrollback.
 - [x] **F218** Retain Forge-created Proxmox host configuration backups for 14 days after validating each new archive.
 - [x] **F219** Allow host-local additional paths to be appended to the fixed Proxmox host configuration backup set through `HOST_BACKUP_EXTRA_PATHS`, without replacing the mandatory base paths.
+
+## V. Future comparison candidates (not yet approved for implementation)
+
+The proposals below were identified from Ultimate Updater and Proxmox VE Community Scripts comparisons on 2026-10-15. They are **unimplemented candidates**, not amendments to the initial scope or authorisation to implement them. Review each independently for value, safety, dependencies and maintenance cost. In particular, the existing decision to exclude standalone update discovery remains in force unless F227 is explicitly accepted later.
+
+### Visibility, discovery and policy
+
+- [ ] **F227 — Standalone read-only update check (scope reconsideration).** Optionally add `forge check` for host, running LXC and positively identified application updaters, showing genuinely available updates without installing them. Define what information can be read without changing guest state; never silently start stopped LXCs or treat a version comparison as proof of an applicable upgrade. **Conflicts with the current update-only scope; requires an explicit product decision before implementation.**
+- [ ] **F228 — Queryable status and history.** Provide `forge status` and `forge history` (human-readable and stable JSON) from authoritative retained run/target records; include actual result, failed stage, recovery outcome, reboot indicator, installed versions and the exact same-run backup ID when recorded. Build on F083, F119, F141 and F220–F225; do not duplicate collection, invent missing historical fields or change update semantics. This also incorporates the proposed recovery-linked change history.
+- [ ] **F229 — Verified security versus ordinary update counts.** For supported APT sources, distinguish security/normal updates where the configured origin metadata reliably supports it; otherwise report total-only or unknown. Keep separate from F221's already-implemented count of packages *actually upgraded*; avoid claiming CVE coverage.
+- [ ] **F230 — Independent check/update selection policies.** If F227 is approved, support separately scoped read-only checks and mutating updates, while preserving exact target identity, current `EXCLUDE` behaviour and the rule that automatic LXC updates never include stopped guests.
+- [ ] **F231 — Optional Proxmox tag selection.** Add explicit, deterministic tag-based groups for eligible update/check targets without changing existing VMID/name exclusions, implicitly selecting stopped LXCs or making ambiguous matching acceptable.
+
+### Execution and target compatibility
+
+- [ ] **F232 — Additional verified Linux package-manager adapters.** Evaluate APK, DNF/YUM and Pacman one target family at a time; implement only with verified preflight, error semantics, upgrade handling and regression tests. F054 currently detects APT only and must not be reinterpreted as broad support.
+- [ ] **F233 — SSH transport for supported VMs.** Offer key-based SSH when QGA is unavailable or unsuitable, building on F003/F187. Validate target identity, host keys, privileges, operating system and lifecycle; do not use an unverified command path or silently bypass recovery requirements.
+- [ ] **F234 — Temporary application-build resource adjustments.** For verified Community Scripts application updaters needing extra CPU/RAM, consider guarded temporary resource changes based on reliable requirements, with guaranteed restoration on success and failure; do not overwrite user resource choices permanently.
+- [ ] **F235 — Explicit controlled reboot action.** Extend F094's reporting with a separately requested host/guest reboot where safe, preserving maintenance-window and lifecycle constraints. Never turn update completion into an automatic host reboot by default.
+- [ ] **F241 — FreeBSD/pfSense guest update adapter.** Separately evaluate `pkg`-based updates for verified supported VM guests, including transport, OS/version detection, privilege boundaries, backup guarantees and exact failure reporting; do not reuse Linux/APT assumptions or imply that an independent external FreeBSD server is already supported.
+
+### Operational management and expansion
+
+- [ ] **F236 — Per-job notification policies.** Extend F153/F154 using the existing Proxmox mail routing and authoritative result model: configurable messages for scheduled runs, errors, and optional security/update digests when those data are available; no duplicate SMTP configuration or independent result aggregator.
+- [ ] **F237 — Safe Forge self-update.** Provide a deliberate version/commit comparison and guarded fast-forward update of the agreed Git checkout, never while an update job is running; retain local configuration and reject divergent/unexpected source state.
+- [ ] **F238 — Optional authenticated Web UI.** Consider target inventory, manual execution, retained job logs/status and configuration over the same CLI/job engine, only after F131 and a stable status model. Do not expose a general shell or create an independent update/restore implementation; require Proxmox-appropriate authentication and authorisation.
+- [ ] **F239 — Cluster-aware orchestration.** Evaluate multi-node inventory and owner-node execution with remote identity checks, per-node recovery scope and conflict prevention. Do not apply single-node assumptions across Proxmox cluster boundaries.
+- [ ] **F240 — External Linux host support.** Evaluate explicitly configured SSH targets outside Proxmox; verify target-specific privileges, updater and recovery/backup policy instead of pretending external hosts have LXC `vzdump` rollback.
+
+### Distinctive reliability capabilities
+
+- [ ] **F242 — Independent recoverability verification.** Optionally validate that a retained backup is actually restorable using isolated, non-production tests and recorded evidence. This is beyond F082's successful archive-creation check; never overwrite or restore a live production guest merely to test its backup.
+- [ ] **F243 — Staged/canary updates.** Allow an explicitly selected trial target or group before continuing compatible targets, gated by real functional health results; preserve per-target backups, failure isolation and the original error state.
+- [ ] **F244 — Declared service dependency ordering.** Consider explicit cross-target dependencies for sequential maintenance, with cycle/conflict detection and health-based gating. Never auto-start excluded/stopped guests or silently expand the selected update scope.
+- [ ] **F245 — Reproducible run context audit.** Complement F141/F152 with the executing Forge commit/version and a safe fingerprint or provenance record of the effective configuration and target policy; redact secrets and avoid storing credentials in logs or notifications.
+
+> **Deduplication:** the original proposal to connect outcomes to their recovery backup is covered by F083/F141/F220–F225 and extended under F228; actionable failure diagnostics already exist under F224/F159, so neither received another feature ID. Previously listed F003, F069, F121, F131, F146 and F187 remain unchanged. F068 remains explicitly discarded.
 
 ---
 
