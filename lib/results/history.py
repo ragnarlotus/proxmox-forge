@@ -8,7 +8,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from table import clean, fields, parse
+from table import clean, fields, parse, summarize
 
 RUN_ID = re.compile(r"[0-9]{8}T[0-9]{6}-[0-9]+")
 FQDN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
@@ -144,6 +144,8 @@ def read_run(path):
         }
         if any(totals[key] != count for key, count in actual.items()):
             raise ValueError("global result differs from authoritative target records")
+        if totals["status"] != summarize(rows)[3]:
+            raise ValueError("global status differs from authoritative target records")
 
     for row in rows:
         key = row["type"], row["vmid"]
