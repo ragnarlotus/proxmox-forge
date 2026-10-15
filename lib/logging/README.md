@@ -41,6 +41,8 @@ result. The logfile has mode 0640 inside a 0750 directory.
 
 `LOG_KEEP` also controls retention of timestamped per-LXC logs.
 
+F228 reads only retained general logs through `forge status [--json]` and `forge history [RUN_ID] [--json]`; it does not create a second results database. `run_end` records the actual CLI exit code; `result_global` and `result_target` remain authoritative for outcomes. The decoder maps recorded `recovery_artifact` (LXC), `backup_artifact` (host) and `reboot_status` events to attempted targets. Missing fields are unknown and inconsistent global counts are rejected. No guest commands or mutations occur during queries.
+
 Forge records structured events with ISO timestamps, event names, fields, exit codes and durations where available. After the APT OS stage (or before an application-only update), it captures read-only F022 `held_upgrade_pending` records (package, installed and candidate versions), a pending count, and a warning **only when a newer candidate is blocked by an explicit hold**. Holds with no newer candidates are silent. Query failures are visible warnings, not a clean zero-hold result. Host `ERROR` events are mirrored to `error.log`.
 
 ## Terminal capture behaviour
