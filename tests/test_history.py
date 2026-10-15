@@ -171,6 +171,10 @@ class HistoryTests(unittest.TestCase):
         r = self.query("history")
         self.assertEqual(r.returncode, 2)
         self.assertIn("target count differs", r.stderr)
+        path.write_text(self.fixture().replace("status=PARTIAL targets=", "status=SUCCESS targets="))
+        r = self.query("status")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("global status differs", r.stderr)
 
     def test_invalid_log_names_and_symlink_are_ignored(self):
         self.store(self.newer, self.fixture())
