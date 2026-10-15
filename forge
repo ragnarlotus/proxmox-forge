@@ -107,6 +107,7 @@ LXC_GET_TARGET_SCRIPT="$FORGE_DIR/lib/lxc/get-target.sh"
 LXC_CONFLICTS_SCRIPT="$FORGE_DIR/lib/config/conflicts.sh"
 LXC_UPDATE_SCRIPT="$FORGE_DIR/lib/lxc/update.sh"
 UPDATE_ALL_SCRIPT="$FORGE_DIR/lib/workflows/update-all.sh"
+HISTORY_SCRIPT="$FORGE_DIR/lib/results/history.py"
 
 [[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
 # shellcheck source=/dev/null
@@ -136,7 +137,7 @@ ensure_lxc_environment() {
 }
 
 case "${1:-}" in
-  validate-config|show-config|host|lxc|update)
+  validate-config|show-config|status|history|host|lxc|update)
     config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
     write_runtime_state
     export FORGE_RUNTIME_CONFIG_READY=true
@@ -167,6 +168,17 @@ run_update_all() {
     ensure_lxc_environment
   fi
   bash "$UPDATE_ALL_SCRIPT" "$mode"
+}
+
+# F228: read the retained logs only; neither query creates a log nor invokes a target.
+# Global CLI locking is preserved until F131 introduces independent jobs.
+run_history() {
+  local mode="$1" fqdn
+  shift
+  [[ -r "$HISTORY_SCRIPT" ]] || fail "history renderer is not readable: $HISTORY_SCRIPT"
+  command -v python3 >/dev/null 2>&1 || fail "Python 3 is required for history queries"
+  fqdn="$(hostname -f)" || fail "could not determine Proxmox host FQDN"
+  python3 "$HISTORY_SCRIPT" "$mode" "${CONFIG[LOG_DIR]}" "$fqdn" "$@"
 }
 
 # Check the exact LXC scope before any mutation; config values were already validated.
@@ -212,6 +224,14 @@ main() {
       # shellcheck source=/dev/null
       source "$CONFIG_SHOW_SCRIPT" || fail "could not load config show helper"
       config_show || fail "could not show effective Forge configuration"
+      ;;
+    status)
+      [[ $# -eq 1 || ( $# -eq 2 && "$2" == --json ) ]] || fail "usage: forge status [--json]"
+      run_history status "${@:2}"
+      ;;
+    history)
+      [[ $# -ge 1 && $# -le 3 ]] || fail "usage: forge history [RUN_ID] [--json]"
+      run_history history "${@:2}"
       ;;
     host)
       [[ $# -eq 2 && "$2" == update ]] || fail "usage: forge host update"
