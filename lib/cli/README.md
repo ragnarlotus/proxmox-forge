@@ -4,6 +4,8 @@
 ```text
 forge validate-config
 forge show-config
+forge status [--json]
+forge history [RUN_ID] [--json]
 forge host update
 forge lxc list-targets
 forge lxc update TARGET
@@ -26,6 +28,12 @@ Loads `forge.conf.default`, then optional local `forge.conf`, validates the merg
 ## `forge show-config`
 
 Loads and validates `forge.conf.default` and optional `forge.conf`, printing the effective values in stable key order. The end of each line indicates `source=default` or `source=override` (even when an override matches the default). Values use Bash-safe quoting and sensitive-looking keys are redacted. This read-only command does not query LXC state or run the snapshot/backup recovery-policy preflight.
+
+## `forge status` and `forge history`
+
+Read-only access to existing general run logs under `LOG_DIR/<PVE_FQDN>/runs/`. `forge status` displays the newest retained run; `forge history` lists retained runs newest first; `forge history RUN_ID` displays one run. Append `--json` for machine-readable output.
+
+Only authoritative `result_target`, `result_global`, `run_start`/`run_end`, `recovery_artifact`/`backup_artifact` and `reboot_status` records are used. Results, actual APT upgrade counts, application versions, failed stage/recovery, reboot indicator and exact backup reference are reported only when present. Missing or interrupted run data are unknown/incomplete; a backup reference is **not** proof of archive integrity. `LOG_KEEP` (8 by default) limits history. Queries do not inspect/update packages, contact guests or create logs. The existing global CLI lock still applies, so another simultaneous Forge execution blocks queries until F131 introduces independent jobs.
 
 ## `forge host update`
 

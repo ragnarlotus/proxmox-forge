@@ -15,6 +15,8 @@ Usage: forge COMMAND [ARGUMENTS]
 Commands:
   validate-config             Validate Forge configuration and running-LXC protection.
   show-config                 Print validated effective settings and their sources.
+  status [--json]             Show the latest retained update-run result.
+  history [RUN_ID] [--json]   List retained runs or show one run in detail.
   host update                 Update the local Proxmox VE host.
   lxc list-targets            List running LXCs selected by UPDATE_RUNNING_LXC.
   lxc update TARGET           Update one LXC; temporarily start it if stopped.

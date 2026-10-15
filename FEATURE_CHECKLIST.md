@@ -139,6 +139,7 @@ Forge performs updates rather than checking what is available in advance. Reposi
 - [x] **F144** Precise timestamps.
 - [x] **F145** Persist exit codes.
 - [ ] **F146** Record duration per step/target/run.
+- [x] **F228 — Queryable status and history (2026-10-15).** `forge status [--json]` and `forge history [RUN_ID] [--json]` query retained F141 general run logs using authoritative F220–F225 target/global records. Detail includes actual CLI exit code, error stage/recovery, APT upgrade count, application before/after version, reboot requirement and exact same-run backup when logged. Missing/incomplete records remain unknown; inconsistent totals fail rather than inventing results. Read-only queries run no guest/Proxmox actions or new logging, but retain the global CLI lock. Available history is limited by `LOG_KEEP`; mocked-log and public-CLI regression tests cover behaviour.
 - [x] **F147** Basic human-readable final summary (existing scope). The CLI currently prints a readable outcome for individual host/LXC and bulk updates, including success/failure counts, failed VMIDs/exit codes and disabled scopes. **The richer F225 table is now implemented separately**; existing structured result lines, recovery behaviour and exit codes remain intact.
 
 ### Final update-results roadmap (agreed scope; implement in order)
@@ -223,7 +224,6 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 ### Visibility, discovery and policy
 
 - [ ] **F227 — Standalone read-only update check (scope reconsideration).** Optionally add `forge check` for host, running LXC and positively identified application updaters, showing genuinely available updates without installing them. Define what information can be read without changing guest state; never silently start stopped LXCs or treat a version comparison as proof of an applicable upgrade. **Conflicts with the current update-only scope; requires an explicit product decision before implementation.**
-- [ ] **F228 — Queryable status and history.** Provide `forge status` and `forge history` (human-readable and stable JSON) from authoritative retained run/target records; include actual result, failed stage, recovery outcome, reboot indicator, installed versions and the exact same-run backup ID when recorded. Build on F083, F119, F141 and F220–F225; do not duplicate collection, invent missing historical fields or change update semantics. This also incorporates the proposed recovery-linked change history.
 - [ ] **F229 — Verified security versus ordinary update counts.** For supported APT sources, distinguish security/normal updates where the configured origin metadata reliably supports it; otherwise report total-only or unknown. Keep separate from F221's already-implemented count of packages *actually upgraded*; avoid claiming CVE coverage.
 - [ ] **F230 — Independent check/update selection policies.** If F227 is approved, support separately scoped read-only checks and mutating updates, while preserving exact target identity, current `EXCLUDE` behaviour and the rule that automatic LXC updates never include stopped guests.
 - [ ] **F231 — Optional Proxmox tag selection.** Add explicit, deterministic tag-based groups for eligible update/check targets without changing existing VMID/name exclusions, implicitly selecting stopped LXCs or making ambiguous matching acceptable.
@@ -251,7 +251,7 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 - [ ] **F244 — Declared service dependency ordering.** Consider explicit cross-target dependencies for sequential maintenance, with cycle/conflict detection and health-based gating. Never auto-start excluded/stopped guests or silently expand the selected update scope.
 - [ ] **F245 — Reproducible run context audit.** Complement F141/F152 with the executing Forge commit/version and a safe fingerprint or provenance record of the effective configuration and target policy; redact secrets and avoid storing credentials in logs or notifications.
 
-> **Deduplication:** the original proposal to connect outcomes to their recovery backup is covered by F083/F141/F220–F225 and extended under F228; actionable failure diagnostics already exist under F224/F159, so neither received another feature ID. Previously listed F003, F069, F121, F131, F146 and F187 remain unchanged. F068 remains explicitly discarded.
+> **Deduplication:** the original proposal to connect outcomes to their recovery backup is covered by F083/F141/F220–F225 and extended under the now-implemented F228; actionable failure diagnostics already exist under F224/F159, so neither received another feature ID. Previously listed F003, F069, F121, F131, F146 and F187 remain unchanged. F068 remains explicitly discarded.
 
 ---
 
