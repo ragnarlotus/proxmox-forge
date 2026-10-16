@@ -137,7 +137,13 @@ forge_result_text() {
         if [[ "$error" == *$'\n'* ]]; then
           msg+=$'\nFailed stage output:\n'"$error"
         else
-          msg+=": $error"
+          # The result already starts with ERROR; avoid repeating a generic
+          # severity prefix on a single original diagnostic line.
+          case "$error" in
+            "ERROR: "*|"Error: "*|"error: "*|"FATAL: "*|"Fatal: "*|"fatal: "*|"Failed: "*|"failed: "*|"E: "*)
+              msg+=": ${error#*: }" ;;
+            *) msg+=": $error" ;;
+          esac
         fi
       fi
       ;;
