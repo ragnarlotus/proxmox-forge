@@ -173,11 +173,11 @@ class FailedTargetSummaryTests(unittest.TestCase):
 
     def test_multiline_updater_diagnostics_and_recovery_are_separate(self):
         detail = (
-            "ERROR: application_update (exit 42)\\n"
-            "Failed stage output:\\n"
-            "npm ERR! code ERESOLVE\\n"
-            "npm ERR! unable to resolve dependency tree\\n"
-            "npm ERR! Conflicting peer dependency\\n"
+            "ERROR: application_update (exit 42)\n"
+            "Failed stage output:\n"
+            "npm ERR! code ERESOLVE\n"
+            "npm ERR! unable to resolve dependency tree\n"
+            "npm ERR! Conflicting peer dependency\n"
             "recovery succeeded"
         )
         result = self.render([
