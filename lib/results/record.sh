@@ -60,27 +60,55 @@ forge_result_encode() {
   printf '%s' "$out"
 }
 
-# Only explicit diagnostic lines from the failed stage's sanitized log output.
-# Do not infer causes from unrelated stages or recovery messages.
+# Quote only literal diagnostic output from the failed stage, not an inferred
+# root cause, a recovery stage, or unrelated output. Keep a bounded selection:
+# the first four and the last eight matching lines in their original order.
+# The full sanitized stage output remains in the target/run logs.
 forge_result_stage_error() {
   local log_file="$1" stage="$2"
   [[ -f "$log_file" && "$stage" =~ ^[a-z][a-z0-9_-]*$ ]] || return 0
   awk -v token="stage=$stage" '
+    function explicit_error(text) {
+      return text ~ /^[[:space:]]*(ERROR:|Error:|error:|FATAL:|Fatal:|fatal:|Failed:|failed:|Failed to |E:|Err:[0-9]+|npm (ERR!|error)|pnpm (ERR|error)|ERR_PNPM_|yarn (error|ERR!)|dpkg: error|curl: \([0-9]+\)|Traceback \(most recent call last\):|[[:alnum:]_]*(Error|Exception):|Exception in thread |Error response from daemon:|CMake Error|make: \*\*\*|gmake: \*\*\*|\[[Ee][Rr][Rr][Oo][Rr]\]|File "[^"]+", line [0-9]+)/
+    }
+    function save(text, slot) {
+      if (length(text) > 500)
+        text = substr(text, 1, 500) " [line truncated; see log]"
+      ++found
+      if (found <= 4) first[found] = text
+      slot = (found - 1) % 8
+      tail[slot] = text
+    }
     / event=stage_start / {
       active = (index($0, " " token " ") > 0)
-      if (active) message = ""
+      if (active) {
+        found = 0
+        delete first
+        delete tail
+      }
       next
     }
     / event=stage_end / {
       if (active && index($0, " " token " ") > 0) active = 0
       next
     }
-    active && /^(ERROR|Error|FATAL|Fatal|fatal|E|Failed):[[:space:]]/ {
-      message=$0
-      sub(/^[^:]+:[[:space:]]*/, "", message)
+    active && explicit_error($0) { save($0) }
+    END {
+      if (!found) exit
+      if (found <= 12) {
+        if (found <= 8) {
+          for (i = 1; i <= found; i++) print tail[(i - 1) % 8]
+        } else {
+          for (i = 1; i <= found - 8; i++) print first[i]
+          for (i = found - 7; i <= found; i++) print tail[(i - 1) % 8]
+        }
+      } else {
+        for (i = 1; i <= 4; i++) print first[i]
+        printf "[%d diagnostic lines omitted; see log]\n", found - 12
+        for (i = found - 7; i <= found; i++) print tail[(i - 1) % 8]
+      }
     }
-    END { if (message != "") print substr(message, 1, 240) }
-  ' "$log_file" 2>/dev/null
+  ' "$log_file"
 }
 
 forge_result_text() {
@@ -105,16 +133,234 @@ forge_result_text() {
     ERROR)
       [[ "$stage" != "-" ]] || stage=unknown
       msg="ERROR: $stage (exit $code)"
-      if [[ -n "$error" ]]; then msg+=": $error"; fi
+      if [[ -n "$error" ]]; then
+        if [[ "$error" == *
+  printf '%s' "$msg"
+}
+
+# Nested bulk updates write a private handoff, never a second result_target.
+# The three columns contain no whitespace: encoded text, stage, recovery.
+forge_result_publish() {
+  [[ $# -ge 12 && $# -le 16 ]] || return 2
+  local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail
+  detail="$(forge_result_encode "$(forge_result_text "$6" "$7" "$8" "$stage" "$error" "$recovery" "$warning")")"
+  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk ]]; then
+    if [[ -n "${FORGE_RESULT_DETAIL_FILE:-}" ]]; then
+      printf '%s\t%s\t%s\n' "$detail" "$stage" "$recovery" > "$FORGE_RESULT_DETAIL_FILE" ||
+        printf 'WARNING: could not transfer result details to bulk coordinator\n' >&2
+    fi
+    return 0
+  fi
+  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" || return $?
+  if [[ "${FORGE_RESULT_TABLE:-}" == true ]]; then
+    forge_result_render "$FORGE_RESULT_LAST_RECORD"
+  fi
+  return 0
+}
+
+# The table consumes exactly the same validated records already printed.
+# Reporting cannot mask the primary update's failure code.
+forge_result_render() {
+  local renderer
+  renderer="$(dirname "${BASH_SOURCE[0]}")/table.py"
+  if [[ ! -r "$renderer" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf 'WARNING: final table unavailable (Python renderer missing)\n' >&2
+    return 0
+  fi
+  if ! printf '%s\n' "$@" | python3 "$renderer"; then
+    printf 'WARNING: final table rendering failed; structured results remain authoritative\n' >&2
+    return 0
+  fi
+
+  # Mail is a best-effort optional presentation of these *same* final rows,
+  # never a second update or collector. Nested bulk target runs never reach
+  # this point, so one Forge execution produces at most one notification.
+  if [[ "${CONFIG[EMAIL_NOTIFICATIONS]:-false}" == true ]]; then
+    local notifier
+    notifier="$(dirname "${BASH_SOURCE[0]}")/../notifications/send.py"
+    if [[ ! -r "$notifier" ]]; then
+      printf 'WARNING: Forge email notifier is unavailable\n' >&2
+    elif ! printf '%s\n' "$@" | python3 "$notifier" "${CONFIG[NOTIFY_ONLY_ERRORS]:-true}"; then
+      printf 'WARNING: Forge email notification was not accepted; update result unchanged\n' >&2
+    fi
+  fi
+  return 0
+}
+\n'* ]]; then
+          msg+=
+  printf '%s' "$msg"
+}
+
+# Nested bulk updates write a private handoff, never a second result_target.
+# The three columns contain no whitespace: encoded text, stage, recovery.
+forge_result_publish() {
+  [[ $# -ge 12 && $# -le 16 ]] || return 2
+  local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail
+  detail="$(forge_result_encode "$(forge_result_text "$6" "$7" "$8" "$stage" "$error" "$recovery" "$warning")")"
+  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk ]]; then
+    if [[ -n "${FORGE_RESULT_DETAIL_FILE:-}" ]]; then
+      printf '%s\t%s\t%s\n' "$detail" "$stage" "$recovery" > "$FORGE_RESULT_DETAIL_FILE" ||
+        printf 'WARNING: could not transfer result details to bulk coordinator\n' >&2
+    fi
+    return 0
+  fi
+  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" || return $?
+  if [[ "${FORGE_RESULT_TABLE:-}" == true ]]; then
+    forge_result_render "$FORGE_RESULT_LAST_RECORD"
+  fi
+  return 0
+}
+
+# The table consumes exactly the same validated records already printed.
+# Reporting cannot mask the primary update's failure code.
+forge_result_render() {
+  local renderer
+  renderer="$(dirname "${BASH_SOURCE[0]}")/table.py"
+  if [[ ! -r "$renderer" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf 'WARNING: final table unavailable (Python renderer missing)\n' >&2
+    return 0
+  fi
+  if ! printf '%s\n' "$@" | python3 "$renderer"; then
+    printf 'WARNING: final table rendering failed; structured results remain authoritative\n' >&2
+    return 0
+  fi
+
+  # Mail is a best-effort optional presentation of these *same* final rows,
+  # never a second update or collector. Nested bulk target runs never reach
+  # this point, so one Forge execution produces at most one notification.
+  if [[ "${CONFIG[EMAIL_NOTIFICATIONS]:-false}" == true ]]; then
+    local notifier
+    notifier="$(dirname "${BASH_SOURCE[0]}")/../notifications/send.py"
+    if [[ ! -r "$notifier" ]]; then
+      printf 'WARNING: Forge email notifier is unavailable\n' >&2
+    elif ! printf '%s\n' "$@" | python3 "$notifier" "${CONFIG[NOTIFY_ONLY_ERRORS]:-true}"; then
+      printf 'WARNING: Forge email notification was not accepted; update result unchanged\n' >&2
+    fi
+  fi
+  return 0
+}
+\nFailed stage output:\n'"$error"
+        else
+          msg+=": $error"
+        fi
+      fi
       ;;
   esac
+  # A multiline excerpt must not absorb the independent recovery outcome into
+  # its final original log line. Keep legacy one-line result formatting intact.
+  local separator="; "
+  [[ "$msg" == *
+  printf '%s' "$msg"
+}
+
+# Nested bulk updates write a private handoff, never a second result_target.
+# The three columns contain no whitespace: encoded text, stage, recovery.
+forge_result_publish() {
+  [[ $# -ge 12 && $# -le 16 ]] || return 2
+  local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail
+  detail="$(forge_result_encode "$(forge_result_text "$6" "$7" "$8" "$stage" "$error" "$recovery" "$warning")")"
+  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk ]]; then
+    if [[ -n "${FORGE_RESULT_DETAIL_FILE:-}" ]]; then
+      printf '%s\t%s\t%s\n' "$detail" "$stage" "$recovery" > "$FORGE_RESULT_DETAIL_FILE" ||
+        printf 'WARNING: could not transfer result details to bulk coordinator\n' >&2
+    fi
+    return 0
+  fi
+  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" || return $?
+  if [[ "${FORGE_RESULT_TABLE:-}" == true ]]; then
+    forge_result_render "$FORGE_RESULT_LAST_RECORD"
+  fi
+  return 0
+}
+
+# The table consumes exactly the same validated records already printed.
+# Reporting cannot mask the primary update's failure code.
+forge_result_render() {
+  local renderer
+  renderer="$(dirname "${BASH_SOURCE[0]}")/table.py"
+  if [[ ! -r "$renderer" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf 'WARNING: final table unavailable (Python renderer missing)\n' >&2
+    return 0
+  fi
+  if ! printf '%s\n' "$@" | python3 "$renderer"; then
+    printf 'WARNING: final table rendering failed; structured results remain authoritative\n' >&2
+    return 0
+  fi
+
+  # Mail is a best-effort optional presentation of these *same* final rows,
+  # never a second update or collector. Nested bulk target runs never reach
+  # this point, so one Forge execution produces at most one notification.
+  if [[ "${CONFIG[EMAIL_NOTIFICATIONS]:-false}" == true ]]; then
+    local notifier
+    notifier="$(dirname "${BASH_SOURCE[0]}")/../notifications/send.py"
+    if [[ ! -r "$notifier" ]]; then
+      printf 'WARNING: Forge email notifier is unavailable\n' >&2
+    elif ! printf '%s\n' "$@" | python3 "$notifier" "${CONFIG[NOTIFY_ONLY_ERRORS]:-true}"; then
+      printf 'WARNING: Forge email notification was not accepted; update result unchanged\n' >&2
+    fi
+  fi
+  return 0
+}
+\n'* ]] && separator=
+  printf '%s' "$msg"
+}
+
+# Nested bulk updates write a private handoff, never a second result_target.
+# The three columns contain no whitespace: encoded text, stage, recovery.
+forge_result_publish() {
+  [[ $# -ge 12 && $# -le 16 ]] || return 2
+  local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail
+  detail="$(forge_result_encode "$(forge_result_text "$6" "$7" "$8" "$stage" "$error" "$recovery" "$warning")")"
+  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk ]]; then
+    if [[ -n "${FORGE_RESULT_DETAIL_FILE:-}" ]]; then
+      printf '%s\t%s\t%s\n' "$detail" "$stage" "$recovery" > "$FORGE_RESULT_DETAIL_FILE" ||
+        printf 'WARNING: could not transfer result details to bulk coordinator\n' >&2
+    fi
+    return 0
+  fi
+  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" || return $?
+  if [[ "${FORGE_RESULT_TABLE:-}" == true ]]; then
+    forge_result_render "$FORGE_RESULT_LAST_RECORD"
+  fi
+  return 0
+}
+
+# The table consumes exactly the same validated records already printed.
+# Reporting cannot mask the primary update's failure code.
+forge_result_render() {
+  local renderer
+  renderer="$(dirname "${BASH_SOURCE[0]}")/table.py"
+  if [[ ! -r "$renderer" ]] || ! command -v python3 >/dev/null 2>&1; then
+    printf 'WARNING: final table unavailable (Python renderer missing)\n' >&2
+    return 0
+  fi
+  if ! printf '%s\n' "$@" | python3 "$renderer"; then
+    printf 'WARNING: final table rendering failed; structured results remain authoritative\n' >&2
+    return 0
+  fi
+
+  # Mail is a best-effort optional presentation of these *same* final rows,
+  # never a second update or collector. Nested bulk target runs never reach
+  # this point, so one Forge execution produces at most one notification.
+  if [[ "${CONFIG[EMAIL_NOTIFICATIONS]:-false}" == true ]]; then
+    local notifier
+    notifier="$(dirname "${BASH_SOURCE[0]}")/../notifications/send.py"
+    if [[ ! -r "$notifier" ]]; then
+      printf 'WARNING: Forge email notifier is unavailable\n' >&2
+    elif ! printf '%s\n' "$@" | python3 "$notifier" "${CONFIG[NOTIFY_ONLY_ERRORS]:-true}"; then
+      printf 'WARNING: Forge email notification was not accepted; update result unchanged\n' >&2
+    fi
+  fi
+  return 0
+}
+\n'
   case "$recovery" in
-    success) msg+="; recovery succeeded" ;;
-    disabled) msg+="; recovery skipped (disabled)" ;;
-    unavailable) msg+="; recovery unavailable (no artifact)" ;;
-    failed:*) msg+="; recovery failed (exit ${recovery#failed:})" ;;
+    success) msg+="${separator}recovery succeeded" ;;
+    disabled) msg+="${separator}recovery skipped (disabled)" ;;
+    unavailable) msg+="${separator}recovery unavailable (no artifact)" ;;
+    failed:*) msg+="${separator}recovery failed (exit ${recovery#failed:})" ;;
   esac
-  [[ -z "$warning" ]] || msg+="; WARNING: $warning"
+  [[ -z "$warning" ]] || msg+="${separator}WARNING: $warning"
   printf '%s' "$msg"
 }
 
