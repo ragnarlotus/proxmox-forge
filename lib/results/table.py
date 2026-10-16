@@ -146,11 +146,16 @@ def emit_failures(rows, width, enabled):
         name = clean(row["name"])
         status = row["status"]
         print(f'  {row["vmid"]} | {name} | {colored(status, status, enabled)}')
-        # Share precisely the decoded/sanitized detail used by the Result
-        # column. Wrap diagnostics on narrow terminals without truncation.
-        detail = fields(row)[5]
-        for index, part in enumerate(wrap(detail, max(32, width - len(prefix)))):
-            print((prefix if index == 0 else " " * len(prefix)) + part)
+        # F224 keeps original failed-stage messages separated by encoded
+        # newlines. Prefix *every* decoded line so untrusted log content cannot
+        # impersonate a result row or status header. The same record powers
+        # the F225 table, F159 digest, notifications and retained history.
+        detail = unquote(row["result_detail"], encoding="utf-8", errors="replace")
+        logical_lines = detail.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        for index, line in enumerate(logical_lines):
+            line_prefix = prefix if index == 0 else "      | "
+            for part_index, part in enumerate(wrap(clean(line), max(32, width - len(line_prefix)))):
+                print((line_prefix if part_index == 0 else " " * len(line_prefix)) + part)
 
 
 
