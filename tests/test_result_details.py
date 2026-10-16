@@ -110,15 +110,92 @@ class ActionableResultTests(unittest.TestCase):
                 f"forge_result_stage_error '{log}' os_update"
             )
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), "Package cache is inaccessible")
+            self.assertEqual(r.stdout.strip(), "ERROR: Package cache is inaccessible")
             r = self.run_helper(
                 f"forge_result_stage_error '{log}' held_packages"
             )
-            self.assertEqual(r.stdout.strip(), "Cannot inspect held packages")
+            self.assertEqual(r.stdout.strip(), "ERROR: Cannot inspect held packages")
             r = self.run_helper(
                 f"forge_result_stage_error '{log}' unknown_stage"
             )
             self.assertEqual(r.stdout.strip(), "")
+
+    def test_multiline_community_scripts_error_is_verbatim_and_stage_scoped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stage.log"
+            diagnostics = [
+                "npm ERR! code ERESOLVE",
+                "npm ERR! unable to resolve dependency tree",
+                "npm ERR! Conflicting peer dependency: example@1.2",
+            ]
+            log.write_text(
+                "2026 level=INFO event=stage_start stage=os_update command=apt\n"
+                "ERROR: failure from unrelated earlier stage\n"
+                "2026 level=ERROR event=stage_end stage=os_update status=failed exit_code=1\n"
+                "2026 level=INFO event=stage_start stage=application_update command=helper\n"
+                "Downloading app...\n"
+                + "\n".join(diagnostics) + "\n"
+                "This line does not explicitly report an error\n"
+                "2026 level=ERROR event=stage_end stage=application_update status=failed exit_code=42\n"
+                "2026 level=INFO event=stage_start stage=recovery_health command=check\n"
+                "ERROR: rollback health failure must not leak\n"
+                "2026 level=ERROR event=stage_end stage=recovery_health status=failed exit_code=8\n",
+                encoding="utf-8",
+            )
+            extracted = self.run_helper(
+                f"forge_result_stage_error '{log}' application_update"
+            )
+            self.assertEqual(extracted.returncode, 0, extracted.stderr)
+            self.assertEqual(extracted.stdout.splitlines(), diagnostics)
+
+            row, detail = self.parse(self.result(
+                "lxc", "ERROR", "update_failed", "42", "application_update",
+                extracted.stdout.rstrip("\n"), "success",
+            ))
+            self.assertEqual(row["exit_code"], "42")
+            self.assertEqual(row["recovery"], "success")
+            self.assertIn("Failed stage output:\n" + "\n".join(diagnostics), detail)
+            self.assertTrue(detail.endswith("\nrecovery succeeded"), detail)
+            self.assertNotIn("unrelated earlier stage", detail)
+            self.assertNotIn("rollback health failure", detail)
+
+    def test_verbose_failure_keeps_first_and_last_bounded_diagnostic_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stage.log"
+            diagnostic_lines = [f"npm ERR! original-error-{i}" for i in range(1, 17)]
+            log.write_text(
+                "2026 level=INFO event=stage_start stage=application_update command=helper\n"
+                + "\n".join(diagnostic_lines) + "\n"
+                "2026 level=ERROR event=stage_end stage=application_update status=failed exit_code=1\n",
+                encoding="utf-8",
+            )
+            result = self.run_helper(
+                f"forge_result_stage_error '{log}' application_update"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), [
+                *diagnostic_lines[:4],
+                "[4 diagnostic lines omitted; see log]",
+                *diagnostic_lines[8:],
+            ])
+
+    def test_failed_stage_without_explicit_diagnostic_adds_no_guessed_cause(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stage.log"
+            log.write_text(
+                "2026 level=INFO event=stage_start stage=application_update command=helper\n"
+                "Waiting for service response\n"
+                "2026 level=ERROR event=stage_end stage=application_update status=failed exit_code=5\n",
+                encoding="utf-8",
+            )
+            r = self.run_helper(f"forge_result_stage_error '{log}' application_update")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout, "")
+            _, detail = self.parse(self.result(
+                "lxc", "ERROR", "update_failed", "5", "application_update", "", "unavailable"
+            ))
+            self.assertEqual(detail,
+                             "ERROR: application_update (exit 5); recovery unavailable (no artifact)")
 
     def test_bulk_publisher_never_prints_duplicate_record(self):
         with tempfile.TemporaryDirectory() as tmp:

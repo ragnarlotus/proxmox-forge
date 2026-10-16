@@ -180,8 +180,9 @@ class BulkNotificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         email = self.messages()[0]["email"]
         self.assertNotIn("\x1b", email)
-        self.assertIn(" ⏎ ", email)
-        self.assertIn("X-Injected: fake", email)
+        # The multiline summary must indent every untrusted line; it can no
+        # longer impersonate an email header or a separate result row.
+        self.assertIn("      | X-Injected: fake", email)
         self.assertNotIn("\nX-Injected:", email)
 
     def test_sender_is_missing_does_not_change_final_result(self):

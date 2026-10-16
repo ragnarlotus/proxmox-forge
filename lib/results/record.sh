@@ -60,27 +60,55 @@ forge_result_encode() {
   printf '%s' "$out"
 }
 
-# Only explicit diagnostic lines from the failed stage's sanitized log output.
-# Do not infer causes from unrelated stages or recovery messages.
+# Quote only literal diagnostic output from the failed stage, not an inferred
+# root cause, a recovery stage, or unrelated output. Keep a bounded selection:
+# the first four and the last eight matching lines in their original order.
+# The full sanitized stage output remains in the target/run logs.
 forge_result_stage_error() {
   local log_file="$1" stage="$2"
   [[ -f "$log_file" && "$stage" =~ ^[a-z][a-z0-9_-]*$ ]] || return 0
   awk -v token="stage=$stage" '
+    function explicit_error(text) {
+      return text ~ /^[[:space:]]*(ERROR:|Error:|error:|FATAL:|Fatal:|fatal:|Failed:|failed:|Failed to |E:|Err:[0-9]+|npm (ERR!|error)|pnpm (ERR|error)|ERR_PNPM_|yarn (error|ERR!)|dpkg: error|curl: \([0-9]+\)|Traceback \(most recent call last\):|[[:alnum:]_]*(Error|Exception):|Exception in thread |Error response from daemon:|CMake Error|make: \*\*\*|gmake: \*\*\*|\[[Ee][Rr][Rr][Oo][Rr]\]|File "[^"]+", line [0-9]+)/
+    }
+    function save(text, slot) {
+      if (length(text) > 500)
+        text = substr(text, 1, 500) " [line truncated; see log]"
+      ++found
+      if (found <= 4) first[found] = text
+      slot = (found - 1) % 8
+      tail[slot] = text
+    }
     / event=stage_start / {
       active = (index($0, " " token " ") > 0)
-      if (active) message = ""
+      if (active) {
+        found = 0
+        delete first
+        delete tail
+      }
       next
     }
     / event=stage_end / {
       if (active && index($0, " " token " ") > 0) active = 0
       next
     }
-    active && /^(ERROR|Error|FATAL|Fatal|fatal|E|Failed):[[:space:]]/ {
-      message=$0
-      sub(/^[^:]+:[[:space:]]*/, "", message)
+    active && explicit_error($0) { save($0) }
+    END {
+      if (!found) exit
+      if (found <= 12) {
+        if (found <= 8) {
+          for (i = 1; i <= found; i++) print tail[(i - 1) % 8]
+        } else {
+          for (i = 1; i <= found - 8; i++) print first[i]
+          for (i = found - 7; i <= found; i++) print tail[(i - 1) % 8]
+        }
+      } else {
+        for (i = 1; i <= 4; i++) print first[i]
+        printf "[%d diagnostic lines omitted; see log]\n", found - 12
+        for (i = found - 7; i <= found; i++) print tail[(i - 1) % 8]
+      }
     }
-    END { if (message != "") print substr(message, 1, 240) }
-  ' "$log_file" 2>/dev/null
+  ' "$log_file"
 }
 
 forge_result_text() {
@@ -105,16 +133,32 @@ forge_result_text() {
     ERROR)
       [[ "$stage" != "-" ]] || stage=unknown
       msg="ERROR: $stage (exit $code)"
-      if [[ -n "$error" ]]; then msg+=": $error"; fi
+      if [[ -n "$error" ]]; then
+        if [[ "$error" == *$'\n'* ]]; then
+          msg+=$'\nFailed stage output:\n'"$error"
+        else
+          # The result already starts with ERROR; avoid repeating a generic
+          # severity prefix on a single original diagnostic line.
+          case "$error" in
+            "ERROR: "*|"Error: "*|"error: "*|"FATAL: "*|"Fatal: "*|"fatal: "*|"Failed: "*|"failed: "*|"E: "*)
+              msg+=": ${error#*: }" ;;
+            *) msg+=": $error" ;;
+          esac
+        fi
+      fi
       ;;
   esac
+  # Put the independent recovery/warning after the original multiline excerpt.
+  # Preserve the existing single-line format for older consumers.
+  local separator="; "
+  [[ "$msg" == *$'\n'* ]] && separator=$'\n'
   case "$recovery" in
-    success) msg+="; recovery succeeded" ;;
-    disabled) msg+="; recovery skipped (disabled)" ;;
-    unavailable) msg+="; recovery unavailable (no artifact)" ;;
-    failed:*) msg+="; recovery failed (exit ${recovery#failed:})" ;;
+    success) msg+="${separator}recovery succeeded" ;;
+    disabled) msg+="${separator}recovery skipped (disabled)" ;;
+    unavailable) msg+="${separator}recovery unavailable (no artifact)" ;;
+    failed:*) msg+="${separator}recovery failed (exit ${recovery#failed:})" ;;
   esac
-  [[ -z "$warning" ]] || msg+="; WARNING: $warning"
+  [[ -z "$warning" ]] || msg+="${separator}WARNING: $warning"
   printf '%s' "$msg"
 }
 

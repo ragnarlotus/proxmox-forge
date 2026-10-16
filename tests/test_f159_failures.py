@@ -166,9 +166,36 @@ class FailedTargetSummaryTests(unittest.TestCase):
         summary = self.failure_section(result.stdout)
         self.assertNotIn("\x1b", result.stdout)
         self.assertNotIn("\x07", result.stdout)
-        self.assertIn("ERROR: command failed ⏎ status=OK", summary)
+        self.assertIn("    Detail: ERROR: command failed", summary)
+        self.assertIn("      | status=OK", summary)
         self.assertIn("FAKE", summary)
         self.assertNotIn("\nstatus=OK", summary)
+
+    def test_multiline_updater_diagnostics_and_recovery_are_separate(self):
+        detail = (
+            "ERROR: application_update (exit 42)\n"
+            "Failed stage output:\n"
+            "npm ERR! code ERESOLVE\n"
+            "npm ERR! unable to resolve dependency tree\n"
+            "npm ERR! Conflicting peer dependency\n"
+            "recovery succeeded"
+        )
+        result = self.render([
+            row("104", "ERROR", name="immich", stage="application_update",
+                detail=detail, recovery="success"),
+            row("111", "OK", detail="OK"),
+        ], width=78)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = self.failure_section(result.stdout)
+        self.assertIn("  104 | immich | ERROR", summary)
+        self.assertIn("    Detail: ERROR: application_update (exit 42)", summary)
+        self.assertIn("      | Failed stage output:", summary)
+        self.assertIn("      | npm ERR! code ERESOLVE", summary)
+        self.assertIn("      | npm ERR! unable to resolve dependency tree", summary)
+        self.assertIn("      | recovery succeeded", summary)
+        self.assertNotIn("  111 |", summary)
+        self.assertIn("Overall result: PARTIAL", result.stdout)
+        self.assertEqual(summary.count("Failed and blocked targets"), 1)
 
     def test_long_errors_remain_readable_and_not_truncated(self):
         detail = "ERROR: os_update (exit 42): " + "cannot resolve dependency " * 15
