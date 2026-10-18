@@ -22,10 +22,16 @@ import sys
 kind = sys.argv[1]
 args = sys.argv[2:]
 if kind == "inventory":
-    if args != [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]:
+    expected = [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]
+    if len(args) == 3:
+        authorized = os.environ["FORGE_TEST_SCHEDULED_LXC"]
+        expected = ["true" if authorized else "false", expected[1], authorized]
+    if args != expected:
         sys.exit("unexpected inventory policy")
     vmids = os.environ.get("FORGE_TEST_INVENTORY_VMIDS", os.environ["FORGE_TEST_VMIDS"])
     excluded = {x.strip() for x in args[1].split(",") if x.strip()}
+    authorized = ({x.strip() for x in args[2].split(",") if x.strip()}
+                  if len(args) == 3 else None)
     stopped = set(filter(None, os.environ.get("FORGE_TEST_STOPPED_VMIDS", "").split(",")))
     templates = set(filter(None, os.environ.get("FORGE_TEST_TEMPLATE_VMIDS", "").split(",")))
     for vmid in sorted(filter(None, vmids.split(",")), key=int):
@@ -38,6 +44,8 @@ if kind == "inventory":
             policy = "excluded"
         elif args[0] == "false":
             policy = "running_lxc_disabled"
+        elif authorized is not None and vmid not in authorized:
+            policy = "scheduled_not_authorized"
         else:
             policy = "eligible"
         state = "stopped" if vmid in stopped else "running"
@@ -49,15 +57,23 @@ with Path(os.environ["FORGE_TEST_CALLS"]).open("a") as log:
                           "backup_only": os.environ.get("FORGE_LXC_BACKUP_PREFLIGHT_OK", "")}) + "\n")
 
 if kind == "list":
-    if args != [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]:
+    expected = [os.environ["FORGE_TEST_RUNNING_LXC"], os.environ["FORGE_TEST_EXCLUDE"]]
+    if len(args) == 3:
+        authorized = os.environ["FORGE_TEST_SCHEDULED_LXC"]
+        expected = ["true" if authorized else "false", expected[1], authorized]
+    if args != expected:
         sys.exit("unexpected selection policy")
     if args[0] == "true":
         if os.environ.get("FORGE_TEST_MALFORMED_TARGET") == "true":
             print("type=lxc name=missing_id state=running template=false")
         else:
             exclusions = {value.strip() for value in args[1].split(",") if value.strip()}
+            scheduled = ({x.strip() for x in args[2].split(",") if x.strip()}
+                         if len(args) == 3 else None)
             for vmid in filter(None, os.environ["FORGE_TEST_VMIDS"].split(",")):
                 if vmid in exclusions or f"guest{vmid}" in exclusions:
+                    continue
+                if scheduled is not None and vmid not in scheduled:
                     continue
                 print(f"type=lxc vmid={vmid} name=guest{vmid} state=running template=false")
 elif kind == "space":
@@ -150,6 +166,8 @@ class ResultAggregationTests(unittest.TestCase):
                     '  declare -gA CONFIG=(\n'
                     '    [UPDATE_HOST]="$FORGE_TEST_UPDATE_HOST"\n'
                     '    [UPDATE_RUNNING_LXC]="$FORGE_TEST_RUNNING_LXC"\n'
+                    '    [SCHEDULED_UPDATE_HOST]="${FORGE_TEST_SCHEDULED_HOST:-false}"\n'
+                    '    [SCHEDULED_UPDATE_LXC]="${FORGE_TEST_SCHEDULED_LXC:-}"\n'
                     '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
                     '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
                     '    [EXCLUDE]="$FORGE_TEST_EXCLUDE"\n'
