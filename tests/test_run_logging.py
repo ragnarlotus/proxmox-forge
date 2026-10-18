@@ -140,7 +140,7 @@ class RunLoggingTests(unittest.TestCase):
         try:
             observed = b""
             deadline = time.monotonic() + 3
-            while b"streamed-before-release\\n" not in observed:
+            while b"streamed-before-release\n" not in observed:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
@@ -151,8 +151,8 @@ class RunLoggingTests(unittest.TestCase):
                 if not part:
                     break
                 observed += part
-            self.assertIn(b"stage=start name=backup\\n", observed)
-            self.assertIn(b"streamed-before-release\\n", observed,
+            self.assertIn(b"stage=start name=backup\n", observed)
+            self.assertIn(b"streamed-before-release\n", observed,
                           "producer output was buffered until process exit")
             self.assertIsNone(process.poll(), "producer finished before streaming check")
         finally:
