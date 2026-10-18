@@ -180,7 +180,7 @@ NOTIFY_ONLY_ERRORS=true
 # Forge never performs version checks automatically. Prompts require a terminal;
 # scheduled and noninteractive update runs never self-update or block on input.
 # The explicit "forge update self-update [BRANCH]" command is independent.
-CHECK_FORGE_UPDATES_BEFORE_UPDATE=false
+CHECK_FORGE_UPDATES_BEFORE_UPDATE=true
 
 
 # -----------------------------------------------------------------------------

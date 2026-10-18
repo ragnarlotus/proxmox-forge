@@ -121,17 +121,26 @@ explicit request. See [Configuration](lib/config/README.md) and
 
 ## Updating Forge itself
 
-Forge does not yet implement a self-update command. Update the checkout explicitly:
+Update the installed Forge checkout with:
 
 ```bash
-cd /opt/proxmox-forge
-git pull --ff-only
-./forge validate-config
+forge update self-update
 ```
 
-Because `forge.conf` and target-specific `scripts.d/` contents are ignored by Git, normal fast-forward source updates preserve local host configuration and local target extensions.
+This updates `main` by default. An optional branch name (`forge update
+self-update BRANCH`) selects that branch only when the update is a safe
+fast-forward. Forge rejects unexpected remotes, dirty worktrees and divergent
+history. Local `forge.conf` and ignored target-specific customizations are
+preserved.
 
-Do not pull new code into the checkout while any Forge execution is in progress: child stages in the active run must continue using the same source revision from start to finish.
+`CHECK_FORGE_UPDATES_BEFORE_UPDATE=true` by default: before an interactive
+manual host or LXC update, Forge checks for a newer `main` revision and, if
+one exists, asks whether to update Forge, continue without updating it or
+cancel. Set the option to `false` in local `forge.conf` to disable the
+prompt. Scheduled or noninteractive updates do not prompt or self-update.
+
+Do not update Forge from a separate process while a Forge run is active; the
+self-update command uses the existing global lock to prevent that.
 
 ## Documentation
 

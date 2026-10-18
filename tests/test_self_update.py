@@ -192,11 +192,9 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("update self-update [BRANCH]", result.stdout)
 
-    def test_accept_prompt_reexecutes_under_same_lock(self):
+    def test_accept_default_prompt_reexecutes_under_same_lock(self):
         self.push_update()
-        (self.checkout / "forge.conf").write_text(
-            "CHECK_FORGE_UPDATES_BEFORE_UPDATE=true\n"
-        )
+        # No local override: the default must prompt on interactive manual runs.
         master, slave = pty.openpty()
 
         def controlling_tty():

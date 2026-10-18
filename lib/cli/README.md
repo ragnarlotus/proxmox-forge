@@ -12,6 +12,7 @@ forge lxc update TARGET
 forge lxc update all
 forge update all
 forge update scheduled
+forge update self-update [BRANCH]
 forge help
 ```
 
@@ -65,6 +66,20 @@ Both bulk commands check the entire selected running-LXC scope for free root fil
 In either bulk command, any failed LXC is recorded as failed regardless of its exit code. Forge attempts eligible guest recovery and continues with later LXC targets. In `forge update all`, a host update failure aborts the run before LXC processing.
 
 Target inspection, host requirements and LXC requirements are internal workflows, not public CLI commands.
+
+## `forge update self-update [BRANCH]`
+
+Updates Forge from the configured Git remote using a guarded fast-forward.
+The default branch is `main`; an explicitly supplied branch must contain
+the currently installed commit. Refuses dirty worktrees, divergent history
+or an unexpected remote. Does not run host or LXC updates.
+
+Before an **interactive manual** `forge host update`, `forge lxc update`
+or `forge update all`, `CHECK_FORGE_UPDATES_BEFORE_UPDATE=true` (default)
+checks for a newer Forge `main` revision. If found, Forge asks whether to
+update itself first, skip this version or cancel the system update.
+A local `CHECK_FORGE_UPDATES_BEFORE_UPDATE=false` disables this prompt.
+Scheduled and noninteractive runs never prompt or update Forge automatically.
 
 ## `forge update scheduled`
 
