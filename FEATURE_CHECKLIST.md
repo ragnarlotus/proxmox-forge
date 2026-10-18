@@ -223,7 +223,6 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 ### Visibility, discovery and policy
 
-- [ ] **F229 — Verified security versus ordinary update counts.** For supported APT sources, distinguish security/normal updates where the configured origin metadata reliably supports it; otherwise report total-only or unknown. Keep separate from F221's already-implemented count of packages *actually upgraded*; avoid claiming CVE coverage.
 - [ ] **F231 — Optional Proxmox tag selection.** Add explicit, deterministic tag-based groups for eligible update/check targets without changing existing VMID/name exclusions, implicitly selecting stopped LXCs or making ambiguous matching acceptable.
 
 ### Execution and target compatibility
@@ -248,9 +247,40 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 - [ ] **F243 — Staged/canary updates.** Allow an explicitly selected trial target or group before continuing compatible targets, gated by real functional health results; preserve per-target backups, failure isolation and the original error state.
 - [ ] **F244 — Declared service dependency ordering.** Consider explicit cross-target dependencies for sequential maintenance, with cycle/conflict detection and health-based gating. Never auto-start excluded/stopped guests or silently expand the selected update scope.
 
-> **Roadmap cleanup (2026-10-16):** removed F245 (Git/config audit adds little operational value), F227 (standalone check explicitly outside Forge's update-only scope) and dependent F230 (independent check/update selection). Historical IDs are not reused; all other candidates remain unapproved and unchanged.
+> **Roadmap cleanup (2026-10-16; documented 2026-10-18):** F227, F230 and F245 were rejected, not implemented or postponed. Their original proposals and rejection reasons are retained in the historical decision register below. Historical IDs are not reused; all remaining candidates are unapproved.
 
 > **Deduplication:** the original proposal to connect outcomes to their recovery backup is covered by F083/F141/F220–F225 and extended under the now-implemented F228; actionable failure diagnostics already exist under F224/F159, so neither received another feature ID. Previously listed F003, F069, F121, F131, F146 and F187 remain unchanged. F068 remains explicitly discarded.
+
+## W. Prioritisation and scope notes (2026-10-18)
+
+These notes document current intent only; they do not mark capabilities implemented or approve previously unapproved candidates.
+
+- **F234 — High priority:** consider temporary resource limits as a common guarded capability for relevant LXCs, not a hard-coded exception for one application. Never change user-assigned limits permanently; preserve safety and restoration on failure.
+- **F238 — Useful, not urgent:** extend the explicit self-update command with an optional Git branch argument (default `main`; otherwise the explicitly supplied branch). Separately consider an opt-in configuration flag that checks for a newer Forge version before *manual* system updates and asks whether to update Forge first. Scheduled/unattended updates must remain noninteractive, and Forge must not replace its code mid-update. Command/configuration syntax is not yet approved or implemented.
+- **F231 — Under consideration:** Proxmox tags may be read automatically but must never silently change target selection; selecting a tag-based scope or policy must be explicitly authorised. No concrete selection policy has been approved.
+- **F232 — Low current priority:** additional package managers are interesting, but existing running LXC workloads use APT.
+- **F243 — Low current priority:** staged/canary gates require meaningful functional verification; existing serial failure isolation is not a canary policy.
+- **F244 — Important, deferred:** do not infer an update dependency order automatically or equate boot/shutdown ordering with the correct update order. The desired use of Proxmox startup-order data needs further clarification; **no new F244 design was agreed**.
+- **VMs, external targets, clusters and Web UI:** expand only after the primary single-host Proxmox/LXC backend is dependable; a Web UI must reuse that backend.
+
+## X. Rejected proposals — historical decision register
+
+**Rejected is not the same as postponed or implemented.** These entries preserve the idea and the reason it was rejected so that a future contributor can challenge the rationale with new evidence. They are outside the active backlog; IDs remain reserved. The original historical wording is retained or summarised without reinstating incompatible scope.
+
+- ~~**F229 — Verified security versus ordinary update counts.**~~ **REJECTED (2026-10-18).** Classify actual APT upgrades by reliably attributable security versus ordinary origins (unknown when unverifiable). **Reason:** Forge already applies eligible APT updates regardless of this classification; the extra split does not change selection, execution, recovery or update outcome, and the user does not need the additional reporting. F221's count of actually upgraded packages remains.
+- ~~**F227 — Standalone read-only update check.**~~ **REJECTED (2026-10-16).** Proposed `forge check` to discover pending host/LXC/application updates without installing them. **Reason:** explicitly conflicts with Forge's update-only purpose; displaying available updates is not part of the supported workflow.
+- ~~**F230 — Independent check/update selection policies.**~~ **REJECTED (2026-10-16).** Proposed separate read-only-check and mutating-update target selection. **Reason:** depended on F227, which was rejected; a second selection model has no purpose without a standalone check workflow.
+- ~~**F245 — Reproducible run context audit.**~~ **REJECTED (2026-10-16).** Proposed recording executing Forge Git commit/version and an effective-configuration/policy fingerprint or provenance alongside run history. **Reason:** insufficient incremental operational value compared with existing per-run logs, configuration validation and results, relative to its maintenance complexity.
+- ~~**F013 — Refresh repository metadata before checking.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** A standalone check/preflight refresh is outside scope; APT already refreshes metadata during actual updates.
+- ~~**F014 — Detect pending updates without installing.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Standalone availability discovery is outside Forge's update-only scope.
+- ~~**F015 — Count pending updates per target.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Requires the rejected standalone discovery; F221 reports *actually installed* upgrades instead.
+- ~~**F016 — List affected packages before updating.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Pre-execution package preview is outside the agreed scope.
+- ~~**F017 — Display installed → candidate package versions before updating.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Pre-execution candidate-version preview is outside the agreed scope; this does not prohibit diagnostics of held packages (F022).
+- ~~**F018 — Distinguish security updates in pre-update discovery.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Depended on the eliminated standalone check workflow; a distinct post-update security classification was later proposed as F229 and separately rejected.
+- ~~**F023 — Completely read-only preview/check mode.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Incompatible with the update-only product scope, as later reiterated for F227.
+- ~~**F024 — Generate an exact update plan before execution.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** A pre-execution update-plan preview is outside scope; deterministic scope resolution and safety preflights remain mandatory.
+
+**Already retained elsewhere:** F068 is explicitly marked rejected in section G. The large early brainstorming inventory was pruned on 2026-10-11 because it mixed speculative, duplicated and unrelated platform features; those unscreened ideas were not individually approved/rejected product decisions. Several were subsequently reintroduced as distinct F229–F244 candidates. This register records actual scope/rejection decisions, rather than treating every historical brainstorming omission as a rejected requirement.
 
 ---
 
