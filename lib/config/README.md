@@ -51,6 +51,7 @@ required before LXC mutation even if automatic rollback is disabled.
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
+| `CHECK_FORGE_UPDATES_BEFORE_UPDATE` | Boolean, default `true` | Before manual interactive host/LXC/bulk updates, check whether a newer Forge `main` revision exists and ask whether to update Forge first. Set `false` in local `forge.conf` to disable. Scheduled and noninteractive runs never prompt or automatically self-update. |
 | `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include currently running LXCs in `forge lxc list-targets`, `forge lxc update all` and `forge update all`. It does not restrict `forge lxc update TARGET`. |
 | `EXCLUDE` | Empty string or comma-separated VMIDs/exact LXC names | Remove matching running LXCs from automatic listing and both bulk update commands **before** preflight, backup or update. Case-sensitive; no partial or wildcard matching. Does not affect explicit `forge lxc update TARGET` or host updates. Entries for stopped or absent LXCs are inactive. Example: `EXCLUDE="108,share"`. |
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
