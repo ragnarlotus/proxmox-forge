@@ -120,6 +120,7 @@ class RunLoggingTests(unittest.TestCase):
         import select
         import time
 
+        run = self.open_run()
         target = self.root / "target.log"
         target.touch()
         release = self.root / "release"
@@ -127,7 +128,7 @@ class RunLoggingTests(unittest.TestCase):
             "import pathlib,sys,time; "
             "release=pathlib.Path(sys.argv[1]); "
             "print('streamed-before-release',flush=True); "
-            "deadline=time.monotonic()+5; "
+            "deadline=time.monotonic()+10; "
             "exec('while not release.exists() and time.monotonic()<deadline: time.sleep(0.01)'); "
             "print('streamed-after-release',flush=True)"
         )
@@ -135,7 +136,8 @@ class RunLoggingTests(unittest.TestCase):
             ["bash", str(CAPTURE), str(target), "backup", "--",
              "python3", "-u", "-c", producer, str(release)],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1, env=self.env,
+            text=True, bufsize=1,
+            env={**self.env, "FORGE_RUN_LOG": str(run)},
         )
         try:
             observed = b""
@@ -154,14 +156,56 @@ class RunLoggingTests(unittest.TestCase):
             self.assertIn(b"stage=start name=backup\n", observed)
             self.assertIn(b"streamed-before-release\n", observed,
                           "producer output was buffered until process exit")
+            deadline = time.monotonic() + 3
+            while (b"streamed-before-release\n" not in target.read_bytes()
+                   or b"streamed-before-release\n" not in run.read_bytes()):
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.01)
+            for path in (target, run):
+                self.assertIn(b"streamed-before-release\n", path.read_bytes(),
+                              f"{path} did not log progress before producer exit")
             self.assertIsNone(process.poll(), "producer finished before streaming check")
         finally:
             release.touch()
             stdout, stderr = process.communicate(timeout=10)
         self.assertEqual(process.returncode, 0, stderr)
         self.assertIn("streamed-after-release", stdout)
-        self.assertIn("streamed-before-release", target.read_text())
-        self.assertIn("streamed-after-release", target.read_text())
+        for path in (target, run):
+            self.assertIn("streamed-before-release", path.read_text())
+            self.assertIn("streamed-after-release", path.read_text())
+
+    def test_terminal_scrollback_and_log_sanitization_across_chunks(self):
+        run = self.open_run()
+        target = self.root / "target.log"
+        target.touch()
+        producer = (
+            'import os,time; '
+            'os.write(1,b"before\\n\\x1b[3"); '
+            'time.sleep(0.05); '
+            'os.write(1,b"J\\x1b[32mcolor\\x1b[0m\\n"); '
+            'os.write(1,b"loading 10%\\rloading 95%\\n"); '
+            'os.write(1,b"\\x1b]0;secret title\\x07after\\n")'
+        )
+        # Inspect raw bytes: text=True normalizes carriage returns to newlines.
+        result = subprocess.run(
+            ["bash", str(CAPTURE), str(target), "backup", "--",
+             "python3", "-u", "-c", producer],
+            capture_output=True, check=False,
+            env={**self.env, "FORGE_RUN_LOG": str(run)},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(b"before\n", result.stdout)
+        self.assertIn(b"\x1b[32mcolor\x1b[0m", result.stdout)
+        self.assertIn(b"loading 10%\rloading 95%", result.stdout)
+        self.assertNotIn(b"\x1b[3J", result.stdout)
+        for path in (target, run):
+            logged = path.read_text()
+            self.assertIn("before\ncolor\nloading 95%\nafter\n", logged)
+            self.assertNotIn("loading 10%", logged)
+            self.assertNotIn("secret title", logged)
+            self.assertNotIn("\x1b", logged)
+        self.assertEqual(target.read_bytes(), run.read_bytes())
 
     def test_final_table_is_plain_in_log_and_unchanged_on_terminal(self):
         run = self.open_run()
