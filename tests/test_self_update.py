@@ -70,7 +70,8 @@ class ForgeSelfUpdateTests(unittest.TestCase):
             'import os,sys\n'
             'a=sys.argv[1:]\n'
             'if len(a)>=4 and a[-3:]==["remote","get-url","origin"]:\n'
-            ' print("git@github-proxmox-forge:ragnarlotus/proxmox-forge.git")\n'
+            ' print(os.environ.get("FORGE_TEST_FAKE_URL",'
+            '"github-proxmox-forge:ragnarlotus/proxmox-forge.git"))\n'
             'else:\n'
             ' os.execv(os.environ["FORGE_REAL_GIT"],'
             ' [os.environ["FORGE_REAL_GIT"],*a])\n'
@@ -171,7 +172,8 @@ class ForgeSelfUpdateTests(unittest.TestCase):
 
     def test_unknown_source_and_bad_branch_are_rejected(self):
         self.git("remote", "set-url", "origin", "https://example.net/other")
-        result = self.run_helper("update")
+        result = self.run_helper("update",
+                                 FORGE_TEST_FAKE_URL="https://example.net/other")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not the approved", result.stderr)
         result = self.run_helper("update", "--bad")
