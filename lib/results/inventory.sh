@@ -11,9 +11,15 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-[[ $# -eq 2 ]] || fail "usage: inventory.sh UPDATE_RUNNING_LXC EXCLUDE"
+[[ $# -eq 2 || $# -eq 3 ]] || fail "usage: inventory.sh UPDATE_RUNNING_LXC EXCLUDE [SCHEDULED_UPDATE_LXC]"
 update_running="$1"
 exclusions="$2"
+scheduled_scope=false
+scheduled_allowlist=""
+if (( $# == 3 )); then
+  scheduled_scope=true
+  scheduled_allowlist="$3"
+fi
 [[ "$update_running" == true || "$update_running" == false ]] || fail "invalid running-LXC policy"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not resolve script directory"
@@ -58,6 +64,8 @@ for vmid in "${sorted_ids[@]}"; do
     policy=excluded
   elif [[ "$update_running" == false ]]; then
     policy=running_lxc_disabled
+  elif [[ "$scheduled_scope" == true ]] && ! lxc_is_scheduled "$vmid" "$scheduled_allowlist"; then
+    policy=scheduled_not_authorized
   else
     policy=eligible
   fi
