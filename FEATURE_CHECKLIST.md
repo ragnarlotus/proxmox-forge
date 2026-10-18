@@ -64,6 +64,8 @@ Forge performs updates rather than checking what is available in advance. Reposi
 - [x] **F057** Detect `/usr/bin/update` or another known application updater.
 - [x] **F059** Per-target custom scripts.
 - [x] **F063** Every plugin/script returns an authoritative result.
+- [x] **F234 — Optional temporary LXC CPU/RAM limits.** A common resource-boost mechanism for host/LXC maintenance, available to all LXC updates (not tied to an application name). `LXC_UPDATE_TEMP_CORES=0` and `LXC_UPDATE_TEMP_MEMORY_MB=0` disable it by default. Positive values in the local `forge.conf` request **minimum** limits for the duration of a guest update; Forge never reduces higher existing limits. After the same-run backup but before OS/application/custom update steps, a guarded helper reads `pct config --current`, verifies original explicit limits, checks requested CPUs against online host CPUs and additional RAM against host `MemAvailable` plus `MIN_MEM_AVAILABLE_MB`, saves originals to a private state file and uses `pct set`. The helper verifies the effective changes and restores/verifies original limits before health checks and before rollback, including partial `pct set` failures and shell exit/signal cleanup. Failing an enabled resource requirement blocks that guest update without silently falling back to normal limits. If an administrator changes limits externally, Forge refuses to overwrite the new value and reports a failed cleanup; this is not a guarantee against SIGKILL or host power loss. No changes are made to swap, CPU quotas, CPU weights or other LXC settings. Fake-PVE regression tests exercise apply/restore, failure, resources, ordering and authoritative exit codes; a live-host resource-change test remains pending.
+
 
 ## G. Preflight
 
@@ -229,7 +231,6 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 - [ ] **F232 — Additional verified Linux package-manager adapters.** Evaluate APK, DNF/YUM and Pacman one target family at a time; implement only with verified preflight, error semantics, upgrade handling and regression tests. F054 currently detects APT only and must not be reinterpreted as broad support.
 - [ ] **F233 — SSH transport for supported VMs.** Offer key-based SSH when QGA is unavailable or unsuitable, building on F003/F187. Validate target identity, host keys, privileges, operating system and lifecycle; do not use an unverified command path or silently bypass recovery requirements.
-- [ ] **F234 — Temporary application-build resource adjustments.** For verified Community Scripts application updaters needing extra CPU/RAM, consider guarded temporary resource changes based on reliable requirements, with guaranteed restoration on success and failure; do not overwrite user resource choices permanently.
 - [ ] **F235 — Explicit controlled reboot action.** Extend F094's reporting with a separately requested host/guest reboot where safe, preserving maintenance-window and lifecycle constraints. Never turn update completion into an automatic host reboot by default.
 - [ ] **F236 — FreeBSD/pfSense guest update adapter.** Separately evaluate `pkg`-based updates for verified supported VM guests, including transport, OS/version detection, privilege boundaries, backup guarantees and exact failure reporting; do not reuse Linux/APT assumptions or imply that an independent external FreeBSD server is already supported.
 
@@ -255,7 +256,7 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 These notes document current intent only; they do not mark capabilities implemented or approve previously unapproved candidates.
 
-- **F234 — High priority:** consider temporary resource limits as a common guarded capability for relevant LXCs, not a hard-coded exception for one application. Never change user-assigned limits permanently; preserve safety and restoration on failure.
+- **F234 — Implemented:** configurable opt-in resource floors for all LXC update paths, with guarded restoration and a deliberate default of no resource adjustments. See section F.
 - **F238 — Useful, not urgent:** extend the explicit self-update command with an optional Git branch argument (default `main`; otherwise the explicitly supplied branch). Separately consider an opt-in configuration flag that checks for a newer Forge version before *manual* system updates and asks whether to update Forge first. Scheduled/unattended updates must remain noninteractive, and Forge must not replace its code mid-update. Command/configuration syntax is not yet approved or implemented.
 - **F231 — Under consideration:** Proxmox tags may be read automatically but must never silently change target selection; selecting a tag-based scope or policy must be explicitly authorised. No concrete selection policy has been approved.
 - **F232 — Low current priority:** additional package managers are interesting, but existing running LXC workloads use APT.

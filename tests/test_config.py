@@ -27,6 +27,8 @@ printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
 printf 'MIN_ROOT_FREE_MB=%s\n' "${CONFIG[MIN_ROOT_FREE_MB]}"
 printf 'HEALTH_SCRIPTS_DIR=%s\n' "${CONFIG[HEALTH_SCRIPTS_DIR]}"
 printf 'MIN_MEM_AVAILABLE_MB=%s\n' "${CONFIG[MIN_MEM_AVAILABLE_MB]}"
+printf 'LXC_UPDATE_TEMP_CORES=%s\n' "${CONFIG[LXC_UPDATE_TEMP_CORES]}"
+printf 'LXC_UPDATE_TEMP_MEMORY_MB=%s\n' "${CONFIG[LXC_UPDATE_TEMP_MEMORY_MB]}"
 printf 'LOG_KEEP=%s\n' "${CONFIG[LOG_KEEP]}"
 printf 'HOST_BACKUP_EXTRA_PATHS=%s\n' "${CONFIG[HOST_BACKUP_EXTRA_PATHS]}"
 """
@@ -143,6 +145,23 @@ class ConfigurationTests(unittest.TestCase):
         for invalid in ("0", "-1", "1.5", "abc", "1048577"):
             with self.subTest(invalid=invalid):
                 self.assert_invalid(f"MIN_MEM_AVAILABLE_MB={invalid}\n", "MIN_MEM_AVAILABLE_MB")
+
+    def test_temporary_resource_config(self):
+        result = self.load()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LXC_UPDATE_TEMP_CORES=0\n", result.stdout)
+        self.assertIn("LXC_UPDATE_TEMP_MEMORY_MB=0\n", result.stdout)
+        result = self.load("LXC_UPDATE_TEMP_CORES=4\nLXC_UPDATE_TEMP_MEMORY_MB=4096\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LXC_UPDATE_TEMP_CORES=4\n", result.stdout)
+        self.assertIn("LXC_UPDATE_TEMP_MEMORY_MB=4096\n", result.stdout)
+        for key, invalids in (
+            ("LXC_UPDATE_TEMP_CORES", ("-1", "01", "1.5", "foo", "8193")),
+            ("LXC_UPDATE_TEMP_MEMORY_MB", ("-1", "01", "1.5", "foo", "1048577")),
+        ):
+            for value in invalids:
+                with self.subTest(key=key, value=value):
+                    self.assert_invalid(f"{key}={value}\n", key)
 
     def test_exclusions_allow_exact_ids_and_names(self):
         result = self.load('EXCLUDE=" 108, share, web.service-1 "\n')

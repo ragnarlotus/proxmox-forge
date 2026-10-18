@@ -50,6 +50,18 @@ elif name == "check-requirements.sh":
     record("requirements")
     print("requirements=ok vmid=111 name=share state=running "
           "template=false package_manager=apt application_updater=/usr/bin/update")
+elif name == "resources.sh":
+    operation,vmid,state_path=args[:3]
+    record("resource_"+operation, args)
+    state=Path(state_path)
+    if operation == "apply":
+        state.write_text("111 2 1024 4 4096\\n")
+        if os.environ.get("FORGE_TEST_RESOURCE_APPLY_FAIL") == "true":
+            sys.exit(42)
+    elif operation == "restore":
+        state.write_text("")
+    else:
+        sys.exit(96)
 else:
     components = {
         "create.sh": "backup",
@@ -115,7 +127,7 @@ class ExactlyOnceTests(unittest.TestCase):
             "lxc/update.sh", "config/get.sh", "lxc/get-target.sh",
             "lxc/get-state.sh", "workflows/check-requirements.sh",
             "backup/lxc/create.sh",
-            "lxc/recover.sh", "postflight/reboot-required.sh", "preflight/held-packages.sh", "lxc/update/os.sh",
+            "lxc/recover.sh", "lxc/resources.sh", "postflight/reboot-required.sh", "preflight/held-packages.sh", "lxc/update/os.sh",
             "lxc/update/application.sh", "lxc/update/custom-scripts.sh",
             "lxc/update/fstrim.sh", "lxc/health.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
@@ -181,6 +193,9 @@ class ExactlyOnceTests(unittest.TestCase):
                     '    [CREATE_BACKUP_BEFORE_LXC_UPDATE]=true\n'
                     '    [ROLLBACK_ON_FAILURE]=true\n'
                     '    [HEALTH_CHECK]=true\n'
+                    '    [MIN_MEM_AVAILABLE_MB]=128\n'
+                    '    [LXC_UPDATE_TEMP_CORES]="${FORGE_TEST_TEMP_CORES:-0}"\n'
+                    '    [LXC_UPDATE_TEMP_MEMORY_MB]="${FORGE_TEST_TEMP_MEMORY_MB:-0}"\n'
                     '  )\n'
                     '}\n', encoding="utf-8",
                 )
@@ -244,6 +259,36 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("Forge update summary: LXC 111 SUCCESS (final state: running).", result.stdout)
         self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed apt_upgraded=2", result.stdout)
 
+
+    def test_f234_temp_resources_surround_mutation_not_backup_or_health(self):
+        result, steps, _ = self.invoke(FORGE_TEST_TEMP_CORES="4",
+                                       FORGE_TEST_TEMP_MEMORY_MB="4096")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(steps.index("backup"), steps.index("resource_apply"))
+        self.assertLess(steps.index("resource_apply"), steps.index("os"))
+        self.assertLess(steps.index("custom"), steps.index("resource_restore"))
+        self.assertLess(steps.index("resource_restore"), steps.index("health"))
+        self.assertEqual(steps.count("resource_apply"), 1)
+        self.assertEqual(steps.count("resource_restore"), 1)
+
+    def test_f234_temp_resources_restore_before_rollback_and_preserve_error(self):
+        result, steps, _ = self.invoke(FORGE_TEST_TEMP_CORES="4",
+                                       FORGE_TEST_FAIL_STAGE="application")
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertLess(steps.index("resource_restore"), steps.index("recover"))
+        self.assertEqual(steps.count("resource_restore"), 1)
+        self.assertIn("update=failed vmid=111 stage=application_update exit_code=42",
+                      result.stdout)
+
+    def test_f234_failed_apply_restores_partial_change_without_update(self):
+        result, steps, _ = self.invoke(FORGE_TEST_TEMP_CORES="4",
+                                       FORGE_TEST_RESOURCE_APPLY_FAIL="true")
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertLess(steps.index("backup"), steps.index("resource_apply"))
+        self.assertEqual(steps.count("resource_restore"), 1)
+        self.assertNotIn("os", steps)
+        self.assertNotIn("recover", steps)
+        self.assertIn("stage=resource_apply exit_code=42", result.stdout)
 
     def test_f153_individual_lxc_sends_only_on_error_by_default(self):
         sender = self.root / "bin" / "sendmail"
