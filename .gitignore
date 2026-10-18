@@ -8,3 +8,7 @@ scripts.d/*
 # Host-local functional health checks are managed independently of custom updaters.
 health.d/*
 !health.d/README.md
+
+# Generated Python bytecode must not make self-update report a dirty checkout.
+__pycache__/
+*.py[cod]
