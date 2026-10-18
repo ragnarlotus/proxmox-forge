@@ -41,6 +41,8 @@ command_text="${command_text% }"
 bash "$write_script" "$log_file" INFO stage_start \
   "stage=$stage" "command=$command_text" || fail "could not record stage start"
 
+printf 'stage=start name=%s\n' "$stage"
+
 started_at="$(date +%s)" || fail "could not create stage start timestamp"
 
 capture_dir="$(mktemp -d)" || fail "could not create capture temporary directory"
@@ -95,7 +97,7 @@ def emit_line():
     line.clear()
 
 while True:
-    chunk = src.read(4096)
+    chunk = src.read1(4096)
     if not chunk:
         break
 
@@ -177,7 +179,7 @@ dst = sys.stdout.buffer
 pending = bytearray()
 
 while True:
-    chunk = src.read(4096)
+    chunk = src.read1(4096)
     if not chunk:
         break
 
