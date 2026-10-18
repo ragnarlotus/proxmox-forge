@@ -30,26 +30,27 @@ error reporting and `LOG_KEEP` apply unchanged. An authorized LXC update may
 still interrupt the service even if the VM itself remains running: eligibility
 is not proof of inactivity.
 
-## Install and activate, only after choosing a maintenance window
+## Install and activate, only after validating the maintenance window
 
-Review the example calendar in `systemd/proxmox-forge-update.timer` and choose
-a suitable `OnCalendar` value **before enabling**. This repository does not
-choose an operational calendar or activate units on its own.
+The agreed maintenance window is **Saturday at 04:00 Europe/Madrid** (Friday
+night), with `OnCalendar=Sat *-*-* 04:00:00 Europe/Madrid` in the versioned
+timer. The explicit timezone keeps the intended Madrid local clock time across
+daylight-saving changes, regardless of the Proxmox host timezone. Installing
+or updating the Git checkout never enables the timer automatically.
 
-Copy the two units to `/etc/systemd/system/` on the Proxmox host; adjust
-`OnCalendar` if necessary, then run:
+After confirming the intended schedule and authorized targets, copy the two
+versioned unit files to `/etc/systemd/system/` on the Proxmox host and run:
 
 ```bash
 systemctl daemon-reload
-systemd-analyze calendar 'Sun *-*-* 04:00:00'
+systemd-analyze calendar 'Sat *-*-* 04:00:00 Europe/Madrid'
 systemctl enable --now proxmox-forge-update.timer
 systemctl list-timers --all --no-pager proxmox-forge-update.timer
 ```
 
-The `systemd-analyze` line above is for the shipped *example*; use the actual
-calendar you chose. No catch-up run is performed after downtime
-(`Persistent=false`). The service itself is not enabled and starts only
-when triggered by the timer or explicitly via `systemctl start`.
+No catch-up run is performed after downtime (`Persistent=false`). The
+service itself is not enabled and starts only when triggered by the timer or
+explicitly via `systemctl start`.
 
 To disable future automatic runs:
 

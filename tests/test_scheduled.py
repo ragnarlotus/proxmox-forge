@@ -2,8 +2,18 @@
 """F121: unattended updates select only explicitly authorized running VMIDs."""
 
 import unittest
+from pathlib import Path
 
 from test_results import ResultAggregationTests
+
+
+class ScheduledTimerTests(unittest.TestCase):
+    def test_weekly_window_is_saturday_at_0400_in_madrid(self):
+        timer = (Path(__file__).resolve().parents[1]
+                 / "systemd/proxmox-forge-update.timer").read_text(encoding="utf-8")
+        self.assertIn("OnCalendar=Sat *-*-* 04:00:00 Europe/Madrid", timer)
+        self.assertIn("Persistent=false", timer)
+        self.assertNotIn("Persistent=true", timer)
 
 
 class ScheduledUpdateTests(unittest.TestCase):
