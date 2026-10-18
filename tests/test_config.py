@@ -108,13 +108,13 @@ class ConfigurationTests(unittest.TestCase):
             with self.subTest(invalid=option):
                 self.assert_invalid(f"{option}=yes\n", f"{option} must be true or false")
 
-    def test_f238_prompt_is_default_off_and_validated(self):
+    def test_f238_prompt_is_default_on_and_can_be_disabled(self):
         result = self.load()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("CHECK_FORGE_UPDATES_BEFORE_UPDATE=false\n", result.stdout)
-        result = self.load("CHECK_FORGE_UPDATES_BEFORE_UPDATE=true\n")
-        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CHECK_FORGE_UPDATES_BEFORE_UPDATE=true\n", result.stdout)
+        result = self.load("CHECK_FORGE_UPDATES_BEFORE_UPDATE=false\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CHECK_FORGE_UPDATES_BEFORE_UPDATE=false\n", result.stdout)
         self.assert_invalid("CHECK_FORGE_UPDATES_BEFORE_UPDATE=yes\n",
                             "CHECK_FORGE_UPDATES_BEFORE_UPDATE")
 
