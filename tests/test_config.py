@@ -108,24 +108,24 @@ class ConfigurationTests(unittest.TestCase):
     def test_scheduled_defaults_are_fail_closed(self):
         result = self.load()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SCHEDULED_UPDATE_HOST=false\\n", result.stdout)
-        self.assertIn("SCHEDULED_UPDATE_LXC=\\n", result.stdout)
+        self.assertIn("SCHEDULED_UPDATE_HOST=false\n", result.stdout)
+        self.assertIn("SCHEDULED_UPDATE_LXC=\n", result.stdout)
 
     def test_scheduled_authorization_accepts_only_exact_distinct_vmids(self):
         result = self.load(
-            'SCHEDULED_UPDATE_HOST=true\\n'
-            'SCHEDULED_UPDATE_LXC="100, 111, 115"\\n'
+            'SCHEDULED_UPDATE_HOST=true\n'
+            'SCHEDULED_UPDATE_LXC="100, 111, 115"\n'
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SCHEDULED_UPDATE_HOST=true\\n", result.stdout)
-        self.assertIn("SCHEDULED_UPDATE_LXC=100, 111, 115\\n", result.stdout)
-        self.assert_invalid("SCHEDULED_UPDATE_HOST=yes\\n", "SCHEDULED_UPDATE_HOST")
+        self.assertIn("SCHEDULED_UPDATE_HOST=true\n", result.stdout)
+        self.assertIn("SCHEDULED_UPDATE_LXC=100, 111, 115\n", result.stdout)
+        self.assert_invalid("SCHEDULED_UPDATE_HOST=yes\n", "SCHEDULED_UPDATE_HOST")
         for value in ("100,", ",100", "100,,111", "100, ,111",
                       "100,100", "100, 100", "0100", "0", "-1", "guest100",
                       "100,guest111", "100-111", "*", "100;echo hi",
                       "100/111", "1234567890"):
             with self.subTest(value=value):
-                self.assert_invalid(f'SCHEDULED_UPDATE_LXC="{value}"\\n',
+                self.assert_invalid(f'SCHEDULED_UPDATE_LXC="{value}"\n',
                                     "SCHEDULED_UPDATE_LXC")
 
     def test_free_space_threshold_validation(self):
