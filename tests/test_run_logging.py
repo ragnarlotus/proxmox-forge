@@ -187,15 +187,18 @@ class RunLoggingTests(unittest.TestCase):
             'os.write(1,b"loading 10%\\rloading 95%\\n"); '
             'os.write(1,b"\\x1b]0;secret title\\x07after\\n")'
         )
-        result = self.command(
-            CAPTURE, target, "backup", "--", "python3", "-u", "-c",
-            producer, env={**self.env, "FORGE_RUN_LOG": str(run)},
+        # Inspect raw bytes: text=True normalizes carriage returns to newlines.
+        result = subprocess.run(
+            ["bash", str(CAPTURE), str(target), "backup", "--",
+             "python3", "-u", "-c", producer],
+            capture_output=True, check=False,
+            env={**self.env, "FORGE_RUN_LOG": str(run)},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("before\n", result.stdout)
-        self.assertIn("\x1b[32mcolor\x1b[0m", result.stdout)
-        self.assertIn("loading 10%\rloading 95%", result.stdout)
-        self.assertNotIn("\x1b[3J", result.stdout)
+        self.assertIn(b"before\n", result.stdout)
+        self.assertIn(b"\x1b[32mcolor\x1b[0m", result.stdout)
+        self.assertIn(b"loading 10%\rloading 95%", result.stdout)
+        self.assertNotIn(b"\x1b[3J", result.stdout)
         for path in (target, run):
             logged = path.read_text()
             self.assertIn("before\ncolor\nloading 95%\nafter\n", logged)
