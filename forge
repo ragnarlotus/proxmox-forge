@@ -3,7 +3,7 @@
 
 set -u
 # Never inherit an external path as the authoritative log for a new run.
-unset FORGE_RUN_LOG
+unset FORGE_RUN_LOG FORGE_SCHEDULED_MODE
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -148,7 +148,7 @@ esac
 # is loaded but before any update preflight or mutation. Utility commands do not
 # create execution logs.
 case "${1:-}:${2:-}" in
-  host:update|lxc:update|update:all)
+  host:update|lxc:update|update:all|update:scheduled)
     run_log_init="$FORGE_DIR/lib/logging/init.sh"
     run_log_write="$FORGE_DIR/lib/logging/write.sh"
     [[ -r "$run_log_init" && -r "$run_log_write" ]] || fail "run logging helpers are unavailable"
@@ -164,7 +164,12 @@ run_update_all() {
   local mode="$1"
 
   [[ -r "$UPDATE_ALL_SCRIPT" ]] || fail "update coordinator is not readable: $UPDATE_ALL_SCRIPT"
-  if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+  if [[ "$mode" == scheduled ]]; then
+    [[ "${CONFIG[SCHEDULED_UPDATE_HOST]}" == true || -n "${CONFIG[SCHEDULED_UPDATE_LXC]}" ]] ||
+      fail "scheduled updates have no authorized targets"
+    export FORGE_SCHEDULED_MODE=scheduled
+    [[ -z "${CONFIG[SCHEDULED_UPDATE_LXC]}" ]] || ensure_lxc_environment
+  elif [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     ensure_lxc_environment
   fi
   bash "$UPDATE_ALL_SCRIPT" "$mode"
@@ -267,8 +272,8 @@ main() {
       esac
       ;;
     update)
-      [[ $# -eq 2 && "$2" == all ]] || fail "usage: forge update all"
-      run_update_all all
+      [[ $# -eq 2 && ( "$2" == all || "$2" == scheduled ) ]] || fail "usage: forge update all|scheduled"
+      run_update_all "$2"
       ;;
     help|-h|--help)
       [[ -r "$HELP_SCRIPT" ]] || fail "CLI help script is not readable: $HELP_SCRIPT"

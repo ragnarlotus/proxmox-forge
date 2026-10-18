@@ -45,8 +45,17 @@ EXCLUDE=""
 # Execution and failure semantics
 # -----------------------------------------------------------------------------
 
-# Forge runs are started manually in the initial scope. There are no scheduled
-# jobs or background update jobs.
+# Manual update commands remain interactive. F121 can optionally run a
+# separately authorized scheduled scope through systemd; its timer is never
+# installed or enabled automatically.
+#
+# Scheduled scope is independent of UPDATE_HOST/UPDATE_RUNNING_LXC. Only
+# explicitly authorized running VMIDs (not names) may be updated by the timer.
+# Empty/default values authorize nothing. EXCLUDE still applies; stopped guests
+# and templates are never started or updated by scheduled runs.
+SCHEDULED_UPDATE_HOST=false
+SCHEDULED_UPDATE_LXC=""
+#
 #
 # Update operations themselves are deterministic and non-interactive: Forge
 # must supply the package-manager/helper options needed to prevent prompts.

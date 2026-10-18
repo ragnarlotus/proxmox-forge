@@ -1,0 +1,12 @@
+[Unit]
+Description=Proxmox Forge - optional scheduled update timer
+
+[Timer]
+# Illustrative calendar only; review/replace it before enabling.
+# Neither this timer nor any targets are enabled by installation.
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=false
+Unit=proxmox-forge-update.service
+
+[Install]
+WantedBy=timers.target

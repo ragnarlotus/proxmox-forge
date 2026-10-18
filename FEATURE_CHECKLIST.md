@@ -20,7 +20,7 @@ These are the agreed behavioural requirements of the current implementation.
 - [x] **Guest transaction boundary** — each guest is handled independently. A required step failure makes that guest fail, recovery/rollback is attempted when supported, the real failure remains authoritative, and processing may continue with later guests.
 - [x] **No host rollback** — Forge must never claim or attempt guest-style rollback for the Proxmox host itself. Host update failures are reported as failures.
 - [x] **Validate before mutation** — load and validate the complete configuration and determine the selected target identities/scope before the first mutating operation; mutable LXC properties such as current state and template status are revalidated when each guest update begins.
-- [x] **Initial invocation model** — no scheduler, background job, daemon or Web UI. Every initial-scope run starts from an explicit user invocation.
+- [x] **Manual invocation preserved** — interactive update commands still execute in the calling terminal. Optional F121 scheduling is a separate, explicit, disabled-by-default systemd timer with independently authorized targets; there is no general background-job daemon or Web UI.
 
 Forge performs updates rather than checking what is available in advance. Repository metadata is refreshed as part of actual package updates; standalone pending-update discovery, package previews and pre-execution update-plan generation are intentionally outside the product scope.
 
@@ -125,7 +125,7 @@ Forge performs updates rather than checking what is available in advance. Reposi
 ## L. Scheduling and orchestration
 
 - [x] **F120** Immediate manual execution.
-- [ ] **F121** Scheduling through systemd timers.
+- [x] **F121 — Opt-in systemd scheduling with positive target authorization.** Add `forge update scheduled` and ship disabled-by-default `systemd/proxmox-forge-update.service`/`.timer` templates. `SCHEDULED_UPDATE_HOST=false` and `SCHEDULED_UPDATE_LXC=""` authorize no unattended updates by default; only unique numeric VMIDs from the local allowlist may be scheduled, independently of manual `UPDATE_HOST`/`UPDATE_RUNNING_LXC` flags. Continue to honor `EXCLUDE`; never start stopped guests or update templates; reject nonexistent authorized VMIDs before any mutation. Reuse the existing serial bulk engine, full-scope preflights, backup/rollback, single global lock, F141 logging and F225/F228 reporting, without changing interactive terminal capture or host reboot policy. Schedule activation and calendar selection both require deliberate host-admin action. No persistent timer catch-up after host downtime. Regression tests cover empty authorization, manual independence, eligible subset, exclusion, stopped/template, stale IDs, preflight failures and partial results. Systemd integration remains to be installed and observed on the actual Proxmox host.
 - [x] **F127** Serial updates.
 - [x] **F129** Global lock for incompatible simultaneous runs. Forge currently uses a stricter single-run policy: every `forge` invocation acquires one global non-blocking lock, so a second Forge execution is rejected until the first exits. The standalone PVE restore utility participates in the same lock.
 - [ ] **F131** Jobs survive SSH/session disconnection.

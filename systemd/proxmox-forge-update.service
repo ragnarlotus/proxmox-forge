@@ -1,0 +1,14 @@
+[Unit]
+Description=Proxmox Forge - authorized scheduled updates
+Documentation=https://github.com/ragnarlotus/proxmox-forge
+After=network-online.target pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/proxmox-forge
+ExecStart=/opt/proxmox-forge/forge update scheduled
+TimeoutStartSec=0
+StandardOutput=journal
+StandardError=journal

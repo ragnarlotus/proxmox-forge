@@ -28,7 +28,8 @@ Forge currently supports:
 - per-target logging and deterministic terminal capture;
 - one retained chronological general log per update execution (including sanitized stage output, target results and final table);
 - read-only `forge status` / `forge history` queries over retained authoritative run logs, with optional JSON output;
-- one global execution lock preventing overlapping Forge runs.
+- one global execution lock preventing overlapping Forge runs;
+- optional, disabled-by-default systemd scheduled updates restricted to an explicit VMID allowlist.
 
 Forge is an updater, not a tool for querying pending upgrades: standalone package-update discovery, preview/check, speculative upgrade plans, CVE reporting and package-level selection are outside its scope. APT repository metadata is refreshed as part of actual OS updates.
 
@@ -37,7 +38,7 @@ Not implemented yet:
 - QEMU VM updates;
 - external-host/SSH updates;
 - cluster-wide orchestration;
-- scheduling/background execution;
+- persistent background execution of manually started SSH jobs (F131);
 - a Web UI;
 - automatic Proxmox host rollback;
 - automatic host reboot;
@@ -69,7 +70,7 @@ proxmox-forge/
     └── <VMID>/*.sh             # Optional guest functional health checks
 ```
 
-The project is currently run directly from its checkout. There is no installer, daemon or service layer.
+The project is run directly from its checkout, without an installer or daemon. Optional disabled-by-default systemd timer/service templates are available in `systemd/` for separately authorized scheduled updates.
 
 ## Installation / checkout
 
@@ -137,6 +138,7 @@ Do not pull new code into the checkout while any Forge execution is in progress:
 | Section | Description |
 | --- | --- |
 | [CLI](lib/cli/README.md) | CLI commands and operations |
+| [Optional scheduling](systemd/README.md) | Explicit scheduled authorization and systemd timer installation |
 | [Configuration](lib/config/README.md) | Configuration and available options |
 | [Host update](lib/host/README.md) | Proxmox host update |
 | [LXC](lib/lxc/README.md) | LXC selection, updates and maintenance |

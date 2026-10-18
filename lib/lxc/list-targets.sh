@@ -14,9 +14,15 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 2 ]] || fail "usage: list-targets.sh UPDATE_RUNNING_LXC EXCLUDE"
+[[ $# -eq 2 || $# -eq 3 ]] || fail "usage: list-targets.sh UPDATE_RUNNING_LXC EXCLUDE [SCHEDULED_UPDATE_LXC]"
 update_running="$1"
 exclusions="$2"
+scheduled_scope=false
+scheduled_allowlist=""
+if (( $# == 3 )); then
+  scheduled_scope=true
+  scheduled_allowlist="$3"
+fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine LXC script directory"
 exclude_helper="$script_dir/exclusions.sh"
@@ -60,6 +66,9 @@ for config_file in "${config_files[@]}"; do
 
   [[ "$state" == stopped ]] && continue
   lxc_is_excluded "$vmid" "$name" "$exclusions" && continue
+  if [[ "$scheduled_scope" == true ]]; then
+    lxc_is_scheduled "$vmid" "$scheduled_allowlist" || continue
+  fi
 
   printf 'type=lxc vmid=%s name=%s state=running template=false\n' "$vmid" "$name"
 done

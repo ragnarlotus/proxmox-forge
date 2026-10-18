@@ -22,5 +22,6 @@ Commands:
   lxc update TARGET           Update one LXC; temporarily start it if stopped.
   lxc update all              Update LXCs from lxc list-targets; do not update host.
   update all                  Update the host first, then LXCs from lxc list-targets.
+  update scheduled            Update only explicitly scheduled-authorized host/LXCs.
   help                        Show this help.
 EOF

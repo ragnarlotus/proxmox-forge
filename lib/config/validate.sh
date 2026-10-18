@@ -12,6 +12,8 @@ bash "$FORGE_RUNTIME_GUARD" || exit 1
 CONFIG_REQUIRED_KEYS=(
   UPDATE_HOST
   UPDATE_RUNNING_LXC
+  SCHEDULED_UPDATE_HOST
+  SCHEDULED_UPDATE_LXC
   EMAIL_NOTIFICATIONS
   NOTIFY_ONLY_ERRORS
   EXCLUDE
@@ -34,6 +36,7 @@ CONFIG_REQUIRED_KEYS=(
 CONFIG_BOOLEAN_KEYS=(
   UPDATE_HOST
   UPDATE_RUNNING_LXC
+  SCHEDULED_UPDATE_HOST
   EMAIL_NOTIFICATIONS
   NOTIFY_ONLY_ERRORS
   UPDATE_LXC_OS
@@ -129,6 +132,33 @@ config_validate_exclude() {
   done
 }
 
+# Schedule authorization must name exact, unique numeric VMIDs only.
+# Unknown VMIDs are rejected by the scheduled workflow before any update.
+config_validate_scheduled_lxc() {
+  local value="${CONFIG[SCHEDULED_UPDATE_LXC]}" entry
+  local -a entries=()
+  local -A seen=()
+
+  [[ -z "$value" ]] && return 0
+  if [[ "$value" == ,* || "$value" == *, || "$value" == *,,* ]]; then
+    config_validate_fail "SCHEDULED_UPDATE_LXC contains an empty comma-separated entry"
+    return 1
+  fi
+  IFS=',' read -r -a entries <<< "$value"
+  for entry in "${entries[@]}"; do
+    entry="$(config_trim_value "$entry")"
+    [[ "$entry" =~ ^[1-9][0-9]*$ && ${#entry} -le 9 ]] || {
+      config_validate_fail "SCHEDULED_UPDATE_LXC requires numeric VMIDs without leading zeroes (got '$entry')"
+      return 1
+    }
+    [[ -z "${seen[$entry]+x}" ]] || {
+      config_validate_fail "SCHEDULED_UPDATE_LXC contains duplicate VMID '$entry'"
+      return 1
+    }
+    seen["$entry"]=1
+  done
+}
+
 config_validate() {
   local key
 
@@ -167,6 +197,7 @@ config_validate() {
 
   config_validate_host_backup_extra_paths || return 1
   config_validate_exclude || return 1
+  config_validate_scheduled_lxc || return 1
 
   [[ "${CONFIG[LOG_DIR]}" == /* ]] || {
     config_validate_fail "LOG_DIR must be an absolute path"

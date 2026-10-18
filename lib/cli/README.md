@@ -11,6 +11,7 @@ forge lxc list-targets
 forge lxc update TARGET
 forge lxc update all
 forge update all
+forge update scheduled
 forge help
 ```
 
@@ -64,6 +65,20 @@ Both bulk commands check the entire selected running-LXC scope for free root fil
 In either bulk command, any failed LXC is recorded as failed regardless of its exit code. Forge attempts eligible guest recovery and continues with later LXC targets. In `forge update all`, a host update failure aborts the run before LXC processing.
 
 Target inspection, host requirements and LXC requirements are internal workflows, not public CLI commands.
+
+## `forge update scheduled`
+
+Executes only explicitly authorized targets: `SCHEDULED_UPDATE_HOST=true`
+for the local host, and/or exact numeric VMIDs in `SCHEDULED_UPDATE_LXC`.
+Both settings default to no authorization; an empty scheduled scope fails before
+any updates. `EXCLUDE` still applies; stopped/template LXCs are always skipped.
+An obsolete authorized VMID fails before host or LXC mutation. Manual selection
+flags do not expand this scope. Same preflights, backups, recovery, lock and
+final output as normal bulk updates; only scheduled target selection differs.
+
+The optional systemd service/timer definitions are shipped in
+[`systemd/`](../../systemd/README.md) but are not installed or enabled by Git
+updates. Interactive `forge update all` remains unchanged.
 
 ## Operational checks
 
