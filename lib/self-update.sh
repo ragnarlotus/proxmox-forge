@@ -47,6 +47,8 @@ case "$remote_url" in
   git@github.com:ragnarlotus/proxmox-forge.git|\
   git@github-proxmox-forge:ragnarlotus/proxmox-forge|\
   git@github-proxmox-forge:ragnarlotus/proxmox-forge.git|\
+  github-proxmox-forge:ragnarlotus/proxmox-forge|\
+  github-proxmox-forge:ragnarlotus/proxmox-forge.git|\
   ssh://git@github.com/ragnarlotus/proxmox-forge|\
   ssh://git@github.com/ragnarlotus/proxmox-forge.git|\
   ssh://git@github-proxmox-forge/ragnarlotus/proxmox-forge|\
