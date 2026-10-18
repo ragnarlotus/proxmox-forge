@@ -23,5 +23,6 @@ Commands:
   lxc update all              Update LXCs from lxc list-targets; do not update host.
   update all                  Update the host first, then LXCs from lxc list-targets.
   update scheduled            Update only explicitly scheduled-authorized host/LXCs.
+  update self-update [BRANCH]  Safely fast-forward Forge (main by default).
   help                        Show this help.
 EOF
