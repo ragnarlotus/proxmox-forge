@@ -21,6 +21,8 @@ CONFIG_REQUIRED_KEYS=(
   UPDATE_LXC_APPLICATION
   RUN_CUSTOM_SCRIPTS
   CUSTOM_SCRIPTS_DIR
+  LXC_UPDATE_TEMP_CORES
+  LXC_UPDATE_TEMP_MEMORY_MB
   CREATE_BACKUP_BEFORE_HOST_UPDATE
   HOST_BACKUP_EXTRA_PATHS
   CREATE_BACKUP_BEFORE_LXC_UPDATE
@@ -210,6 +212,21 @@ config_validate() {
   }
   (( ${#CONFIG[MIN_ROOT_FREE_MB]} <= 7 && CONFIG[MIN_ROOT_FREE_MB] <= 1048576 )) || {
     config_validate_fail "MIN_ROOT_FREE_MB must not exceed 1048576 MiB"
+    return 1
+  }
+
+  for key in LXC_UPDATE_TEMP_CORES LXC_UPDATE_TEMP_MEMORY_MB; do
+    [[ "${CONFIG[$key]}" =~ ^(0|[1-9][0-9]*)$ ]] || {
+      config_validate_fail "$key must be a nonnegative integer"
+      return 1
+    }
+  done
+  (( ${#CONFIG[LXC_UPDATE_TEMP_CORES]} <= 4 && CONFIG[LXC_UPDATE_TEMP_CORES] <= 8192 )) || {
+    config_validate_fail "LXC_UPDATE_TEMP_CORES must not exceed 8192"
+    return 1
+  }
+  (( ${#CONFIG[LXC_UPDATE_TEMP_MEMORY_MB]} <= 7 && CONFIG[LXC_UPDATE_TEMP_MEMORY_MB] <= 1048576 )) || {
+    config_validate_fail "LXC_UPDATE_TEMP_MEMORY_MB must not exceed 1048576"
     return 1
   }
 
