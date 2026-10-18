@@ -54,6 +54,7 @@ state_script="$script_dir/get-state.sh"
 requirements_script="$lib_dir/workflows/check-requirements.sh"
 backup_create_script="$lib_dir/backup/lxc/create.sh"
 recovery_script="$script_dir/recover.sh"
+resource_script="$script_dir/resources.sh"
 os_update_script="$script_dir/update/os.sh"
 application_update_script="$script_dir/update/application.sh"
 custom_scripts_update_script="$script_dir/update/custom-scripts.sh"
@@ -104,7 +105,29 @@ FORGE_RESULT_TABLE=true
 source "$apt_results_script" || fail "could not load APT results helper"
 # shellcheck source=/dev/null
 source "$app_results_script" || fail "could not load application version helper"
-trap forge_apt_cleanup EXIT
+# Resource cleanup also executes when an update is interrupted. A failed cleanup
+# must not conceal the original command failure.
+resource_state_file=""
+resource_cleanup_pending=false
+forge_lxc_exit_cleanup() {
+  local exit_code=$?
+  trap - EXIT
+  if [[ "$resource_cleanup_pending" == true && -n "$resource_state_file" && -s "$resource_state_file" ]]; then
+    if ! bash "$resource_script" restore "$vmid" "$resource_state_file"; then
+      printf 'ERROR: temporary resources for LXC %s could not be restored; state: %s\n' \
+        "$vmid" "$resource_state_file" >&2
+      (( exit_code != 0 )) || exit_code=1
+    fi
+  fi
+  if [[ -n "$resource_state_file" && ! -s "$resource_state_file" ]]; then
+    rm -f -- "$resource_state_file"
+  fi
+  forge_apt_cleanup
+  exit "$exit_code"
+}
+trap forge_lxc_exit_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 target_record="$(bash "$target_script" "$target")" || fail "could not resolve LXC target '$target'"
 parse_record "$target_record"
@@ -156,6 +179,8 @@ application_updater=""
 custom_scripts_planned=false
 result_warning=""
 result_recovery="-"
+temp_cores="${CONFIG[LXC_UPDATE_TEMP_CORES]:-0}"
+temp_memory="${CONFIG[LXC_UPDATE_TEMP_MEMORY_MB]:-0}"
 
 record_skipped_stage() {
   local stage_name="$1"
@@ -251,10 +276,35 @@ restore_initial_state() {
     "state=stopped" || return 1
 }
 
+restore_temp_resources() {
+  local restore_code
+  [[ "$resource_cleanup_pending" == true ]] || return 0
+  if [[ ! -s "$resource_state_file" ]]; then
+    resource_cleanup_pending=false
+    rm -f -- "$resource_state_file"
+    resource_state_file=""
+    return 0
+  fi
+  bash "$log_capture_script" "$log_file" resource_restore -- \
+    bash "$resource_script" restore "$vmid" "$resource_state_file"
+  restore_code=$?
+  if (( restore_code == 0 )); then
+    resource_cleanup_pending=false
+    rm -f -- "$resource_state_file"
+    resource_state_file=""
+  fi
+  return "$restore_code"
+}
+
 # Report the recovery attempt separately; never replace the primary failure
 # code or retry the update just because recovery failed.
 run_recovery() {
   local failed_stage="$1" primary_result="$2" recovery_code=0
+  if ! restore_temp_resources; then
+    if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+    result_warning+="failed to restore temporary LXC resource limits before rollback"
+    printf 'WARNING: LXC %s temporary resource restoration failed before recovery\n' "$vmid" >&2
+  fi
   bash "$recovery_script" \
     "$vmid" "$backup_volume" "$log_file" "${CONFIG[ROLLBACK_ON_FAILURE]}" \
     "$failed_stage" "$primary_result" || recovery_code=$?
@@ -432,6 +482,30 @@ else
   record_skipped_stage snapshot no_mutating_stages
 fi
 
+# F234: stage-specific resource limits are applied only after the validated
+# same-run backup exists and before package/application/custom updates.
+if [[ "$mutation_planned" == true && ( "$temp_cores" != 0 || "$temp_memory" != 0 ) ]]; then
+  [[ -r "$resource_script" ]] || finish_failed resource_apply 1 "resource helper is missing"
+  resource_state_file="$(mktemp)" || finish_failed resource_apply 1 "cannot create resource state file"
+  resource_cleanup_pending=true
+  bash "$log_capture_script" "$log_file" resource_apply -- \
+    bash "$resource_script" apply "$vmid" "$resource_state_file" \
+      "$temp_cores" "$temp_memory" "${CONFIG[MIN_MEM_AVAILABLE_MB]:-128}"
+  stage_result=$?
+  if (( stage_result != 0 )); then
+    if ! restore_temp_resources; then
+      result_warning="temporary resource restoration failed after apply error"
+    fi
+    finish_failed resource_apply "$stage_result"
+  fi
+  # Applying no change leaves an empty state file.
+  if [[ ! -s "$resource_state_file" ]]; then
+    resource_cleanup_pending=false
+    rm -f -- "$resource_state_file"
+    resource_state_file=""
+  fi
+fi
+
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
   FORGE_APT_ACTIVE=true
   bash "$log_capture_script" "$log_file" os_update -- \
@@ -502,6 +576,13 @@ else
     run_recovery custom_scripts "$stage_result"
     finish_failed custom_scripts "$stage_result"
   fi
+fi
+
+# Verify health at the ORIGINAL resource limits rather than at boosted limits.
+restore_temp_resources
+stage_result=$?
+if (( stage_result != 0 )); then
+  finish_failed resource_restore "$stage_result" "could not restore original LXC resources"
 fi
 
 if [[ "$mutation_planned" == true && "${CONFIG[HEALTH_CHECK]}" == true ]]; then
