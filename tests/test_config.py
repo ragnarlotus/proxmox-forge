@@ -21,6 +21,8 @@ printf 'CREATE_BACKUP_BEFORE_LXC_UPDATE=%s\n' "${CONFIG[CREATE_BACKUP_BEFORE_LXC
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
 printf 'EMAIL_NOTIFICATIONS=%s\n' "${CONFIG[EMAIL_NOTIFICATIONS]}"
 printf 'NOTIFY_ONLY_ERRORS=%s\n' "${CONFIG[NOTIFY_ONLY_ERRORS]}"
+printf 'SCHEDULED_UPDATE_HOST=%s\n' "${CONFIG[SCHEDULED_UPDATE_HOST]}"
+printf 'SCHEDULED_UPDATE_LXC=%s\n' "${CONFIG[SCHEDULED_UPDATE_LXC]}"
 printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
 printf 'MIN_ROOT_FREE_MB=%s\n' "${CONFIG[MIN_ROOT_FREE_MB]}"
 printf 'HEALTH_SCRIPTS_DIR=%s\n' "${CONFIG[HEALTH_SCRIPTS_DIR]}"
@@ -102,6 +104,29 @@ class ConfigurationTests(unittest.TestCase):
         for option in ("EMAIL_NOTIFICATIONS", "NOTIFY_ONLY_ERRORS"):
             with self.subTest(invalid=option):
                 self.assert_invalid(f"{option}=yes\n", f"{option} must be true or false")
+
+    def test_scheduled_defaults_are_fail_closed(self):
+        result = self.load()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SCHEDULED_UPDATE_HOST=false\\n", result.stdout)
+        self.assertIn("SCHEDULED_UPDATE_LXC=\\n", result.stdout)
+
+    def test_scheduled_authorization_accepts_only_exact_distinct_vmids(self):
+        result = self.load(
+            'SCHEDULED_UPDATE_HOST=true\\n'
+            'SCHEDULED_UPDATE_LXC="100, 111, 115"\\n'
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SCHEDULED_UPDATE_HOST=true\\n", result.stdout)
+        self.assertIn("SCHEDULED_UPDATE_LXC=100, 111, 115\\n", result.stdout)
+        self.assert_invalid("SCHEDULED_UPDATE_HOST=yes\\n", "SCHEDULED_UPDATE_HOST")
+        for value in ("100,", ",100", "100,,111", "100, ,111",
+                      "100,100", "100, 100", "0100", "0", "-1", "guest100",
+                      "100,guest111", "100-111", "*", "100;echo hi",
+                      "100/111", "1234567890"):
+            with self.subTest(value=value):
+                self.assert_invalid(f'SCHEDULED_UPDATE_LXC="{value}"\\n',
+                                    "SCHEDULED_UPDATE_LXC")
 
     def test_free_space_threshold_validation(self):
         result = self.load("MIN_ROOT_FREE_MB=512\n")
