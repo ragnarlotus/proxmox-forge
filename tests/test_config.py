@@ -21,6 +21,7 @@ printf 'CREATE_BACKUP_BEFORE_LXC_UPDATE=%s\n' "${CONFIG[CREATE_BACKUP_BEFORE_LXC
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
 printf 'EMAIL_NOTIFICATIONS=%s\n' "${CONFIG[EMAIL_NOTIFICATIONS]}"
 printf 'NOTIFY_ONLY_ERRORS=%s\n' "${CONFIG[NOTIFY_ONLY_ERRORS]}"
+printf 'CHECK_FORGE_UPDATES_BEFORE_UPDATE=%s\n' "${CONFIG[CHECK_FORGE_UPDATES_BEFORE_UPDATE]}"
 printf 'SCHEDULED_UPDATE_HOST=%s\n' "${CONFIG[SCHEDULED_UPDATE_HOST]}"
 printf 'SCHEDULED_UPDATE_LXC=%s\n' "${CONFIG[SCHEDULED_UPDATE_LXC]}"
 printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
@@ -106,6 +107,16 @@ class ConfigurationTests(unittest.TestCase):
         for option in ("EMAIL_NOTIFICATIONS", "NOTIFY_ONLY_ERRORS"):
             with self.subTest(invalid=option):
                 self.assert_invalid(f"{option}=yes\n", f"{option} must be true or false")
+
+    def test_f238_prompt_is_default_off_and_validated(self):
+        result = self.load()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CHECK_FORGE_UPDATES_BEFORE_UPDATE=false\n", result.stdout)
+        result = self.load("CHECK_FORGE_UPDATES_BEFORE_UPDATE=true\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CHECK_FORGE_UPDATES_BEFORE_UPDATE=true\n", result.stdout)
+        self.assert_invalid("CHECK_FORGE_UPDATES_BEFORE_UPDATE=yes\n",
+                            "CHECK_FORGE_UPDATES_BEFORE_UPDATE")
 
     def test_scheduled_defaults_are_fail_closed(self):
         result = self.load()
