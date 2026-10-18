@@ -18,7 +18,13 @@ fail() {
   exit 1
 }
 
-FORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || {
+# Resolve launcher symlinks before locating the repository components.
+# A PATH symlink (e.g. /usr/local/bin/forge) is not the installation root.
+FORGE_ENTRYPOINT="$(readlink -f -- "${BASH_SOURCE[0]}")" || {
+  printf 'ERROR: could not resolve Forge executable path\n' >&2
+  exit 1
+}
+FORGE_DIR="$(cd "$(dirname "$FORGE_ENTRYPOINT")" && pwd)" || {
   printf 'ERROR: could not determine Forge directory\n' >&2
   exit 1
 }

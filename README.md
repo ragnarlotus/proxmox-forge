@@ -93,7 +93,7 @@ An optional convenience symlink can expose the CLI as `forge`:
 ln -s /opt/proxmox-forge/forge /usr/local/bin/forge
 ```
 
-The top-level `forge` script locates the rest of the project relative to itself; only values such as `CUSTOM_SCRIPTS_DIR` remain configuration paths.
+The top-level `forge` script resolves launcher symbolic links to the real checkout before locating its components. Values such as `CUSTOM_SCRIPTS_DIR` remain configuration paths.
 
 ## LXC recovery policy
 
