@@ -22,10 +22,10 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: update-all.sh all|lxc"
+[[ $# -eq 1 ]] || fail "usage: update-all.sh all|lxc|scheduled"
 mode="$1"
 case "$mode" in
-  all|lxc) ;;
+  all|lxc|scheduled) ;;
   *) fail "unsupported update mode '$mode'" ;;
 esac
 
@@ -59,6 +59,21 @@ done
 source "$config_get_script" || fail "could not load config helpers"
 config_get || fail "could not load effective Forge configuration"
 
+# F121: Scheduled runs have independent positive authorization.
+# Manual UPDATE_HOST/UPDATE_RUNNING_LXC cannot widen the scheduled scope.
+update_running_lxc="${CONFIG[UPDATE_RUNNING_LXC]}"
+update_host_enabled="${CONFIG[UPDATE_HOST]}"
+selection_args=("$update_running_lxc" "${CONFIG[EXCLUDE]}")
+if [[ "$mode" == scheduled ]]; then
+  update_host_enabled="${CONFIG[SCHEDULED_UPDATE_HOST]}"
+  update_running_lxc=false
+  [[ -z "${CONFIG[SCHEDULED_UPDATE_LXC]}" ]] || update_running_lxc=true
+  if [[ "$update_host_enabled" != true && "$update_running_lxc" != true ]]; then
+    fail "scheduled updates have no authorized targets; configure SCHEDULED_UPDATE_HOST or SCHEDULED_UPDATE_LXC"
+  fi
+  selection_args=("$update_running_lxc" "${CONFIG[EXCLUDE]}" "${CONFIG[SCHEDULED_UPDATE_LXC]}")
+fi
+
 # F220: build a read-only inventory independently of the selected target scope.
 # Neither selection nor mutation semantics may depend on the reporting model.
 # shellcheck source=/dev/null
@@ -70,7 +85,7 @@ declare -A result_reason=() result_attempted=() result_exit=() result_apt=()
 declare -A result_app_before=() result_app_after=() result_app_repository=()
 declare -A result_detail=() result_failed_stage=() result_recovery=()
 inventory_ready=false
-inventory_output="$(bash "$inventory_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}")" ||
+inventory_output="$(bash "$inventory_script" "${selection_args[@]}")" ||
   fail "could not read complete LXC inventory"
 
 while IFS=$'\t' read -r id name state policy; do
@@ -79,7 +94,7 @@ while IFS=$'\t' read -r id name state policy; do
     fail "invalid LXC inventory record"
   [[ -z "${result_name[$id]+x}" ]] || fail "duplicate LXC inventory VMID $id"
   [[ "$state" == running || "$state" == stopped ]] || fail "invalid state for LXC $id"
-  case "$policy" in eligible|template|stopped|excluded|running_lxc_disabled) ;; *)
+  case "$policy" in eligible|template|stopped|excluded|running_lxc_disabled|scheduled_not_authorized) ;; *)
     fail "invalid LXC inventory policy for $id"
   esac
   result_ids+=("$id")
@@ -103,6 +118,18 @@ while IFS=$'\t' read -r id name state policy; do
   fi
 done <<< "$inventory_output"
 
+# Reject stale authorized VMIDs before host or guest mutation.
+# Stopped, excluded and template guests exist but are skipped.
+if [[ "$mode" == scheduled && -n "${CONFIG[SCHEDULED_UPDATE_LXC]}" ]]; then
+  IFS=',' read -r -a authorized_ids <<< "${CONFIG[SCHEDULED_UPDATE_LXC]}"
+  for scheduled_id in "${authorized_ids[@]}"; do
+    scheduled_id="${scheduled_id#"${scheduled_id%%[![:space:]]*}"}"
+    scheduled_id="${scheduled_id%"${scheduled_id##*[![:space:]]}"}"
+    [[ -n "${result_name[$scheduled_id]+x}" ]] ||
+      fail "authorized scheduled LXC $scheduled_id does not exist; no updates started"
+  done
+fi
+
 host_name=""
 host_status=SKIPPED
 host_reason=host_disabled
@@ -113,10 +140,10 @@ host_apt="-"
 host_detail=""
 host_failed_stage="-"
 host_recovery="-"
-if [[ "$mode" == all ]]; then
+if [[ "$mode" != lxc ]]; then
   host_name="$(hostname -f)" || fail "could not read host FQDN for inventory"
   [[ "$host_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "invalid host FQDN"
-  if [[ "${CONFIG[UPDATE_HOST]}" == true ]]; then
+  if [[ "$update_host_enabled" == true ]]; then
     host_selected=true
     host_status=NOT_RUN
     host_reason=not_started
@@ -136,7 +163,7 @@ emit_final_inventory() {
   trap - EXIT
   local -a final_records=()
   [[ "$inventory_ready" == true ]] || return 0
-  if [[ "$mode" == all ]]; then
+  if [[ "$mode" != lxc ]]; then
     if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
     if forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
       "$host_status" "$host_reason" "$host_exit" "$host_apt" "-" "-" "-" \
@@ -177,7 +204,7 @@ trap emit_final_inventory EXIT
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
 targets_output="$(
-  bash "$lxc_list_targets_script" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}"
+  bash "$lxc_list_targets_script" "${selection_args[@]}"
 )" || fail "could not resolve effective LXC target set"
 
 vmids=()
@@ -239,12 +266,12 @@ lxc_targets="${#vmids[@]}"
 host_failure_code=0
 lxc_started=false
 update_host=false
-if [[ "$mode" == all && "${CONFIG[UPDATE_HOST]}" == true ]]; then
+if [[ "$mode" != lxc && "$update_host_enabled" == true ]]; then
   update_host=true
 fi
 
 printf 'update_all=start mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
-  "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+  "$mode" "$update_host" "${update_running_lxc}" "$lxc_targets"
 
 if [[ "$update_host" == true ]]; then
   printf 'update_all_stage=start stage=host\n'
@@ -276,7 +303,7 @@ if [[ "$update_host" == true ]]; then
     host_failure_code="$host_result"
     # Host and LXC recovery points are independent. The already validated
     # guest scope must continue even when host backup/update fails.
-    if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true && "$lxc_targets" -gt 0 ]]; then
+    if [[ "${update_running_lxc}" == true && "$lxc_targets" -gt 0 ]]; then
       printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=true\n' \
         "$host_result"
       printf 'WARNING: host update failed (exit code %s); continuing with selected LXCs\n' \
@@ -290,13 +317,13 @@ if [[ "$update_host" == true ]]; then
     host_reason=completed
     printf 'update_all_stage=success stage=host exit_code=0\n'
   fi
-elif [[ "$mode" == all ]]; then
+elif [[ "$mode" != lxc ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
 fi
 
 succeeded=0
 failed=0
-if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+if [[ "${update_running_lxc}" == true ]]; then
   failed_targets=()
 
   printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
@@ -371,7 +398,7 @@ if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
       printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
         "$lxc_targets" "$succeeded" "$failed"
       printf '\nForge update summary: '
-      if [[ "$mode" == all ]]; then
+      if [[ "$mode" != lxc ]]; then
         if [[ "$update_host" == true ]]; then
           printf 'host SUCCESS; '
         else
@@ -408,7 +435,7 @@ if (( host_failure_code != 0 )); then
     overall_status=FAILED
   fi
   printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
-  if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+  if [[ "${update_running_lxc}" == true ]]; then
     printf '%s LXCs selected, %s succeeded, 0 failed; overall %s.\n' \
       "$lxc_targets" "$succeeded" "$overall_status"
   else
@@ -418,17 +445,17 @@ if (( host_failure_code != 0 )); then
 fi
 
 printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
-  "$mode" "$update_host" "${CONFIG[UPDATE_RUNNING_LXC]}" "$lxc_targets"
+  "$mode" "$update_host" "${update_running_lxc}" "$lxc_targets"
 
 printf '\nForge update summary: '
-if [[ "$mode" == all ]]; then
+if [[ "$mode" != lxc ]]; then
   if [[ "$update_host" == true ]]; then
     printf 'host SUCCESS; '
   else
     printf 'host skipped; '
   fi
 fi
-if [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
+if [[ "${update_running_lxc}" == true ]]; then
   printf '%s LXCs selected, %s succeeded, 0 failed; overall SUCCESS.\n' \
     "$lxc_targets" "$succeeded"
 else
