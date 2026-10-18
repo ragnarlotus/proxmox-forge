@@ -136,6 +136,34 @@ class ShowConfigTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("show-config", result.stdout)
 
+    def test_path_symlink_resolves_real_checkout_without_proxmox_probes(self):
+        # Reproduce /usr/local/bin/forge -> /opt/proxmox-forge/forge without
+        # writing outside the isolated temporary fixture.
+        launcher = self.directory / "bin" / "forge"
+        launcher.symlink_to(self.checkout / "forge")
+        chained = self.directory / "bin" / "forge-chain"
+        chained.symlink_to("forge")
+
+        self.config_path.write_text("LOG_KEEP=12\n", encoding="utf-8")
+        direct = self.run_forge("show-config")
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+
+        for command in (["forge", "show-config"],
+                        [str(chained), "show-config"]):
+            with self.subTest(command=command[0]):
+                result = subprocess.run(
+                    command,
+                    cwd=self.directory,
+                    env=self.env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, direct.stdout)
+                self.assertIn("LOG_KEEP=12  # source=override", result.stdout)
+                self.assertFalse(self.proxmox_calls.exists())
+
     def test_sensitive_values_are_redacted(self):
         # The current schema does not include a sensitive setting. Exercise the
         # real display helper directly with a synthetic future config key.
