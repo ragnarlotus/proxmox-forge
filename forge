@@ -48,10 +48,25 @@ command -v flock >/dev/null 2>&1 || {
   exit 1
 }
 
-exec 200<>"$LOCK_FILE" || {
-  printf 'ERROR: could not open Forge run lock: %s\n' "$LOCK_FILE" >&2
-  exit 1
-}
+# A self-update followed by re-exec must retain the SAME locked descriptor:
+# reopening FD 200 would briefly release the lock between Forge revisions.
+if [[ "${FORGE_SELF_UPDATE_REEXEC:-}" == 1 ]]; then
+  unset FORGE_SELF_UPDATE_REEXEC
+  [[ -e "/proc/$/fd/$LOCK_FD" ]] || {
+    printf 'ERROR: inherited Forge lock is unavailable\n' >&2
+    exit 1
+  }
+  inherited_lock="$(readlink "/proc/$/fd/$LOCK_FD")" || exit 1
+  [[ "$inherited_lock" == "$LOCK_FILE" ]] || {
+    printf 'ERROR: inherited Forge lock is not the expected lock file\n' >&2
+    exit 1
+  }
+else
+  exec 200<>"$LOCK_FILE" || {
+    printf 'ERROR: could not open Forge run lock: %s\n' "$LOCK_FILE" >&2
+    exit 1
+  }
+fi
 
 if ! flock -n "$LOCK_FD"; then
   holder="$(awk -F '\t' '
@@ -194,7 +209,8 @@ offer_self_update() {
         printf 'Forge updated; restarting the requested command with the new code.\n'
         # The new CLI must acquire the global lock before any new mutation.
         # The old shell is replaced; its exit trap is not run.
-        FORGE_SELF_UPDATE_SKIP_PROMPT=1 exec "$FORGE_ENTRYPOINT" "$@"
+        export FORGE_SELF_UPDATE_SKIP_PROMPT=1 FORGE_SELF_UPDATE_REEXEC=1
+        exec "$FORGE_ENTRYPOINT" "$@"
         ;;
       n|N|no|NO|'') return 0 ;;
       c|C|cancel|CANCEL) printf 'System update cancelled.\n'; return 1 ;;
