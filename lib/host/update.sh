@@ -68,7 +68,12 @@ FORGE_RESULT_TABLE=true
 source "$apt_results_script" || fail "could not load APT results helper"
 trap forge_apt_cleanup EXIT
 
-[[ "${CONFIG[UPDATE_HOST]}" == true ]] || fail "host updates are disabled by configuration"
+if [[ "${FORGE_SCHEDULED_MODE:-}" == scheduled ]]; then
+  [[ "${CONFIG[SCHEDULED_UPDATE_HOST]}" == true ]] ||
+    fail "host updates are not authorized for scheduled runs"
+else
+  [[ "${CONFIG[UPDATE_HOST]}" == true ]] || fail "host updates are disabled by configuration"
+fi
 
 hostname_fqdn="$(hostname -f 2>/dev/null)" || fail "could not determine host FQDN"
 [[ -n "$hostname_fqdn" ]] || fail "host FQDN is empty"
