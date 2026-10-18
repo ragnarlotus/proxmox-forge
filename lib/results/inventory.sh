@@ -62,10 +62,10 @@ for vmid in "${sorted_ids[@]}"; do
     policy=stopped
   elif lxc_is_excluded "$vmid" "$name" "$exclusions"; then
     policy=excluded
-  elif [[ "$update_running" == false ]]; then
-    policy=running_lxc_disabled
   elif [[ "$scheduled_scope" == true ]] && ! lxc_is_scheduled "$vmid" "$scheduled_allowlist"; then
     policy=scheduled_not_authorized
+  elif [[ "$update_running" == false ]]; then
+    policy=running_lxc_disabled
   else
     policy=eligible
   fi
