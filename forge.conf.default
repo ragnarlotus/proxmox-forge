@@ -172,6 +172,18 @@ NOTIFY_ONLY_ERRORS=true
 
 
 # -----------------------------------------------------------------------------
+# Forge self-update (F238)
+# -----------------------------------------------------------------------------
+
+# Before a manually invoked host/LXC/bulk update, check the tracked Git remote
+# for a newer Forge main revision and offer to update Forge first. When false,
+# Forge never performs version checks automatically. Prompts require a terminal;
+# scheduled and noninteractive update runs never self-update or block on input.
+# The explicit "forge update self-update [BRANCH]" command is independent.
+CHECK_FORGE_UPDATES_BEFORE_UPDATE=false
+
+
+# -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
 

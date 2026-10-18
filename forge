@@ -48,10 +48,25 @@ command -v flock >/dev/null 2>&1 || {
   exit 1
 }
 
-exec 200<>"$LOCK_FILE" || {
-  printf 'ERROR: could not open Forge run lock: %s\n' "$LOCK_FILE" >&2
-  exit 1
-}
+# A self-update followed by re-exec must retain the SAME locked descriptor:
+# reopening FD 200 would briefly release the lock between Forge revisions.
+if [[ "${FORGE_SELF_UPDATE_REEXEC:-}" == 1 ]]; then
+  unset FORGE_SELF_UPDATE_REEXEC
+  [[ -e "/proc/$BASHPID/fd/$LOCK_FD" ]] || {
+    printf 'ERROR: inherited Forge lock is unavailable\n' >&2
+    exit 1
+  }
+  inherited_lock="$(readlink "/proc/$BASHPID/fd/$LOCK_FD")" || exit 1
+  [[ "$inherited_lock" == "$LOCK_FILE" ]] || {
+    printf 'ERROR: inherited Forge lock is not the expected lock file\n' >&2
+    exit 1
+  }
+else
+  exec 200<>"$LOCK_FILE" || {
+    printf 'ERROR: could not open Forge run lock: %s\n' "$LOCK_FILE" >&2
+    exit 1
+  }
+fi
 
 if ! flock -n "$LOCK_FD"; then
   holder="$(awk -F '\t' '
@@ -114,6 +129,7 @@ LXC_CONFLICTS_SCRIPT="$FORGE_DIR/lib/config/conflicts.sh"
 LXC_UPDATE_SCRIPT="$FORGE_DIR/lib/lxc/update.sh"
 UPDATE_ALL_SCRIPT="$FORGE_DIR/lib/workflows/update-all.sh"
 HISTORY_SCRIPT="$FORGE_DIR/lib/results/history.py"
+SELF_UPDATE_SCRIPT="$FORGE_DIR/lib/self-update.sh"
 
 [[ -r "$CONFIG_GET_SCRIPT" ]] || fail "config get helper is not readable: $CONFIG_GET_SCRIPT"
 # shellcheck source=/dev/null
@@ -143,10 +159,69 @@ ensure_lxc_environment() {
 }
 
 case "${1:-}" in
-  validate-config|show-config|status|history|host|lxc|update)
+  validate-config|show-config|status|history|host|lxc)
     config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
     write_runtime_state
     export FORGE_RUNTIME_CONFIG_READY=true
+    ;;
+esac
+
+# F238: load normal update configuration, but do not require it for an
+# explicit self-update: a self-update may need to repair invalid defaults.
+if [[ "${1:-}" == update && "${2:-}" != self-update ]]; then
+  config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
+  write_runtime_state
+  export FORGE_RUNTIME_CONFIG_READY=true
+fi
+
+# This opt-in prompt runs only before manual updates, never inside a
+# mutating stage or scheduled execution. The global lock is already held.
+offer_self_update() {
+  local check_result answer
+  [[ "${CONFIG[CHECK_FORGE_UPDATES_BEFORE_UPDATE]:-false}" == true ]] || return 0
+  [[ "${FORGE_SELF_UPDATE_SKIP_PROMPT:-}" != 1 ]] || return 0
+  if [[ ! -t 0 || ! -t 1 || ! -r /dev/tty ]]; then
+    printf 'NOTICE: Forge version prompt skipped (no interactive terminal)\n' >&2
+    return 0
+  fi
+  if [[ ! -r "$SELF_UPDATE_SCRIPT" ]]; then
+    printf 'WARNING: cannot check Forge updates: self-update helper is missing\n' >&2
+    return 0
+  fi
+  check_result="$(bash "$SELF_UPDATE_SCRIPT" check "$FORGE_DIR" main)" || {
+    printf 'WARNING: Forge version check failed; continuing with installed version\n' >&2
+    return 0
+  }
+  [[ "$check_result" == self_update=available\ * ]] || return 0
+  printf 'New Forge revision available on main:\n%s\n' "$check_result"
+  while :; do
+    printf 'Update Forge first? [y]es/[n]o/[c]ancel (default: no): '
+    if ! IFS= read -r answer </dev/tty; then
+      printf '\nERROR: Forge update prompt was interrupted; system update cancelled\n' >&2
+      return 1
+    fi
+    case "$answer" in
+      y|Y|yes|YES)
+        bash "$SELF_UPDATE_SCRIPT" update "$FORGE_DIR" main || {
+          printf 'ERROR: Forge self-update failed; system update cancelled\n' >&2
+          return 1
+        }
+        printf 'Forge updated; restarting the requested command with the new code.\n'
+        # The new CLI must acquire the global lock before any new mutation.
+        # The old shell is replaced; its exit trap is not run.
+        export FORGE_SELF_UPDATE_SKIP_PROMPT=1 FORGE_SELF_UPDATE_REEXEC=1
+        exec "$FORGE_ENTRYPOINT" "$@"
+        ;;
+      n|N|no|NO|'') return 0 ;;
+      c|C|cancel|CANCEL) printf 'System update cancelled.\n'; return 1 ;;
+      *) printf 'Please answer y, n or c.\n' ;;
+    esac
+  done
+}
+
+case "${1:-}:${2:-}" in
+  host:update|lxc:update|update:all)
+    offer_self_update "$@" || exit 1
     ;;
 esac
 
@@ -278,8 +353,15 @@ main() {
       esac
       ;;
     update)
-      [[ $# -eq 2 && ( "$2" == all || "$2" == scheduled ) ]] || fail "usage: forge update all|scheduled"
-      run_update_all "$2"
+      if [[ "${2:-}" == self-update ]]; then
+        [[ $# -eq 2 || $# -eq 3 ]] || fail "usage: forge update self-update [BRANCH]"
+        [[ -r "$SELF_UPDATE_SCRIPT" ]] || fail "self-update helper is not readable"
+        bash "$SELF_UPDATE_SCRIPT" update "$FORGE_DIR" "${3:-main}"
+      else
+        [[ $# -eq 2 && ( "$2" == all || "$2" == scheduled ) ]] ||
+          fail "usage: forge update all|scheduled|self-update [BRANCH]"
+        run_update_all "$2"
+      fi
       ;;
     help|-h|--help)
       [[ -r "$HELP_SCRIPT" ]] || fail "CLI help script is not readable: $HELP_SCRIPT"
