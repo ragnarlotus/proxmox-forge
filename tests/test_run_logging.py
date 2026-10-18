@@ -157,13 +157,13 @@ class RunLoggingTests(unittest.TestCase):
             self.assertIn(b"streamed-before-release\n", observed,
                           "producer output was buffered until process exit")
             deadline = time.monotonic() + 3
-            while (b"streamed-before-release\\n" not in target.read_bytes()
-                   or b"streamed-before-release\\n" not in run.read_bytes()):
+            while (b"streamed-before-release\n" not in target.read_bytes()
+                   or b"streamed-before-release\n" not in run.read_bytes()):
                 if time.monotonic() >= deadline:
                     break
                 time.sleep(0.01)
             for path in (target, run):
-                self.assertIn(b"streamed-before-release\\n", path.read_bytes(),
+                self.assertIn(b"streamed-before-release\n", path.read_bytes(),
                               f"{path} did not log progress before producer exit")
             self.assertIsNone(process.poll(), "producer finished before streaming check")
         finally:
@@ -192,16 +192,16 @@ class RunLoggingTests(unittest.TestCase):
             producer, env={**self.env, "FORGE_RUN_LOG": str(run)},
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("before\\n", result.stdout)
-        self.assertIn("\\x1b[32mcolor\\x1b[0m", result.stdout)
-        self.assertIn("loading 10%\\rloading 95%", result.stdout)
-        self.assertNotIn("\\x1b[3J", result.stdout)
+        self.assertIn("before\n", result.stdout)
+        self.assertIn("\x1b[32mcolor\x1b[0m", result.stdout)
+        self.assertIn("loading 10%\rloading 95%", result.stdout)
+        self.assertNotIn("\x1b[3J", result.stdout)
         for path in (target, run):
             logged = path.read_text()
-            self.assertIn("before\\ncolor\\nloading 95%\\nafter\\n", logged)
+            self.assertIn("before\ncolor\nloading 95%\nafter\n", logged)
             self.assertNotIn("loading 10%", logged)
             self.assertNotIn("secret title", logged)
-            self.assertNotIn("\\x1b", logged)
+            self.assertNotIn("\x1b", logged)
         self.assertEqual(target.read_bytes(), run.read_bytes())
 
     def test_final_table_is_plain_in_log_and_unchanged_on_terminal(self):
