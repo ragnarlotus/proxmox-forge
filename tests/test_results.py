@@ -42,10 +42,10 @@ if kind == "inventory":
             policy = "stopped"
         elif vmid in excluded or name in excluded:
             policy = "excluded"
-        elif args[0] == "false":
-            policy = "running_lxc_disabled"
         elif authorized is not None and vmid not in authorized:
             policy = "scheduled_not_authorized"
+        elif args[0] == "false":
+            policy = "running_lxc_disabled"
         else:
             policy = "eligible"
         state = "stopped" if vmid in stopped else "running"
