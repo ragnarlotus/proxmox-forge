@@ -116,6 +116,44 @@ class RunLoggingTests(unittest.TestCase):
             self.assertEqual(content.count("error from producer"), 1)
         self.assertEqual(run.read_text(), target.read_text())
 
+    def test_stage_output_is_streamed_before_producer_finishes(self):
+        import select
+        import time
+
+        target = self.root / "target.log"
+        target.touch()
+        release = self.root / "release"
+        producer = (
+            "import pathlib,sys,time; "
+            "release=pathlib.Path(sys.argv[1]); "
+            "print('streamed-before-release',flush=True); "
+            "deadline=time.monotonic()+5; "
+            "exec('while not release.exists() and time.monotonic()<deadline: time.sleep(0.01)'); "
+            "print('streamed-after-release',flush=True)"
+        )
+        process = subprocess.Popen(
+            ["bash", str(CAPTURE), str(target), "backup", "--",
+             "python3", "-u", "-c", producer, str(release)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, bufsize=1, env=self.env,
+        )
+        try:
+            ready, _, _ = select.select([process.stdout], [], [], 3)
+            self.assertTrue(ready, "stage output was buffered while producer was alive")
+            first_line = process.stdout.readline()
+            self.assertIn("stage=start name=backup", first_line)
+            ready, _, _ = select.select([process.stdout], [], [], 3)
+            self.assertTrue(ready, "producer output was buffered until process exit")
+            self.assertEqual(process.stdout.readline().strip(), "streamed-before-release")
+            self.assertIsNone(process.poll(), "producer finished before streaming check")
+        finally:
+            release.touch()
+            stdout, stderr = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assertIn("streamed-after-release", stdout)
+        self.assertIn("streamed-before-release", target.read_text())
+        self.assertIn("streamed-after-release", target.read_text())
+
     def test_final_table_is_plain_in_log_and_unchanged_on_terminal(self):
         run = self.open_run()
         record = (
