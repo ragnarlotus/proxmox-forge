@@ -277,7 +277,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertLess(steps.index("resource_restore"), steps.index("recover"))
         self.assertEqual(steps.count("resource_restore"), 1)
-        self.assertIn("update=failed vmid=111 stage=application exit_code=42",
+        self.assertIn("update=failed vmid=111 stage=application_update exit_code=42",
                       result.stdout)
 
     def test_f234_failed_apply_restores_partial_change_without_update(self):
