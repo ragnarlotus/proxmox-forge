@@ -138,13 +138,22 @@ class RunLoggingTests(unittest.TestCase):
             text=True, bufsize=1, env=self.env,
         )
         try:
-            ready, _, _ = select.select([process.stdout], [], [], 3)
-            self.assertTrue(ready, "stage output was buffered while producer was alive")
-            first_line = process.stdout.readline()
-            self.assertIn("stage=start name=backup", first_line)
-            ready, _, _ = select.select([process.stdout], [], [], 3)
-            self.assertTrue(ready, "producer output was buffered until process exit")
-            self.assertEqual(process.stdout.readline().strip(), "streamed-before-release")
+            observed = b""
+            deadline = time.monotonic() + 3
+            while b"streamed-before-release\\n" not in observed:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                ready, _, _ = select.select([process.stdout.fileno()], [], [], remaining)
+                if not ready:
+                    break
+                part = os.read(process.stdout.fileno(), 4096)
+                if not part:
+                    break
+                observed += part
+            self.assertIn(b"stage=start name=backup\\n", observed)
+            self.assertIn(b"streamed-before-release\\n", observed,
+                          "producer output was buffered until process exit")
             self.assertIsNone(process.poll(), "producer finished before streaming check")
         finally:
             release.touch()
