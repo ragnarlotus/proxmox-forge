@@ -192,6 +192,51 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("update self-update [BRANCH]", result.stdout)
 
+    def test_accept_prompt_reexecutes_under_same_lock(self):
+        self.push_update()
+        (self.checkout / "forge.conf").write_text(
+            "CHECK_FORGE_UPDATES_BEFORE_UPDATE=true\n"
+        )
+        master, slave = pty.openpty()
+
+        def controlling_tty():
+            os.setsid()
+            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+
+        proc = subprocess.Popen(
+            [str(self.checkout / "forge"), "host", "update"],
+            cwd=self.checkout, env=self.env, stdin=slave,
+            stdout=slave, stderr=slave, preexec_fn=controlling_tty,
+        )
+        os.close(slave)
+        output = b""
+        try:
+            for _ in range(100):
+                import select
+                if select.select([master], [], [], 0.1)[0]:
+                    try:
+                        output += os.read(master, 32768)
+                    except OSError:
+                        break
+                    if b"Update Forge first?" in output:
+                        os.write(master, b"y\n")
+                        break
+            proc.wait(timeout=15)
+            output += self.read_remaining(master)
+            self.assertIn(b"self_update=success", output)
+            self.assertIn(b"restarting the requested command", output)
+            self.assertNotIn(b"another Forge execution is already running", output)
+            # No fake host updater installed: the second command fails before
+            # mutation, proving re-exec reached normal CLI dispatch.
+            self.assertIn(b"run logging helpers are unavailable", output)
+            self.assertEqual(self.git("rev-parse", "HEAD"),
+                             self.git("rev-parse", "origin/main"))
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            os.close(master)
+
     def test_prompt_can_cancel_system_update_before_any_mutation(self):
         self.push_update()
         (self.checkout / "forge.conf").write_text(
