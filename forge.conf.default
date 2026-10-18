@@ -88,6 +88,14 @@ UPDATE_LXC_APPLICATION=true
 RUN_CUSTOM_SCRIPTS=true
 CUSTOM_SCRIPTS_DIR="/opt/proxmox-forge/scripts.d"
 
+# F234: opt-in minimum CPU/RAM limits for each LXC update. A nonzero value
+# temporarily increases an explicitly configured Proxmox limit only when lower.
+# Settings are restored before health validation / rollback and on normal exit.
+# 0 = leave this dimension unchanged. Forge never lowers original limits.
+# Example local forge.conf: LXC_UPDATE_TEMP_CORES=4; LXC_UPDATE_TEMP_MEMORY_MB=4096
+LXC_UPDATE_TEMP_CORES=0
+LXC_UPDATE_TEMP_MEMORY_MB=0
+
 
 # -----------------------------------------------------------------------------
 # Requirements and recovery
