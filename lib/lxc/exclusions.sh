@@ -25,3 +25,18 @@ lxc_is_excluded() {
   done
   return 1
 }
+
+# Scheduled authorization accepts exact VMIDs only. The configuration
+# validator rejects names, duplicates, wildcards and malformed entries.
+lxc_is_scheduled() {
+  local wanted="$1" allowed="$2" entry
+  local -a entries=()
+  [[ -n "$allowed" ]] || return 1
+  IFS=',' read -r -a entries <<< "$allowed"
+  for entry in "${entries[@]}"; do
+    entry="${entry#"${entry%%[![:space:]]*}"}"
+    entry="${entry%"${entry##*[![:space:]]}"}"
+    [[ "$entry" == "$wanted" ]] && return 0
+  done
+  return 1
+}
