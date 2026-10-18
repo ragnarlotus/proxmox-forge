@@ -47,7 +47,7 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         for path in (
             "lib/self-update.sh", "lib/runtime/require-context.sh",
             "lib/config/get.sh", "lib/config/load.sh",
-            "lib/config/validate.sh",
+            "lib/config/validate.sh", "lib/cli/help.sh",
         ):
             output = self.checkout / path
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +55,7 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-m", "initial")
         self.git("push", "-u", "origin", "main")
+        self.git("symbolic-ref", "HEAD", "refs/heads/main", cwd=self.remote)
         self.git("clone", str(self.remote), str(self.writer), cwd=self.root)
         self.git("config", "user.email", "forge-ci@example.invalid", cwd=self.writer)
         self.git("config", "user.name", "Forge CI", cwd=self.writer)
