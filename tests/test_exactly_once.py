@@ -183,7 +183,8 @@ class ExactlyOnceTests(unittest.TestCase):
                     'config_get() {\n'
                     '  declare -gA CONFIG=(\n'
                     '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
-                    '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
+                    '    [NOTIFY_MANUAL]="${FORGE_TEST_NOTIFY_MANUAL:-errors}"\n'
+                    '    [NOTIFY_SCHEDULED]="${FORGE_TEST_NOTIFY_SCHEDULED:-all}"\n'
                     '    [LOG_DIR]="$FORGE_TEST_LOG_DIR"\n'
                     '    [LOG_KEEP]=8\n'
                     '    [CUSTOM_SCRIPTS_DIR]="$FORGE_TEST_SCRIPTS"\n'
@@ -302,7 +303,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertFalse(mail.exists())
         failed, _, _ = self.invoke(FORGE_TEST_FAIL_STAGE="application", **enabled)
         self.assertEqual(failed.returncode, 42, failed.stderr)
-        self.assertIn("Subject: [Proxmox Forge] FAILED",
+        self.assertIn("Subject: [Proxmox Forge] [MANUAL] FAILED",
                       mail.read_text(encoding="utf-8"))
         self.assertIn("Failed and blocked targets (1):",
                       mail.read_text(encoding="utf-8"))
