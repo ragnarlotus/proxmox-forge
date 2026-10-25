@@ -15,7 +15,8 @@ FQDN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 EVENT = re.compile(
     r"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+) "
     r"level=(?:INFO|WARN|ERROR) event=(run_start|run_end|recovery_artifact|"
-    r"backup_artifact|reboot_status)(?: |$)"
+    r"backup_artifact|reboot_status|target_update_start|target_update_end|"
+    r"stage_start|stage_end)(?: |$)"
 )
 GLOBAL = re.compile(r"^result_global status=(SUCCESS|PARTIAL|FAILED) ")
 
@@ -71,6 +72,7 @@ def read_run(path):
         "run_id": path.stem,
         "started_at": None,
         "finished_at": None,
+        "duration_seconds": None,
         "command": None,
         "status": "UNKNOWN",
         "complete": False,
@@ -82,6 +84,10 @@ def read_run(path):
     rows = []
     backups = {}
     reboots = {}
+    target_durations = {}
+    target_stages = {}
+    active_target = None
+    active_stage = None
     with path.open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
             if line.startswith("result_target "):
@@ -115,7 +121,44 @@ def read_run(path):
                     raise ValueError("invalid run exit code")
                 summary["exit_code"] = code
                 summary["finished_at"] = when
+                summary["duration_seconds"] = number_or_none(value.get("duration_seconds"))
                 summary["complete"] = True
+            elif kind == "target_update_start":
+                # Target stages are serialized by the CLI. Stage events do not
+                # carry a VMID, so associate them only with the active target.
+                vmid = value.get("vmid", "")
+                if value.get("type") == "host":
+                    active_target = ("host", "HOST")
+                elif vmid.isdigit():
+                    active_target = ("lxc", vmid)
+                else:
+                    active_target = None
+                active_stage = None
+            elif kind == "stage_start":
+                stage = value.get("stage", "")
+                if active_target and re.fullmatch(r"[a-z][a-z0-9_-]*", stage):
+                    active_stage = stage
+                else:
+                    active_stage = None
+            elif kind == "stage_end":
+                stage = value.get("stage", "")
+                if (active_target and active_stage == stage
+                        and value.get("status") in ("success", "failed", "logging_failed")):
+                    target_stages.setdefault(active_target, []).append({
+                        "name": stage,
+                        "status": value["status"],
+                        "duration_seconds": number_or_none(value.get("duration_seconds")),
+                    })
+                active_stage = None
+            elif kind == "target_update_end":
+                vmid = value.get("vmid", "")
+                key = (("host", "HOST") if value.get("type") == "host"
+                       else ("lxc", vmid) if vmid.isdigit() else None)
+                if key is not None and value.get("status") in ("success", "failed"):
+                    target_durations[key] = number_or_none(value.get("duration_seconds"))
+                if key == active_target:
+                    active_target = None
+                    active_stage = None
             elif kind == "recovery_artifact":
                 vmid = value.get("vmid", "")
                 if vmid.isdigit() and value.get("backup"):
@@ -168,6 +211,8 @@ def read_run(path):
             "result_detail": fields(row)[5],
             "reboot_required": reboots.get(key) if attempted else None,
             "backup": backups.get(key) if attempted else None,
+            "duration_seconds": target_durations.get(key) if attempted else None,
+            "stages": target_stages.get(key, []) if attempted else [],
         })
     return summary
 
@@ -188,11 +233,25 @@ def available_runs(root, fqdn):
     )
 
 
+def duration_text(seconds):
+    if seconds is None:
+        return "unknown"
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
 def show_detail(run):
     print("Forge execution")
     for name, value in (
         ("Run", run["run_id"]), ("Started", run["started_at"]),
-        ("Finished", run["finished_at"]), ("Command", run["command"]),
+        ("Finished", run["finished_at"]),
+        ("Duration", duration_text(run["duration_seconds"])),
+        ("Command", run["command"]),
         ("Result", run["status"]), ("Exit code", run["exit_code"]),
     ):
         print(f"  {name}: {clean(value) if value is not None else 'unknown'}")
@@ -211,6 +270,10 @@ def show_detail(run):
         print(f"  {target['vmid']} ({target['name']}): {target['status']}")
         print(f"    Detail: {target['result_detail']}")
         if target["attempted"]:
+            print(f"    Duration: {duration_text(target['duration_seconds'])}")
+            for stage in target["stages"]:
+                print(f"    Stage {stage['name']}: "
+                      f"{duration_text(stage['duration_seconds'])} ({stage['status']})")
             print(f"    APT upgraded: {target['apt_upgraded'] if target['apt_upgraded'] is not None else 'unknown'}")
             before, after = target["app_before"], target["app_after"]
             if before or after:
@@ -240,7 +303,8 @@ def show_history(runs):
             if totals else "target totals unknown"
         )
         completion = "" if run["complete"] else " [INCOMPLETE]"
-        print(f"  {run['run_id']}  {run['status']}{completion}  {counts}")
+        print(f"  {run['run_id']}  {run['status']}{completion}  "
+              f"duration={duration_text(run['duration_seconds'])}  {counts}")
 
 
 def main():
