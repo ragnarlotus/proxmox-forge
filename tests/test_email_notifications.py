@@ -69,7 +69,7 @@ class BulkNotificationTests(unittest.TestCase):
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["args"], ["-t", "-oi"])
         email = messages[0]["email"]
-        self.assertTrue(email.startswith("To: root\nSubject: [Proxmox Forge] PARTIAL - update results\n"))
+        self.assertTrue(email.startswith("To: root\nSubject: [Proxmox Forge] [MANUAL] PARTIAL - update results\n"))
         self.assertIn("Content-Type: text/plain; charset=UTF-8\n", email)
         self.assertIn("result_global status=PARTIAL", email)
         self.assertIn("Failed and blocked targets (1):", email)
@@ -98,7 +98,7 @@ class BulkNotificationTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(self.messages(), [])
 
-    def test_all_outcomes_policy_false_sends_success_including_empty(self):
+    def test_manual_all_policy_sends_success_including_empty(self):
         self.prepare_mail()
         for mode, opts in [
             ("all", {}),
@@ -107,12 +107,12 @@ class BulkNotificationTests(unittest.TestCase):
             with self.subTest(mode=mode, opts=opts):
                 result, _ = self.invoke(
                     mode, FORGE_TEST_EMAIL_NOTIFICATIONS="true",
-                    FORGE_TEST_NOTIFY_ONLY_ERRORS="false", **opts,
+                    FORGE_TEST_NOTIFY_MANUAL="all", **opts,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
         messages = self.messages()
         self.assertEqual(len(messages), 2)
-        self.assertTrue(all("Subject: [Proxmox Forge] SUCCESS" in m["email"]
+        self.assertTrue(all("Subject: [Proxmox Forge] [MANUAL] SUCCESS" in m["email"]
                             for m in messages))
         self.assertIn("Overall result: SUCCESS (no targets selected)",
                       messages[1]["email"])
@@ -126,7 +126,7 @@ class BulkNotificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual(len(self.messages()), 1)
         email = self.messages()[0]["email"]
-        self.assertIn("Subject: [Proxmox Forge] FAILED", email)
+        self.assertIn("Subject: [Proxmox Forge] [MANUAL] FAILED", email)
         self.assertIn("Failed and blocked targets (4):", email)
         self.assertIn("NOT RUN: LXC 111 root space preflight failed", email)
         self.assertNotIn("host", [c["kind"] for c in calls])
@@ -142,7 +142,7 @@ class BulkNotificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 42, result.stderr)
         self.assertEqual(len(self.messages()), 1)
         email = self.messages()[0]["email"]
-        self.assertIn("Subject: [Proxmox Forge] PARTIAL", email)
+        self.assertIn("Subject: [Proxmox Forge] [MANUAL] PARTIAL", email)
         self.assertIn("ERROR: os_update (exit 42)", email)
         self.assertIn("Overall result: PARTIAL", email)
         self.assertNotIn("NOT RUN: host update failed", email)
@@ -158,7 +158,7 @@ class BulkNotificationTests(unittest.TestCase):
             with self.subTest(code=code):
                 result, _ = self.invoke(
                     "all", FORGE_TEST_EMAIL_NOTIFICATIONS="true",
-                    FORGE_TEST_NOTIFY_ONLY_ERRORS="false",
+                    FORGE_TEST_NOTIFY_MANUAL="all",
                     FORGE_TEST_MAIL_EXIT="75", **opts,
                 )
                 self.assertEqual(result.returncode, code)
@@ -184,6 +184,53 @@ class BulkNotificationTests(unittest.TestCase):
         # longer impersonate an email header or a separate result row.
         self.assertIn("      | X-Injected: fake", email)
         self.assertNotIn("\nX-Injected:", email)
+
+    def test_f237_separate_manual_and_scheduled_policies(self):
+        scenarios = (
+            # mode, manual, scheduled, failing guest, expected status, send?
+            ("all", "errors", "all", False, "SUCCESS", False),
+            ("scheduled", "errors", "all", False, "SUCCESS", True),
+            ("all", "all", "none", False, "SUCCESS", True),
+            ("scheduled", "all", "none", True, "PARTIAL", False),
+            ("all", "none", "errors", True, "PARTIAL", False),
+            ("scheduled", "none", "errors", True, "PARTIAL", True),
+            ("scheduled", "all", "errors", False, "SUCCESS", False),
+        )
+        for mode, manual, scheduled, failing, status, expected in scenarios:
+            with self.subTest(mode=mode, manual=manual, scheduled=scheduled,
+                              failing=failing):
+                self.prepare_mail()
+                self.mail_log.unlink(missing_ok=True)
+                opts = {
+                    "FORGE_TEST_EMAIL_NOTIFICATIONS": "true",
+                    "FORGE_TEST_NOTIFY_MANUAL": manual,
+                    "FORGE_TEST_NOTIFY_SCHEDULED": scheduled,
+                    "FORGE_TEST_LXC_CODES": '{"111":42}' if failing else "{}",
+                }
+                if mode == "scheduled":
+                    opts["FORGE_TEST_SCHEDULED_LXC"] = "100,111,115"
+                result, _ = self.invoke(mode, **opts)
+                self.assertEqual(result.returncode, 1 if failing else 0, result.stderr)
+                messages = self.messages()
+                self.assertEqual(len(messages), int(expected))
+                if expected:
+                    email = messages[0]["email"]
+                    origin = "SCHEDULED" if mode == "scheduled" else "MANUAL"
+                    self.assertIn(
+                        f"Subject: [Proxmox Forge] [{origin}] {status} - update results",
+                        email,
+                    )
+                    self.assertIn(f"result_global status={status}", email)
+
+    def test_f237_global_switch_overrides_scheduled_all_policy(self):
+        self.prepare_mail()
+        result, _ = self.invoke(
+            "scheduled", FORGE_TEST_EMAIL_NOTIFICATIONS="false",
+            FORGE_TEST_SCHEDULED_LXC="111",
+            FORGE_TEST_NOTIFY_SCHEDULED="all",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.messages(), [])
 
     def test_sender_is_missing_does_not_change_final_result(self):
         # Set an exclusive fake PATH for sendmail lookup, but retain Python and

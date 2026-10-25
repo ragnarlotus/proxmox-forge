@@ -65,6 +65,9 @@ update_running_lxc="${CONFIG[UPDATE_RUNNING_LXC]}"
 update_host_enabled="${CONFIG[UPDATE_HOST]}"
 selection_args=("$update_running_lxc" "${CONFIG[EXCLUDE]}")
 if [[ "$mode" == scheduled ]]; then
+  # Mark this run for the shared F237 notification policy, including when
+  # the coordinator is invoked without the public CLI in isolated tests.
+  export FORGE_SCHEDULED_MODE=scheduled
   update_host_enabled="${CONFIG[SCHEDULED_UPDATE_HOST]}"
   update_running_lxc=false
   [[ -z "${CONFIG[SCHEDULED_UPDATE_LXC]}" ]] || update_running_lxc=true

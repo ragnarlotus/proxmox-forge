@@ -16,7 +16,8 @@ CONFIG_REQUIRED_KEYS=(
   SCHEDULED_UPDATE_HOST
   SCHEDULED_UPDATE_LXC
   EMAIL_NOTIFICATIONS
-  NOTIFY_ONLY_ERRORS
+  NOTIFY_MANUAL
+  NOTIFY_SCHEDULED
   EXCLUDE
   UPDATE_LXC_OS
   UPDATE_LXC_APPLICATION
@@ -42,7 +43,6 @@ CONFIG_BOOLEAN_KEYS=(
   UPDATE_RUNNING_LXC
   SCHEDULED_UPDATE_HOST
   EMAIL_NOTIFICATIONS
-  NOTIFY_ONLY_ERRORS
   UPDATE_LXC_OS
   UPDATE_LXC_APPLICATION
   RUN_CUSTOM_SCRIPTS
@@ -187,6 +187,13 @@ config_validate() {
 
   for key in "${CONFIG_BOOLEAN_KEYS[@]}"; do
     config_validate_boolean "$key" || return 1
+  done
+
+  for key in NOTIFY_MANUAL NOTIFY_SCHEDULED; do
+    case "${CONFIG[$key]}" in
+      none|errors|all) ;;
+      *) config_validate_fail "$key must be none, errors or all (got '${CONFIG[$key]}')"; return 1 ;;
+    esac
   done
 
   [[ "${CONFIG[CUSTOM_SCRIPTS_DIR]}" == /* ]] || {

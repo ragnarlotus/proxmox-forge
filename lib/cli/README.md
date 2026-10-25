@@ -31,6 +31,19 @@ Loads `forge.conf.default`, then optional local `forge.conf`, validates the merg
 
 Loads and validates `forge.conf.default` and optional `forge.conf`, printing the effective values in stable key order. The end of each line indicates `source=default` or `source=override` (even when an override matches the default). Values use Bash-safe quoting and sensitive-looking keys are redacted. This read-only command does not query LXC state or run the snapshot/backup recovery-policy preflight.
 
+## Notification policies (F237)
+
+`EMAIL_NOTIFICATIONS=false` by default disables all mail. With mail enabled,
+`NOTIFY_MANUAL=errors` (default) sends one final root-mail notification only
+for `FAILED` or `PARTIAL` manual host/LXC/bulk updates, while
+`NOTIFY_SCHEDULED=all` (default) sends a final mail for every completed
+authorized `forge update scheduled`, including `SUCCESS`. Either policy can
+be set independently to `none`, `errors` or `all`. Subjects identify
+`[MANUAL]` or `[SCHEDULED]` and include the global result. Mail is sent
+through existing Proxmox system-mail routing, using the same F225 final
+records, never individual per-target messages or Forge-managed SMTP.
+`NOTIFY_ONLY_ERRORS` has been replaced and is no longer a valid config key.
+
 ## `forge status` and `forge history`
 
 Read-only access to existing general run logs under `LOG_DIR/<PVE_FQDN>/runs/`. `forge status` displays the newest retained run; `forge history` lists retained runs newest first; `forge history RUN_ID` displays one run. Append `--json` for machine-readable output.
