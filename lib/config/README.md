@@ -26,6 +26,7 @@ Rules:
 - unknown keys are errors;
 - required keys must exist in the merged configuration;
 - booleans must be exactly `true` or `false`;
+- `NOTIFY_MANUAL` and `NOTIFY_SCHEDULED` accept only `none`, `errors` or `all`; the obsolete `NOTIFY_ONLY_ERRORS` key is no longer accepted;
 - `CUSTOM_SCRIPTS_DIR`, `HEALTH_SCRIPTS_DIR` and `LOG_DIR` must be absolute paths;
 - each non-empty `HOST_BACKUP_EXTRA_PATHS` entry must be an absolute path;
 - `EXCLUDE` must be empty or comma-separated exact VMIDs/hostnames. Spaces around entries are accepted; empty entries, wildcards and spaces inside names are rejected;
@@ -52,6 +53,9 @@ required before LXC mutation even if automatic rollback is disabled.
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
 | `CHECK_FORGE_UPDATES_BEFORE_UPDATE` | Boolean, default `true` | Before manual interactive host/LXC/bulk updates, check whether a newer Forge `main` revision exists and ask whether to update Forge first. Set `false` in local `forge.conf` to disable. Scheduled and noninteractive runs never prompt or automatically self-update. |
+| `EMAIL_NOTIFICATIONS` | Boolean; default `false` | Master switch for Proxmox root-mail notifications, independent of manual/scheduled policies. |
+| `NOTIFY_MANUAL` | `none`, `errors` or `all`; default `errors` | Notifications for manual host, LXC and bulk updates. `errors` mails only `FAILED`/`PARTIAL`; `all` also mails `SUCCESS` (including all-skipped/no-selected); `none` disables. |
+| `NOTIFY_SCHEDULED` | `none`, `errors` or `all`; default `all` | Same policy for `forge update scheduled`. Requires `EMAIL_NOTIFICATIONS=true` and an independently authorized scheduled update; never enables a timer or target selection. |
 | `UPDATE_RUNNING_LXC` | Boolean: `true` or `false` | Include currently running LXCs in `forge lxc list-targets`, `forge lxc update all` and `forge update all`. It does not restrict `forge lxc update TARGET`. |
 | `EXCLUDE` | Empty string or comma-separated VMIDs/exact LXC names | Remove matching running LXCs from automatic listing and both bulk update commands **before** preflight, backup or update. Case-sensitive; no partial or wildcard matching. Does not affect explicit `forge lxc update TARGET` or host updates. Entries for stopped or absent LXCs are inactive. Example: `EXCLUDE="108,share"`. |
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
