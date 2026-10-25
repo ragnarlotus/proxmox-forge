@@ -150,6 +150,95 @@ class HistoryTests(unittest.TestCase):
         self.assertTrue(all(t["backup"] is None and t["reboot_required"] is None
                             for t in value["targets"]))
 
+    def test_f146_measured_run_target_stage_durations(self):
+        content = self.fixture().replace(
+            f"run_id={self.newer} exit_code=1\n",
+            f"run_id={self.newer} exit_code=1 duration_seconds=2700\n",
+        )
+        host = record("HOST", type_="host", name=FQDN,
+                      before="-", after="-", apt="5")
+        lxc = record("101", status="ERROR",
+                     detail="ERROR: application_update (exit 42); recovery succeeded",
+                     stage="application_update", recovery="success")
+        content = content.replace(host + "\n", "\n".join([
+            "2026-10-15T09:00:05+02:00 level=INFO event=target_update_start type=host hostname=bv.deulos.com",
+            "2026-10-15T09:00:06+02:00 level=INFO event=stage_start stage=backup command=vzdump",
+            "2026-10-15T09:01:46+02:00 level=INFO event=stage_end stage=backup status=success exit_code=0 duration_seconds=100",
+            "2026-10-15T09:02:06+02:00 level=INFO event=target_update_end type=host status=success duration_seconds=121",
+            host,
+        ]) + "\n")
+        content = content.replace(lxc + "\n", "\n".join([
+            "2026-10-15T09:02:07+02:00 level=INFO event=target_update_start vmid=101 name=pihole",
+            "2026-10-15T09:02:08+02:00 level=INFO event=stage_start stage=application_update command=update",
+            "2026-10-15T09:02:38+02:00 level=ERROR event=stage_end stage=application_update status=failed exit_code=42 duration_seconds=30",
+            "2026-10-15T09:02:39+02:00 level=INFO event=stage_start stage=recovery command=restore",
+            "2026-10-15T09:02:54+02:00 level=INFO event=stage_end stage=recovery status=success exit_code=0 duration_seconds=15",
+            "2026-10-15T09:03:00+02:00 level=ERROR event=target_update_end vmid=101 status=failed exit_code=42 duration_seconds=53",
+            lxc,
+        ]) + "\n")
+        self.store(self.newer, content)
+        result = self.query("status", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data["duration_seconds"], 2700)
+        host, lxc = data["targets"]
+        self.assertEqual(host["duration_seconds"], 121)
+        self.assertEqual(host["stages"], [
+            {"name": "backup", "status": "success", "duration_seconds": 100},
+        ])
+        self.assertEqual(lxc["duration_seconds"], 53)
+        self.assertEqual(lxc["stages"], [
+            {"name": "application_update", "status": "failed", "duration_seconds": 30},
+            {"name": "recovery", "status": "success", "duration_seconds": 15},
+        ])
+        human = self.query("status")
+        self.assertIn("Duration: 45m 0s", human.stdout)
+        self.assertIn("Duration: 2m 1s", human.stdout)
+        self.assertIn("Stage backup: 1m 40s (success)", human.stdout)
+        self.assertIn("Stage application_update: 30s (failed)", human.stdout)
+        listing = self.query("history")
+        self.assertIn("duration=45m 0s", listing.stdout)
+
+    def test_f146_missing_or_incomplete_duration_is_never_inferred(self):
+        self.store(self.newer, self.fixture(include_end=False))
+        data = json.loads(self.query("status", "--json").stdout)
+        self.assertFalse(data["complete"])
+        self.assertIsNone(data["duration_seconds"])
+        self.assertTrue(all(t["duration_seconds"] is None and not t["stages"]
+                            for t in data["targets"]))
+        self.assertIn("Duration: unknown", self.query("status").stdout)
+
+        # Old logs without recorded timing remain backward compatible,
+        # even when wall-clock timestamps are separated by 45 minutes.
+        self.store(self.newer, self.fixture())
+        data = json.loads(self.query("status", "--json").stdout)
+        self.assertTrue(data["complete"])
+        self.assertIsNone(data["duration_seconds"])
+
+        # Malformed optional time measurements must not invent durations.
+        content = self.fixture().replace("exit_code=1\n",
+                                         "exit_code=1 duration_seconds=-8\n")
+        self.store(self.newer, content)
+        self.assertIsNone(json.loads(self.query("status", "--json").stdout)
+                          ["duration_seconds"])
+
+    def test_f146_stage_duration_requires_completed_record_and_target(self):
+        content = self.fixture(include_end=False)
+        host = record("HOST", type_="host", name=FQDN,
+                      before="-", after="-", apt="5")
+        content = content.replace(host, "\n".join([
+            "2026-10-15T09:00:05+02:00 level=INFO event=target_update_start type=host",
+            "2026-10-15T09:00:06+02:00 level=INFO event=stage_start stage=backup",
+            # Missing stage_end and target_update_end: neither elapsed time
+            # can be claimed even if another record later closes.
+            host,
+        ]))
+        self.store(self.newer, content)
+        data = json.loads(self.query("status", "--json").stdout)
+        self.assertIsNone(data["duration_seconds"])
+        self.assertIsNone(data["targets"][0]["duration_seconds"])
+        self.assertEqual(data["targets"][0]["stages"], [])
+
     def test_empty_retention_and_invalid_id(self):
         self.assertIsNone(json.loads(self.query("status", "--json").stdout))
         self.assertEqual(json.loads(self.query("history", "--json").stdout), [])
