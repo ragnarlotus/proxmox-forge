@@ -169,7 +169,8 @@ class ResultAggregationTests(unittest.TestCase):
                     '    [SCHEDULED_UPDATE_HOST]="${FORGE_TEST_SCHEDULED_HOST:-false}"\n'
                     '    [SCHEDULED_UPDATE_LXC]="${FORGE_TEST_SCHEDULED_LXC:-}"\n'
                     '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
-                    '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
+                    '    [NOTIFY_MANUAL]="${FORGE_TEST_NOTIFY_MANUAL:-errors}"\n'
+                    '    [NOTIFY_SCHEDULED]="${FORGE_TEST_NOTIFY_SCHEDULED:-all}"\n'
                     '    [EXCLUDE]="$FORGE_TEST_EXCLUDE"\n'
                     '    [MIN_ROOT_FREE_MB]=1024\n'
                     '    [MIN_MEM_AVAILABLE_MB]=128\n'
@@ -195,7 +196,8 @@ class ResultAggregationTests(unittest.TestCase):
             "FORGE_TEST_UPDATE_HOST": "true",
             "FORGE_TEST_RUNNING_LXC": "true",
             "FORGE_TEST_EMAIL_NOTIFICATIONS": "false",
-            "FORGE_TEST_NOTIFY_ONLY_ERRORS": "true",
+            "FORGE_TEST_NOTIFY_MANUAL": "errors",
+            "FORGE_TEST_NOTIFY_SCHEDULED": "all",
             "FORGE_TEST_EXCLUDE": "",
             "FORGE_TEST_VMIDS": "100,111,115",
         })
