@@ -64,7 +64,10 @@ while Forge writes its normal run and target logs. After completion,
 `forge status` and `forge history` read the same F141/F228 records. During
 an update, Forge's current global lock blocks other Forge commands, including
 status/history; the journal and raw logs remain readable. Email notification
-still requires `EMAIL_NOTIFICATIONS=true` and follows F153/F154 policy.
+still requires `EMAIL_NOTIFICATIONS=true`; F237 applies `NOTIFY_SCHEDULED=all`
+by default (including successful authorized scheduled runs), independently
+of `NOTIFY_MANUAL=errors`. Setting `NOTIFY_SCHEDULED=none` suppresses it.
+These options neither activate the timer nor authorize additional targets.
 
 Do not force-stop an update merely to disconnect: the systemd service is
 independent of SSH, but stopping the service can interrupt it.
