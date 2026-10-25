@@ -20,7 +20,8 @@ config_get_files "$2" "$3" || exit 1
 printf 'CREATE_BACKUP_BEFORE_LXC_UPDATE=%s\n' "${CONFIG[CREATE_BACKUP_BEFORE_LXC_UPDATE]}"
 printf 'UPDATE_HOST=%s\n' "${CONFIG[UPDATE_HOST]}"
 printf 'EMAIL_NOTIFICATIONS=%s\n' "${CONFIG[EMAIL_NOTIFICATIONS]}"
-printf 'NOTIFY_ONLY_ERRORS=%s\n' "${CONFIG[NOTIFY_ONLY_ERRORS]}"
+printf 'NOTIFY_MANUAL=%s\n' "${CONFIG[NOTIFY_MANUAL]}"
+printf 'NOTIFY_SCHEDULED=%s\n' "${CONFIG[NOTIFY_SCHEDULED]}"
 printf 'CHECK_FORGE_UPDATES_BEFORE_UPDATE=%s\n' "${CONFIG[CHECK_FORGE_UPDATES_BEFORE_UPDATE]}"
 printf 'SCHEDULED_UPDATE_HOST=%s\n' "${CONFIG[SCHEDULED_UPDATE_HOST]}"
 printf 'SCHEDULED_UPDATE_LXC=%s\n' "${CONFIG[SCHEDULED_UPDATE_LXC]}"
@@ -76,7 +77,8 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("CREATE_BACKUP_BEFORE_LXC_UPDATE=true\n", result.stdout)
         self.assertIn("UPDATE_HOST=true\n", result.stdout)
         self.assertIn("EMAIL_NOTIFICATIONS=false\n", result.stdout)
-        self.assertIn("NOTIFY_ONLY_ERRORS=true\n", result.stdout)
+        self.assertIn("NOTIFY_MANUAL=errors\n", result.stdout)
+        self.assertIn("NOTIFY_SCHEDULED=all\n", result.stdout)
         self.assertIn("EXCLUDE=\n", result.stdout)
         self.assertIn("MIN_ROOT_FREE_MB=1024\n", result.stdout)
         self.assertIn("MIN_MEM_AVAILABLE_MB=128\n", result.stdout)
@@ -93,20 +95,27 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("LOG_KEEP=12\n", result.stdout)
         self.assertIn("CREATE_BACKUP_BEFORE_LXC_UPDATE=false\n", result.stdout)
 
-    def test_notification_flags_independent_overrides_and_validation(self):
-        for override, expected_email, expected_errors_only in (
-            ("EMAIL_NOTIFICATIONS=true\n", "true", "true"),
-            ("NOTIFY_ONLY_ERRORS=false\n", "false", "false"),
-            ("EMAIL_NOTIFICATIONS=true\nNOTIFY_ONLY_ERRORS=false\n", "true", "false"),
-        ):
-            with self.subTest(override=override):
-                result = self.load(override)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn(f"EMAIL_NOTIFICATIONS={expected_email}\n", result.stdout)
-                self.assertIn(f"NOTIFY_ONLY_ERRORS={expected_errors_only}\n", result.stdout)
-        for option in ("EMAIL_NOTIFICATIONS", "NOTIFY_ONLY_ERRORS"):
-            with self.subTest(invalid=option):
-                self.assert_invalid(f"{option}=yes\n", f"{option} must be true or false")
+    def test_notification_policies_and_validation(self):
+        for manual in ("none", "errors", "all"):
+            for scheduled in ("none", "errors", "all"):
+                with self.subTest(manual=manual, scheduled=scheduled):
+                    result = self.load(
+                        "EMAIL_NOTIFICATIONS=true\n"
+                        f"NOTIFY_MANUAL={manual}\nNOTIFY_SCHEDULED={scheduled}\n"
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("EMAIL_NOTIFICATIONS=true\n", result.stdout)
+                    self.assertIn(f"NOTIFY_MANUAL={manual}\n", result.stdout)
+                    self.assertIn(f"NOTIFY_SCHEDULED={scheduled}\n", result.stdout)
+        self.assert_invalid("EMAIL_NOTIFICATIONS=yes\n",
+                            "EMAIL_NOTIFICATIONS must be true or false")
+        for key in ("NOTIFY_MANUAL", "NOTIFY_SCHEDULED"):
+            for value in ("", "true", "inherit", "ERRORS", "all,errors", "yes"):
+                with self.subTest(key=key, value=value):
+                    self.assert_invalid(f"{key}={value}\n",
+                                        f"{key} must be none, errors or all")
+        self.assert_invalid("NOTIFY_ONLY_ERRORS=false\n",
+                            "unknown configuration key 'NOTIFY_ONLY_ERRORS'")
 
     def test_f238_prompt_is_default_on_and_can_be_disabled(self):
         result = self.load()
