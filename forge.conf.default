@@ -158,7 +158,7 @@ HEALTH_SCRIPTS_DIR="/opt/proxmox-forge/health.d"
 
 
 # -----------------------------------------------------------------------------
-# Notifications (F153/F154)
+# Notifications (F153/F154/F237)
 # -----------------------------------------------------------------------------
 
 # Deliver a single final email through the host's existing Proxmox root-mail
@@ -166,9 +166,11 @@ HEALTH_SCRIPTS_DIR="/opt/proxmox-forge/health.d"
 # recipient list are maintained by Forge.
 EMAIL_NOTIFICATIONS=false
 
-# When email is enabled, notify only on global FAILED/PARTIAL results (errors
-# or blocked eligible targets); false also notifies on SUCCESS.
-NOTIFY_ONLY_ERRORS=true
+# Independent manual/scheduled policies: none (never), errors (FAILED/PARTIAL),
+# all (including SUCCESS and no-selected runs). The email master switch above
+# always takes precedence. Scheduled updates must still be explicitly enabled.
+NOTIFY_MANUAL=errors
+NOTIFY_SCHEDULED=all
 
 
 # -----------------------------------------------------------------------------
