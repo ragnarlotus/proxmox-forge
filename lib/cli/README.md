@@ -37,6 +37,23 @@ Read-only access to existing general run logs under `LOG_DIR/<PVE_FQDN>/runs/`. 
 
 Only authoritative `result_target`, `result_global`, `run_start`/`run_end`, `recovery_artifact`/`backup_artifact` and `reboot_status` records are used. Results, actual APT upgrade counts, application versions, failed stage/recovery, reboot indicator and exact backup reference are reported only when present. Missing or interrupted run data are unknown/incomplete; a backup reference is **not** proof of archive integrity. `LOG_KEEP` (8 by default) limits history. Queries do not inspect/update packages, contact guests or create logs. The existing global CLI lock still applies, so another simultaneous Forge execution blocks queries until F131 introduces independent jobs.
 
+## Elapsed time reporting (F146)
+
+Each completed update prints the total measured execution duration in seconds.
+The run log records `duration_seconds` on `run_end`. Existing `stage_end`
+and `target_update_end` records already contain measured stage and host/LXC
+durations; these are now available through `forge status [--json]` and
+`forge history [RUN_ID] [--json]`.
+
+JSON exposes `duration_seconds` on the run and each attempted target, plus
+each completed entry in `targets[].stages` (`name`, `status`,
+`duration_seconds`). Human output shows elapsed time for the run, targets
+and captured stages. Times can include failures and recovery. Skipped or
+unattempted targets, old logs without recorded timings, and interrupted runs
+without end events report unknown duration rather than estimating it from
+wall-clock timestamps. Stage durations need not sum to total target duration
+because preflight and other work can occur between captured stages.
+
 ## `forge host update`
 
 Runs the protected local Proxmox host update when `UPDATE_HOST=true`. Host rollback is intentionally unsupported. Host requirements are checked internally before mutation.
