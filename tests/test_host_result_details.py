@@ -93,7 +93,8 @@ class HostResultDetailsTests(unittest.TestCase):
                     '  declare -gA CONFIG=(\n'
                     '    [UPDATE_HOST]=true\n'
                     '    [EMAIL_NOTIFICATIONS]="${FORGE_TEST_EMAIL_NOTIFICATIONS:-false}"\n'
-                    '    [NOTIFY_ONLY_ERRORS]="${FORGE_TEST_NOTIFY_ONLY_ERRORS:-true}"\n'
+                    '    [NOTIFY_MANUAL]="${FORGE_TEST_NOTIFY_MANUAL:-errors}"\n'
+                    '    [NOTIFY_SCHEDULED]="${FORGE_TEST_NOTIFY_SCHEDULED:-all}"\n'
                     '    [LOG_DIR]="$FORGE_TEST_LOG_DIR"\n'
                     '    [LOG_KEEP]=5\n'
                     '    [CREATE_BACKUP_BEFORE_HOST_UPDATE]=false\n'
@@ -172,7 +173,7 @@ class HostResultDetailsTests(unittest.TestCase):
         self.assertEqual(failed.returncode, 42, failed.stderr)
         content = mail.read_text(encoding="utf-8")
         self.assertIn("To: root\n", content)
-        self.assertIn("Subject: [Proxmox Forge] FAILED", content)
+        self.assertIn("Subject: [Proxmox Forge] [MANUAL] FAILED", content)
         self.assertIn("ERROR: os_update (exit 42): actual package dependency failure",
                       content)
         self.assertEqual(failed.stdout.count("Forge final results"), 1)
