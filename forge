@@ -88,11 +88,22 @@ if ! flock -n "$LOCK_FD"; then
 fi
 
 cleanup_run_state() {
-  local exit_code=$?
+  local exit_code=$? finished_epoch="" duration_seconds=""
+  local -a fields=("run_id=$run_id" "exit_code=$exit_code")
   if [[ -n "${FORGE_RUN_LOG:-}" ]]; then
+    # Do not invent an elapsed time when a clock read fails.
+    finished_epoch="$(date +%s)" || finished_epoch=""
+    if [[ "${run_started_epoch:-}" =~ ^[0-9]+$ && "$finished_epoch" =~ ^[0-9]+$ ]] &&
+       (( finished_epoch >= run_started_epoch )); then
+      duration_seconds=$((finished_epoch - run_started_epoch))
+      fields+=("duration_seconds=$duration_seconds")
+    fi
     bash "$FORGE_DIR/lib/logging/write.sh" "$FORGE_RUN_LOG" INFO run_end \
-      "run_id=$run_id" "exit_code=$exit_code" || \
+      "${fields[@]}" || \
       printf 'WARNING: could not record Forge run completion: %s\n' "$FORGE_RUN_LOG" >&2
+    if [[ -n "$duration_seconds" ]]; then
+      printf 'Forge run duration: %s s\n' "$duration_seconds"
+    fi
   fi
   : > "$LOCK_FILE" 2>/dev/null || true
 }
@@ -236,6 +247,7 @@ case "${1:-}:${2:-}" in
     run_log="$(bash "$run_log_init" "${CONFIG[LOG_DIR]}" "${CONFIG[LOG_KEEP]}" run "$run_id")" || \
       fail "could not initialize general log for Forge run"
     export FORGE_RUN_LOG="$run_log"
+    run_started_epoch="$(date +%s)" || fail "could not measure Forge run start"
     bash "$run_log_write" "$run_log" INFO run_start \
       "run_id=$run_id" "command=$command_name" || fail "could not record Forge run start"
     ;;
