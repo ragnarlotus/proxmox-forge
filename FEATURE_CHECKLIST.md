@@ -231,7 +231,6 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 - [ ] **F232 — Additional verified Linux package-manager adapters.** Evaluate APK, DNF/YUM and Pacman one target family at a time; implement only with verified preflight, error semantics, upgrade handling and regression tests. F054 currently detects APT only and must not be reinterpreted as broad support.
 - [ ] **F233 — SSH transport for supported VMs.** Offer key-based SSH when QGA is unavailable or unsuitable, building on F003/F187. Validate target identity, host keys, privileges, operating system and lifecycle; do not use an unverified command path or silently bypass recovery requirements.
-- [ ] **F235 — Explicit controlled reboot action.** Extend F094's reporting with a separately requested host/guest reboot where safe, preserving maintenance-window and lifecycle constraints. Never turn update completion into an automatic host reboot by default.
 - [ ] **F236 — FreeBSD/pfSense guest update adapter.** Separately evaluate `pkg`-based updates for verified supported VM guests, including transport, OS/version detection, privilege boundaries, backup guarantees and exact failure reporting; do not reuse Linux/APT assumptions or imply that an independent external FreeBSD server is already supported.
 
 ### Operational management and expansion
@@ -267,6 +266,8 @@ These notes document current intent only; they do not mark capabilities implemen
 ## X. Rejected proposals — historical decision register
 
 **Rejected is not the same as postponed or implemented.** These entries preserve the idea and the reason it was rejected so that a future contributor can challenge the rationale with new evidence. They are outside the active backlog; IDs remain reserved. The original historical wording is retained or summarised without reinstating incompatible scope.
+
+- ~~**F235 — Explicit controlled reboot action.**~~ **REJECTED (2026-10-25).** Proposed a separately requested Forge host/LXC reboot command while keeping reboot-after-update manual. **Reason:** Proxmox already provides host and LXC reboot operations (including `pct reboot`), while implemented F094 already reports whether a reboot is required. Wrapping existing Proxmox commands in `forge host reboot` or `forge lxc reboot` would duplicate functionality, add maintenance and disruption risk, and provide no new operational value. Reconsider only if a concrete orchestration requirement arises that Proxmox does not already cover.
 
 - ~~**F229 — Verified security versus ordinary update counts.**~~ **REJECTED (2026-10-18).** Classify actual APT upgrades by reliably attributable security versus ordinary origins (unknown when unverifiable). **Reason:** Forge already applies eligible APT updates regardless of this classification; the extra split does not change selection, execution, recovery or update outcome, and the user does not need the additional reporting. F221's count of actually upgraded packages remains.
 - ~~**F227 — Standalone read-only update check.**~~ **REJECTED (2026-10-16).** Proposed `forge check` to discover pending host/LXC/application updates without installing them. **Reason:** explicitly conflicts with Forge's update-only purpose; displaying available updates is not part of the supported workflow.
