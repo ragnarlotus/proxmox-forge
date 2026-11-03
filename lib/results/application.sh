@@ -13,7 +13,7 @@ forge_app_detect_slug() {
   [[ "$vmid" =~ ^[0-9]+$ && "$updater" == /usr/bin/update ]] || return 1
 
   # Inspect, never execute, the installed Community Scripts update launcher.
-  script="$(pct exec "$vmid" -- head -c 8192 /usr/bin/update </dev/null 2>/dev/null)" || return 1
+  script="$(pct exec "$vmid" -- head -c 8192 /usr/bin/update </dev/null 200>&- 2>/dev/null)" || return 1
   # Current generated launchers use variables rather than an expanded ct/*.sh
   # URL. Never source or execute a launcher to learn its application identity.
   if grep -Fxq '# Community-Scripts update entrypoint (generated - do not edit by hand).' <<< "$script"; then
@@ -61,14 +61,14 @@ forge_app_probe() {
   local vmid="$1" slug="$2" output state version
   [[ "$vmid" =~ ^[0-9]+$ ]] || return 1
   case "$slug" in
-    plex)             output="$(pct exec "$vmid" -- dpkg-query -W '-f=${db:Status-Abbrev}\t${Version}\n' plexmediaserver </dev/null 2>/dev/null)" || return 1 ;;
-    audiobookshelf)   output="$(pct exec "$vmid" -- dpkg-query -W '-f=${db:Status-Abbrev}\t${Version}\n' audiobookshelf </dev/null 2>/dev/null)" || return 1 ;;
-    caddy)            output="$(pct exec "$vmid" -- caddy version </dev/null 2>/dev/null)" || return 1 ;;
-    pihole)           output="$(pct exec "$vmid" -- /usr/local/bin/pihole -v </dev/null 2>/dev/null)" || return 1 ;;
-    vaultwarden)      output="$(pct exec "$vmid" -- /opt/vaultwarden/bin/vaultwarden --version </dev/null 2>/dev/null)" ||
-                        output="$(pct exec "$vmid" -- /usr/bin/vaultwarden --version </dev/null 2>/dev/null)" || return 1 ;;
-    docmost)          output="$(pct exec "$vmid" -- node -p "require('/opt/docmost/apps/server/package.json').version" </dev/null 2>/dev/null)" || return 1 ;;
-    immich)           output="$(pct exec "$vmid" -- node -p "require('/opt/immich/app/package.json').version" </dev/null 2>/dev/null)" || return 1 ;;
+    plex)             output="$(pct exec "$vmid" -- dpkg-query -W '-f=${db:Status-Abbrev}\t${Version}\n' plexmediaserver </dev/null 200>&- 2>/dev/null)" || return 1 ;;
+    audiobookshelf)   output="$(pct exec "$vmid" -- dpkg-query -W '-f=${db:Status-Abbrev}\t${Version}\n' audiobookshelf </dev/null 200>&- 2>/dev/null)" || return 1 ;;
+    caddy)            output="$(pct exec "$vmid" -- caddy version </dev/null 200>&- 2>/dev/null)" || return 1 ;;
+    pihole)           output="$(pct exec "$vmid" -- /usr/local/bin/pihole -v </dev/null 200>&- 2>/dev/null)" || return 1 ;;
+    vaultwarden)      output="$(pct exec "$vmid" -- /opt/vaultwarden/bin/vaultwarden --version </dev/null 200>&- 2>/dev/null)" ||
+                        output="$(pct exec "$vmid" -- /usr/bin/vaultwarden --version </dev/null 200>&- 2>/dev/null)" || return 1 ;;
+    docmost)          output="$(pct exec "$vmid" -- node -p "require('/opt/docmost/apps/server/package.json').version" </dev/null 200>&- 2>/dev/null)" || return 1 ;;
+    immich)           output="$(pct exec "$vmid" -- node -p "require('/opt/immich/app/package.json').version" </dev/null 200>&- 2>/dev/null)" || return 1 ;;
     *) return 1 ;;
   esac
   case "$slug" in

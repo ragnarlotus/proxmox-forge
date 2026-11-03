@@ -38,7 +38,7 @@ init_system="$(
     else
       printf other
     fi
-  ' </dev/null
+  ' </dev/null 200>&-
 )"
 init_result=$?
 
@@ -54,7 +54,7 @@ if [[ "$init_system" == systemd ]]; then
   failed_services="$(
     pct exec "$vmid" -- \
       systemctl --failed --type=service --no-legend --no-pager --plain \
-      </dev/null 2>&1
+      </dev/null 200>&- 2>&1
   )"
   systemctl_result=$?
 

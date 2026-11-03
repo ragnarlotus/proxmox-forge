@@ -203,7 +203,7 @@ wait_for_guest_exec() {
     "timeout_seconds=$timeout_seconds" || return 1
 
   while (( SECONDS - started_seconds < timeout_seconds )); do
-    if timeout "$probe_timeout_seconds" pct exec "$vmid" -- sh -c ':' </dev/null >/dev/null 2>&1; then
+    if timeout "$probe_timeout_seconds" pct exec "$vmid" -- sh -c ':' </dev/null 200>&- >/dev/null 2>&1; then
       elapsed_seconds=$((SECONDS - started_seconds))
       bash "$log_write_script" "$log_file" INFO lifecycle_ready \
         "vmid=$vmid" \

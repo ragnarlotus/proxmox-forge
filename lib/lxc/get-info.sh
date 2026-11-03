@@ -117,7 +117,7 @@ info_record="$(pct exec "$vmid" -- env FORGE_INFO_MODE="$mode" sh -c '
   fi
 
   printf "\n"
-' </dev/null)" || fail "LXC inspection failed for LXC $vmid ($name)"
+' </dev/null 200>&-)" || fail "LXC inspection failed for LXC $vmid ($name)"
 
 parse_record "$info_record"
 package_manager="${RECORD_FIELDS[package_manager]:-}"

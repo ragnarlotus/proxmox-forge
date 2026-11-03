@@ -28,7 +28,7 @@ if [[ -z "$application_updater" ]]; then
     else
       printf "none"
     fi
-  ' </dev/null)" || fail "could not determine application updater for LXC $vmid"
+  ' </dev/null 200>&-)" || fail "could not determine application updater for LXC $vmid"
 fi
 
 case "$application_updater" in
@@ -38,7 +38,7 @@ case "$application_updater" in
     ;;
   /usr/bin/update)
     pct exec "$vmid" -- \
-      env PHS_SILENT=1 /usr/bin/update </dev/null
+      env PHS_SILENT=1 /usr/bin/update </dev/null 200>&-
     result=$?
 
     if (( result != 0 )); then

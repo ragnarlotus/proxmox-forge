@@ -43,7 +43,7 @@ for script in "${scripts[@]}"; do
 
   printf 'custom_script=start vmid=%s script=%s\n' "$vmid" "$script_name"
 
-  pct exec "$vmid" -- bash -s -- < "$script"
+  pct exec "$vmid" -- bash -s -- < "$script" 200>&-
   script_result=$?
 
   if (( script_result != 0 )); then

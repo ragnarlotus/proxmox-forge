@@ -70,7 +70,7 @@ marker="$(
     else
       printf no
     fi
-  ' </dev/null
+  ' </dev/null 200>&-
 )" || fail "could not check reboot indicator in LXC $target"
 
 [[ "$marker" == yes || "$marker" == no ]] || fail "invalid reboot indicator response from LXC $target"

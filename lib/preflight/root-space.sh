@@ -24,7 +24,7 @@ if [[ $# -eq 3 ]]; then
   free_kb="$3"
 else
   [[ "$target" =~ ^[0-9]+$ ]] || fail "a running LXC VMID is required to query free space"
-  output="$(pct exec "$target" -- df -Pk / </dev/null)" || fail "could not inspect root filesystem space of LXC $target"
+  output="$(pct exec "$target" -- df -Pk / </dev/null 200>&-)" || fail "could not inspect root filesystem space of LXC $target"
   free_kb="$(awk 'NR == 2 { print $4; exit }' <<<"$output")"
 fi
 
