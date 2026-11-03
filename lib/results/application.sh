@@ -158,8 +158,8 @@ forge_app_log_versions() {
     }
   ' "$log_file")" || return 1
   [[ "$observation" == *"|"* ]] || return 1
-  old="\${observation%%|*}"
-  new="\${observation#*|}"
+  old="${observation%%|*}"
+  new="${observation#*|}"
   [[ "$old" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ && "$new" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
   printf '%s|%s\n' "$old" "$new"
 }
@@ -180,7 +180,7 @@ forge_app_begin() {
 }
 
 forge_app_finalize() {
-  local vmid="$1" log_file="\${2:-}" allow_log_fallback="\${3:-false}" version observed old new
+  local vmid="$1" log_file="${2:-}" allow_log_fallback="${3:-false}" version observed old new
   [[ "$FORGE_APP_FINISHED" != true ]] || return 0
   FORGE_APP_FINISHED=true
   if [[ -n "$FORGE_APP_SLUG" ]]; then
@@ -195,8 +195,8 @@ forge_app_finalize() {
   if [[ "$allow_log_fallback" == true && -n "$FORGE_APP_SLUG" && -n "$log_file" ]]; then
     observed="$(forge_app_log_versions "$log_file" "$FORGE_APP_SLUG")" || observed=""
     if [[ -n "$observed" ]]; then
-      old="\${observed%%|*}"
-      new="\${observed#*|}"
+      old="${observed%%|*}"
+      new="${observed#*|}"
       if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_BEFORE" == "$old" ]]; then
         if [[ "$FORGE_APP_AFTER" == "-" || "$FORGE_APP_AFTER" == "$new" ]]; then
           FORGE_APP_BEFORE="$old"
