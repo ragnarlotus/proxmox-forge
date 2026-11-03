@@ -45,7 +45,7 @@ for script in "${scripts[@]}"; do
   script_name="${script##*/}"
   printf 'functional_health_script=start vmid=%s script=%s\n' "$vmid" "$script_name"
 
-  pct exec "$vmid" -- bash -s -- < "$script"
+  pct exec "$vmid" -- bash -s -- < "$script" 200>&-
   result=$?
   if (( result != 0 )); then
     printf 'ERROR: functional health script failed for LXC %s: %s (exit code: %s)\n' \
