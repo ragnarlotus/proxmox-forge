@@ -70,7 +70,7 @@ class HostResultDetailsTests(unittest.TestCase):
             "backup/host/create.sh", "host/update/os.sh",
             "preflight/held-packages.sh", "postflight/reboot-required.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh", "results/table.py", "results/apt.sh", "config/get.sh",
+            "results/record.sh", "results/table.py", "results/apt.sh", "results/host-software.sh", "config/get.sh",
             "notifications/send.py",
         ]
         for path in paths:
