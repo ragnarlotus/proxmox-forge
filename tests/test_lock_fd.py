@@ -28,7 +28,7 @@ class GuestLockDescriptorTests(unittest.TestCase):
         pct.write_text(
             r"""#!/bin/bash
 # pct mock: Forge's lock must be held by the caller, but NOT inherited here.
-[[ "${1:-}" == exec ]] || exit 90
+case "${1:-}" in exec|start|stop|shutdown) ;; *) exit 90 ;; esac
 [[ ! -e /proc/$$/fd/200 ]] || {
   printf 'ERROR: guest process inherited Forge lock fd 200\n' >&2
   exit 91
@@ -95,6 +95,18 @@ exit 0
                     os.kill(pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
+
+    def test_direct_pct_lifecycle_stage_does_not_pass_lock(self):
+        log = self.root / "lifecycle.log"
+        log.touch()
+        result = self.run_guarded(
+            "lib/logging/capture.sh", str(log), "lifecycle_start",
+            "--", "pct", "start", "108",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("stage=start name=lifecycle_start", result.stdout)
+        self.assertEqual(len(self.calls.read_text().splitlines()), 1)
+        self.assert_lock_is_released()
 
     def test_os_upgrade_keeps_parent_locked_but_never_passes_fd_to_pct(self):
         result = self.run_guarded("lib/lxc/update/os.sh", "108", "apt")
