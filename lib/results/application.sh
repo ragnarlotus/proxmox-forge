@@ -103,15 +103,68 @@ forge_app_probe() {
   printf '%s\n' "$version"
 }
 
-# Read Community Scripts' per-application installed-release marker. Its
-# update-apps.sh uses the same /root/.<app> convention for check_for_gh_release.
-# The slug is taken only from an authenticated Community Scripts launcher.
-# No shell interpretation, network request, or update invocation is performed.
+# Community Scripts' check_for_gh_release stores the installed release in
+# /root/.<app>. Use the verified launcher slug as the marker name.
+# Missing/unparseable files remain unknown. Never execute a script to inspect.
 forge_app_marker_version() {
   local vmid="$1" slug="$2" output
   [[ "$vmid" =~ ^[0-9]+$ && "$slug" =~ ^[a-z0-9_-]+$ ]] || return 1
   output="$(pct exec "$vmid" -- cat "/root/.$slug" </dev/null 200>&- 2>/dev/null)" || return 1
-  [[ "$output" != *
+  [[ "$output" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
+  printf '%s\n' "$output"
+}
+
+# For updaters without a marker, require the successful application stage to
+# confirm an old/new version AND the exact deployed version. Neither progress
+# text nor a failed stage is evidence of the final installed application.
+forge_app_log_versions() {
+  local log_file="$1" slug="$2" observation old new
+  [[ -f "$log_file" && "$slug" =~ ^[a-z0-9_-]+$ ]] || return 1
+  observation="$(awk -v slug="$slug" '
+    / event=stage_start / {
+      active=(index($0," stage=application_update ")>0)
+      if (active) { old=""; new=""; deployed=""; succeeded=0 }
+      next
+    }
+    / event=stage_end / {
+      if (active && index($0," stage=application_update ")>0) {
+        succeeded=(index($0," status=success ")>0)
+        active=0
+      }
+      next
+    }
+    active {
+      if (index($0,"Update available: " slug " ")>0) {
+        line=$0
+        sub(/^.*Update available: /,"",line)
+        count=split(line,part,/ +/)
+        if (count>=4 && part[1]==slug && part[3]=="->") {
+          old=part[2]; new=part[4]
+        }
+      }
+      if (index($0,"Deployed: " slug " (")>0) {
+        line=$0
+        sub(/^.*Deployed: /,"",line)
+        if (index(line,slug " (")==1) {
+          sub(/^[^(]*\(/,"",line)
+          sub(/\).*$/,"",line)
+          deployed=line
+        }
+      }
+    }
+    END {
+      if (succeeded && old!="" && new!="" && deployed==new)
+        printf "%s|%s\n",old,new
+    }
+  ' "$log_file")" || return 1
+  [[ "$observation" == *"|"* ]] || return 1
+  old="\${observation%%|*}"
+  new="\${observation#*|}"
+  [[ "$old" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ && "$new" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
+  printf '%s|%s\n' "$old" "$new"
+}
+
+forge_app_begin() {
   local vmid="$1" updater="$2" slug version
   FORGE_APP_SLUG=""
   FORGE_APP_REPOSITORY="-"
@@ -127,7 +180,7 @@ forge_app_marker_version() {
 }
 
 forge_app_finalize() {
-  local vmid="$1" log_file="${2:-}" allow_log_fallback="${3:-false}" version observed old new
+  local vmid="$1" log_file="\${2:-}" allow_log_fallback="\${3:-false}" version observed old new
   [[ "$FORGE_APP_FINISHED" != true ]] || return 0
   FORGE_APP_FINISHED=true
   if [[ -n "$FORGE_APP_SLUG" ]]; then
@@ -137,712 +190,19 @@ forge_app_finalize() {
       FORGE_APP_AFTER="$version"
     fi
   fi
-  # An updater's own successful Deployed notice is a read-only fallback.
-  # Never use it after a failed update, health failure, or rollback; then
-  # only the restored on-disk state may be reported.
+  # Success-only fallback from the updater's explicit deployed-version text.
+  # A failed update or rollback must be measured from the restored guest.
   if [[ "$allow_log_fallback" == true && -n "$FORGE_APP_SLUG" && -n "$log_file" ]]; then
     observed="$(forge_app_log_versions "$log_file" "$FORGE_APP_SLUG")" || observed=""
     if [[ -n "$observed" ]]; then
-      old="${observed%%
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\n'* && "$output" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
-  printf '%s\n' "$output"
-}
-
-# Some Community Scripts updaters (e.g. Trek) confirm both old and deployed
-# versions in their captured stdout but have no local release marker.
-# Inspect only a successful application_update stage, and require an exact
-# app slug, explicit old->new text and matching Deployed text.
-forge_app_log_versions() {
-  local log_file="$1" slug="$2" observation
-  [[ -f "$log_file" && "$slug" =~ ^[a-z0-9_-]+$ ]] || return 1
-  observation="$(awk -v slug="$slug" '
-    / event=stage_start / {
-      active=(index($0," stage=application_update ")>0)
-      if (active) { old=""; new=""; deployed=""; succeeded=0 }
-      next
-    }
-    / event=stage_end / {
-      if (active && index($0," stage=application_update ")>0) {
-        succeeded=(index($0," status=success ")>0)
-        active=0
-      }
-      next
-    }
-    active {
-      if (index($0,"Update available: " slug " ")>0) {
-        line=$0
-        sub(/^.*Update available: /,"",line)
-        count=split(line,part,/ +/)
-        if (count>=4 && part[1]==slug && part[3]=="->") {
-          old=part[2]; new=part[4]
-        }
-      }
-      if (index($0,"Deployed: " slug " (")>0) {
-        line=$0
-        sub(/^.*Deployed: /,"",line)
-        if (index(line,slug " (")==1) {
-          sub(/^[^(]*\(/,"",line)
-          sub(/\).*$/,"",line)
-          deployed=line
-        }
-      }
-    }
-    END {
-      if (succeeded && old!="" && new!="" && deployed==new)
-        printf "%s\t%s\n",old,new
-    }
-  ' "$log_file")" || return 1
-  [[ "$observation" == *
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'* && "$observation" != *
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\n'* ]] || return 1
-  local old="${observation%%
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'*}" new="${observation#*
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'}"
-  [[ "$old" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ && "$new" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
-  printf '%s\t%s\n' "$old" "$new"
-}
-
-forge_app_begin() {
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'*}"
-      new="${observed#*
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\n'* && "$output" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
-  printf '%s\n' "$output"
-}
-
-# Some Community Scripts updaters (e.g. Trek) confirm both old and deployed
-# versions in their captured stdout but have no local release marker.
-# Inspect only a successful application_update stage, and require an exact
-# app slug, explicit old->new text and matching Deployed text.
-forge_app_log_versions() {
-  local log_file="$1" slug="$2" observation
-  [[ -f "$log_file" && "$slug" =~ ^[a-z0-9_-]+$ ]] || return 1
-  observation="$(awk -v slug="$slug" '
-    / event=stage_start / {
-      active=(index($0," stage=application_update ")>0)
-      if (active) { old=""; new=""; deployed=""; succeeded=0 }
-      next
-    }
-    / event=stage_end / {
-      if (active && index($0," stage=application_update ")>0) {
-        succeeded=(index($0," status=success ")>0)
-        active=0
-      }
-      next
-    }
-    active {
-      if (index($0,"Update available: " slug " ")>0) {
-        line=$0
-        sub(/^.*Update available: /,"",line)
-        count=split(line,part,/ +/)
-        if (count>=4 && part[1]==slug && part[3]=="->") {
-          old=part[2]; new=part[4]
-        }
-      }
-      if (index($0,"Deployed: " slug " (")>0) {
-        line=$0
-        sub(/^.*Deployed: /,"",line)
-        if (index(line,slug " (")==1) {
-          sub(/^[^(]*\(/,"",line)
-          sub(/\).*$/,"",line)
-          deployed=line
-        }
-      }
-    }
-    END {
-      if (succeeded && old!="" && new!="" && deployed==new)
-        printf "%s\t%s\n",old,new
-    }
-  ' "$log_file")" || return 1
-  [[ "$observation" == *
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'* && "$observation" != *
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\n'* ]] || return 1
-  local old="${observation%%
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'*}" new="${observation#*
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'}"
-  [[ "$old" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ && "$new" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
-  printf '%s\t%s\n' "$old" "$new"
-}
-
-forge_app_begin() {
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'}"
+      old="\${observed%%|*}"
+      new="\${observed#*|}"
       if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_BEFORE" == "$old" ]]; then
         if [[ "$FORGE_APP_AFTER" == "-" || "$FORGE_APP_AFTER" == "$new" ]]; then
           FORGE_APP_BEFORE="$old"
           FORGE_APP_AFTER="$new"
         fi
       fi
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\n'* && "$output" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
-  printf '%s\n' "$output"
-}
-
-# Some Community Scripts updaters (e.g. Trek) confirm both old and deployed
-# versions in their captured stdout but have no local release marker.
-# Inspect only a successful application_update stage, and require an exact
-# app slug, explicit old->new text and matching Deployed text.
-forge_app_log_versions() {
-  local log_file="$1" slug="$2" observation
-  [[ -f "$log_file" && "$slug" =~ ^[a-z0-9_-]+$ ]] || return 1
-  observation="$(awk -v slug="$slug" '
-    / event=stage_start / {
-      active=(index($0," stage=application_update ")>0)
-      if (active) { old=""; new=""; deployed=""; succeeded=0 }
-      next
-    }
-    / event=stage_end / {
-      if (active && index($0," stage=application_update ")>0) {
-        succeeded=(index($0," status=success ")>0)
-        active=0
-      }
-      next
-    }
-    active {
-      if (index($0,"Update available: " slug " ")>0) {
-        line=$0
-        sub(/^.*Update available: /,"",line)
-        count=split(line,part,/ +/)
-        if (count>=4 && part[1]==slug && part[3]=="->") {
-          old=part[2]; new=part[4]
-        }
-      }
-      if (index($0,"Deployed: " slug " (")>0) {
-        line=$0
-        sub(/^.*Deployed: /,"",line)
-        if (index(line,slug " (")==1) {
-          sub(/^[^(]*\(/,"",line)
-          sub(/\).*$/,"",line)
-          deployed=line
-        }
-      }
-    }
-    END {
-      if (succeeded && old!="" && new!="" && deployed==new)
-        printf "%s\t%s\n",old,new
-    }
-  ' "$log_file")" || return 1
-  [[ "$observation" == *
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'* && "$observation" != *
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\n'* ]] || return 1
-  local old="${observation%%
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'*}" new="${observation#*
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
-    fi
-  fi
-  # Only compare versions when both observations are verified.
-  if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
-    FORGE_APP_BEFORE="-"
-    FORGE_APP_AFTER="-"
-  fi
-  if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
-    printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
-      printf 'WARNING: could not transfer application versions to bulk summary\n' >&2
-  fi
-}
-\t'}"
-  [[ "$old" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ && "$new" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 1
-  printf '%s\t%s\n' "$old" "$new"
-}
-
-forge_app_begin() {
-  local vmid="$1" updater="$2" slug version
-  FORGE_APP_SLUG=""
-  FORGE_APP_REPOSITORY="-"
-  FORGE_APP_BEFORE="-"
-  FORGE_APP_AFTER="-"
-  FORGE_APP_FINISHED=false
-  slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
-  FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
-  version="$(forge_app_probe "$vmid" "$slug")" || return 0
-  FORGE_APP_BEFORE="$version"
-}
-
-forge_app_finalize() {
-  local vmid="$1" version
-  [[ "$FORGE_APP_FINISHED" != true ]] || return 0
-  FORGE_APP_FINISHED=true
-  if [[ -n "$FORGE_APP_SLUG" ]]; then
-    version="$(forge_app_probe "$vmid" "$FORGE_APP_SLUG")" || version=""
-    if [[ -n "$version" ]]; then
-      FORGE_APP_AFTER="$version"
     fi
   fi
   # Only compare versions when both observations are verified.
