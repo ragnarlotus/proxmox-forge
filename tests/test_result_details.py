@@ -301,7 +301,7 @@ class ActionableResultTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(r.stdout, "")
             fields = handoff.read_text(encoding="utf-8").rstrip("\n").split("\t")
-            self.assertEqual(fields[1:], ["os_update", "success"])
+            self.assertEqual(fields[1:], ["os_update", "success", "-"])
             self.assertEqual(unquote(fields[0]), "ERROR: os_update (exit 17); recovery succeeded")
 
     def test_malformed_encoded_result_is_rejected(self):
