@@ -36,7 +36,7 @@ class ActionableResultTests(unittest.TestCase):
         line = process.stdout.strip()
         self.assertTrue(line.startswith("result_target "), line)
         row = dict(field.split("=", 1) for field in line.split()[1:])
-        self.assertEqual(len(row), 15 if row["status"] == "ERROR" else 14)
+        self.assertEqual(len(row), 16 if row["status"] == "ERROR" else 15)
         return row, unquote(row["result_detail"])
 
     def test_success_and_warning_are_not_misrepresented_as_error(self):
@@ -73,6 +73,26 @@ class ActionableResultTests(unittest.TestCase):
             "ERROR: application_update (exit 42): Cannot install package: post-install hook failed"
             "; recovery failed (exit 19); WARNING: guest state restoration failed (exit 20)",
         )
+
+    def test_direct_host_software_record_is_escaped_and_readable(self):
+        platform = "Proxmox VE 9.0.11; Debian 13; Kernel running 7.0.14-25-pve"
+        r = self.run_helper(
+            "forge_result_publish host HOST bv.deulos.com true true OK completed "
+            "'' '-' '-' '-' '-' '-' '' '-' '' "
+            "'Proxmox VE 9.0.11; Debian 13; Kernel running 7.0.14-25-pve'"
+        )
+        row, detail = self.parse(r)
+        self.assertEqual(row["type"], "host")
+        self.assertIn("%20", row["host_platform"])
+        self.assertEqual(unquote(row["host_platform"]), platform)
+        self.assertEqual(detail, "OK")
+        table = subprocess.run(
+            ["python3", str(ROOT / "lib/results/table.py")],
+            input=r.stdout, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(table.returncode, 0, table.stderr)
+        self.assertIn("Proxmox VE 9.0.11", table.stdout)
+        self.assertIn("Debian 13", table.stdout)
 
     def test_failure_without_explicit_error_does_not_invent_a_cause(self):
         row, detail = self.parse(self.result("host", "ERROR", "update_failed", "8", "backup"))
@@ -301,7 +321,7 @@ class ActionableResultTests(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(r.stdout, "")
             fields = handoff.read_text(encoding="utf-8").rstrip("\n").split("\t")
-            self.assertEqual(fields[1:], ["os_update", "success"])
+            self.assertEqual(fields[1:], ["os_update", "success", "-"])
             self.assertEqual(unquote(fields[0]), "ERROR: os_update (exit 17); recovery succeeded")
 
     def test_malformed_encoded_result_is_rejected(self):

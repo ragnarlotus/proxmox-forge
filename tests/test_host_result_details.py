@@ -70,13 +70,13 @@ class HostResultDetailsTests(unittest.TestCase):
             "backup/host/create.sh", "host/update/os.sh",
             "preflight/held-packages.sh", "postflight/reboot-required.sh",
             "logging/init.sh", "logging/capture.sh", "logging/write.sh",
-            "results/record.sh", "results/table.py", "results/apt.sh", "config/get.sh",
+            "results/record.sh", "results/table.py", "results/apt.sh", "results/host-software.sh", "config/get.sh",
             "notifications/send.py",
         ]
         for path in paths:
             dest = self.lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("host/update.sh", "results/record.sh", "results/table.py", "notifications/send.py"):
+            if path in ("host/update.sh", "results/record.sh", "results/table.py", "results/host-software.sh", "notifications/send.py"):
                 dest.symlink_to(ROOT / "lib" / path)
             elif path == "logging/capture.sh":
                 dest.write_text(CAPTURE, encoding="utf-8")
@@ -211,7 +211,7 @@ class HostResultDetailsTests(unittest.TestCase):
         self.assertNotIn("result_target ", result.stdout)
         self.assertNotIn("Forge final results", result.stdout)
         fields = handoff.read_text().rstrip("\n").split("\t")
-        self.assertEqual(fields, ["OK", "-", "-"])
+        self.assertEqual(fields, ["OK", "-", "-", "-"])
 
 
 if __name__ == "__main__":

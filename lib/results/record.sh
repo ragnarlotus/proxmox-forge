@@ -2,8 +2,8 @@
 # Description: Print one structured final-results record for a host or LXC.
 # Source this helper from update orchestration; F225 will use these same facts.
 forge_result_print() {
-  [[ $# -ge 7 && $# -le 15 ]] || return 2
-  local type="$1" vmid="$2" name="$3" selected="$4" attempted="$5" status="$6" reason="$7" exit_code="${8:-}" apt_upgraded="${9:--}" app_before="${10:--}" app_after="${11:--}" app_repository="${12:--}" result_detail="${13:-}" failed_stage="${14:--}" recovery="${15:--}"
+  [[ $# -ge 7 && $# -le 16 ]] || return 2
+  local type="$1" vmid="$2" name="$3" selected="$4" attempted="$5" status="$6" reason="$7" exit_code="${8:-}" apt_upgraded="${9:--}" app_before="${10:--}" app_after="${11:--}" app_repository="${12:--}" result_detail="${13:-}" failed_stage="${14:--}" recovery="${15:--}" host_platform="${16:--}"
 
   [[ "$type" == host || "$type" == lxc ]] || return 2
   if [[ "$type" == host ]]; then
@@ -23,6 +23,7 @@ forge_result_print() {
   [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 2
   [[ "$failed_stage" == "-" || "$failed_stage" =~ ^[a-z][a-z0-9_-]*$ ]] || return 2
   [[ "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ]] || return 2
+  [[ "$host_platform" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ ]] || return 2
   if [[ -z "$result_detail" ]]; then
     result_detail="$(forge_result_encode "$(forge_result_text "$status" "$reason" "$exit_code" "$failed_stage" "" "$recovery" "")")"
   fi
@@ -35,8 +36,8 @@ forge_result_print() {
     record+=" exit_code=$exit_code"
   fi
   local extra
-  printf -v extra ' apt_upgraded=%s app_before=%s app_after=%s app_repository=%s failed_stage=%s recovery=%s result_detail=%s' \
-    "$apt_upgraded" "$app_before" "$app_after" "$app_repository" "$failed_stage" "$recovery" "$result_detail"
+  printf -v extra ' apt_upgraded=%s app_before=%s app_after=%s app_repository=%s failed_stage=%s recovery=%s result_detail=%s host_platform=%s' \
+    "$apt_upgraded" "$app_before" "$app_after" "$app_repository" "$failed_stage" "$recovery" "$result_detail" "$host_platform"
   record+="$extra"
   FORGE_RESULT_LAST_RECORD="$record"
   printf '%s\n' "$record"
@@ -195,17 +196,20 @@ forge_result_text() {
 # Nested bulk updates write a private handoff, never a second result_target.
 # The three columns contain no whitespace: encoded text, stage, recovery.
 forge_result_publish() {
-  [[ $# -ge 12 && $# -le 16 ]] || return 2
-  local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail
+  [[ $# -ge 12 && $# -le 17 ]] || return 2
+  local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail host_platform="-"
+  if [[ "$1" == host && -n "${17:-}" ]]; then
+    host_platform="$(forge_result_encode "${17}")"
+  fi
   detail="$(forge_result_encode "$(forge_result_text "$6" "$7" "$8" "$stage" "$error" "$recovery" "$warning")")"
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk ]]; then
     if [[ -n "${FORGE_RESULT_DETAIL_FILE:-}" ]]; then
-      printf '%s\t%s\t%s\n' "$detail" "$stage" "$recovery" > "$FORGE_RESULT_DETAIL_FILE" ||
+      printf '%s\t%s\t%s\t%s\n' "$detail" "$stage" "$recovery" "$host_platform" > "$FORGE_RESULT_DETAIL_FILE" ||
         printf 'WARNING: could not transfer result details to bulk coordinator\n' >&2
     fi
     return 0
   fi
-  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" || return $?
+  forge_result_print "${@:1:12}" "$detail" "$stage" "$recovery" "$host_platform" || return $?
   if [[ "${FORGE_RESULT_TABLE:-}" == true ]]; then
     forge_result_render "$FORGE_RESULT_LAST_RECORD"
   fi

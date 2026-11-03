@@ -58,6 +58,11 @@ class ApplicationVersionTests(unittest.TestCase):
             'kind=a[3]\n'
             'if kind=="head":\n'
             '    print(os.environ.get("APP_TEST_LAUNCHER",""))\n'
+            'elif kind=="cat":\n'
+            '    expected="/root/."+os.environ.get("APP_TEST_MARKER_SLUG", "trek")\n'
+            '    value=os.environ.get("APP_TEST_MARKER_VERSION", "")\n'
+            '    if len(a)!=5 or a[4]!=expected or not value: sys.exit(91)\n'
+            '    print(value)\n'
             'elif kind=="dpkg-query":\n'
             '    print(os.environ.get("APP_TEST_OUTPUT","ii \t1.0"))\n'
             'elif kind in ("caddy","/usr/local/bin/pihole","node") or '
@@ -266,6 +271,73 @@ class ApplicationVersionTests(unittest.TestCase):
             )
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertEqual(r.stdout.strip(), "-|-")
+
+    def test_generic_community_scripts_version_marker(self):
+        # No Trek-specific adapter: identity comes from /usr/bin/update,
+        # installed version from Community Scripts' /root/.<slug> marker.
+        for slug in ("trek", "other-project", "example7"):
+            with self.subTest(slug=slug):
+                r = self.run_bash(
+                    'forge_app_begin 101 /usr/bin/update; '
+                    'APP_TEST_MARKER_VERSION=5.1.0; export APP_TEST_MARKER_VERSION; '
+                    'forge_app_finalize 101; '
+                    'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+                    APP_TEST_LAUNCHER=generated_launcher(slug),
+                    APP_TEST_MARKER_SLUG=slug,
+                    APP_TEST_MARKER_VERSION="4.3.4",
+                )
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout.strip(), "4.3.4|5.1.0")
+
+    def test_invalid_or_missing_release_markers_do_not_invent_versions(self):
+        for marker in ("", "garbage", "1.2 2.3", "1.2\n2.3", "v"):
+            with self.subTest(marker=marker):
+                r = self.run_bash(
+                    'forge_app_begin 101 /usr/bin/update; '
+                    'forge_app_finalize 101; '
+                    'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+                    APP_TEST_LAUNCHER=generated_launcher("trek"),
+                    APP_TEST_MARKER_VERSION=marker,
+                )
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout.strip(), "-|-")
+
+    def test_generic_successful_deployment_log_without_marker(self):
+        log = self.base / "trek-update.log"
+        log.write_text(
+            "2026 level=INFO event=stage_start stage=application_update command=helper\n"
+            "  Update available: trek 4.3.4 -> 5.1.0\n"
+            "  Deployed: trek (5.1.0)\n"
+            "  Updated Successfully!\n"
+            "2026 level=INFO event=stage_end stage=application_update status=success exit_code=0\n",
+            encoding="utf-8",
+        )
+        r = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; '
+            f'forge_app_finalize 101 "{log}" true; '
+            'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+            APP_TEST_LAUNCHER=generated_launcher("trek"),
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "4.3.4|5.1.0")
+
+        # Failed updater/rollback cannot use logged deployed version to claim
+        # that the restored application is still on the new release.
+        failed = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; '
+            f'forge_app_finalize 101 "{log}"; '
+            'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+            APP_TEST_LAUNCHER=generated_launcher("trek"),
+        )
+        self.assertEqual(failed.stdout.strip(), "-|-")
+        log.write_text(log.read_text().replace("status=success", "status=failed"))
+        unsuccessful = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; '
+            f'forge_app_finalize 101 "{log}" true; '
+            'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER"',
+            APP_TEST_LAUNCHER=generated_launcher("trek"),
+        )
+        self.assertEqual(unsuccessful.stdout.strip(), "-|-")
 
     def test_bulk_handoff_uses_shared_results_not_console_duplication(self):
         handoff = self.base / "app-record"

@@ -140,6 +140,7 @@ host_selected=false
 host_attempted=false
 host_exit=""
 host_apt="-"
+host_platform="-"
 host_detail=""
 host_failed_stage="-"
 host_recovery="-"
@@ -170,7 +171,7 @@ emit_final_inventory() {
     if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
     if forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
       "$host_status" "$host_reason" "$host_exit" "$host_apt" "-" "-" "-" \
-      "$host_detail" "$host_failed_stage" "$host_recovery"; then
+      "$host_detail" "$host_failed_stage" "$host_recovery" "$host_platform"; then
       final_records+=("$FORGE_RESULT_LAST_RECORD")
     else
       printf 'ERROR: could not print host result record\n' >&2
@@ -289,13 +290,16 @@ if [[ "$update_host" == true ]]; then
   fi
 
   if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-host" ]]; then
-    IFS=$'\t' read -r detail stage recovery < "$apt_result_dir/result-host"
+    IFS=$'\t' read -r detail stage recovery platform < "$apt_result_dir/result-host"
     if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
           ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
           ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
       host_detail="$detail"
       host_failed_stage="$stage"
       host_recovery="$recovery"
+      if [[ "$platform" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ ]]; then
+        host_platform="$platform"
+      fi
     fi
   fi
 

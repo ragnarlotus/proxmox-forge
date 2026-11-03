@@ -97,8 +97,9 @@ elif kind == "host":
         detail, stage, recovery = json.loads(
             os.environ.get("FORGE_TEST_HOST_DETAIL", '["OK", "-", "-"]')
         )
+        platform = os.environ.get("FORGE_TEST_HOST_PLATFORM", "-")
         Path(os.environ["FORGE_RESULT_DETAIL_FILE"]).write_text(
-            f"{detail}\t{stage}\t{recovery}\n"
+            f"{detail}\t{stage}\t{recovery}\t{platform}\n"
         )
     if os.environ.get("FORGE_APT_RESULT_FILE"):
         Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
@@ -229,6 +230,25 @@ class ResultAggregationTests(unittest.TestCase):
             if line.startswith("result_target "):
                 records.append(dict(field.split("=", 1) for field in line.split()[1:]))
         return records
+
+    def test_host_platform_metadata_survives_bulk_handoff(self):
+        from urllib.parse import quote, unquote
+        platform = (
+            "Proxmox VE 9.0.11; Debian 13; Kernel running 7.0.14-25-pve; "
+            "Latest installed kernel 7.0.14-26-pve"
+        )
+        result, _ = self.invoke(
+            "all",
+            FORGE_TEST_HOST_PLATFORM=quote(platform, safe=""),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["type"], "host")
+        self.assertEqual(unquote(rows[0]["host_platform"]), platform)
+        self.assertIn("Proxmox VE 9.0.11", result.stdout)
+        self.assertIn("Debian 13", result.stdout)
+        self.assertIn("Kernel running", result.stdout)
+        self.assertEqual(rows[1]["host_platform"], "-")
 
     def test_f225_final_table_exactly_once_across_success_failures_and_blockers(self):
         scenarios = [

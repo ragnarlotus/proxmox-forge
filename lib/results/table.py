@@ -17,7 +17,7 @@ FIELDS = (
     "failed_stage", "recovery", "result_detail",
 )
 STATUSES = ("OK", "ERROR", "SKIPPED", "NOT_RUN")
-HEADERS = ("VMID", "Name", "APT", "Application version", "Changelog", "Result")
+HEADERS = ("VMID", "Name", "APT", "Software version", "Changelog", "Result")
 COLORS = {"OK": "\033[32m", "ERROR": "\033[31m",
           "SKIPPED": "\033[33m", "NOT_RUN": "\033[33m"}
 
@@ -58,6 +58,9 @@ def parse(line):
         raise ValueError("invalid LXC identifier")
     if not re.fullmatch(r"([A-Za-z0-9_.~-]|%[0-9A-F]{2})+", record["result_detail"]):
         raise ValueError("invalid encoded result")
+    if "host_platform" in record and not re.fullmatch(
+            r"([A-Za-z0-9_.~-]|%[0-9A-F]{2})+", record["host_platform"]):
+        raise ValueError("invalid encoded host platform")
     if "exit_code" in record and not re.fullmatch(r"[0-9]+", record["exit_code"]):
         raise ValueError("invalid exit code")
     return record
@@ -72,6 +75,8 @@ def fields(row):
     else:
         app = f"{before} → {after}"
     detail = clean(unquote(row["result_detail"], encoding="utf-8", errors="replace"))
+    if row["type"] == "host" and row.get("host_platform", "-") != "-":
+        app = clean(unquote(row["host_platform"], encoding="utf-8", errors="replace"))
     return (
         row["vmid"], clean(row["name"]),
         "—" if row["apt_upgraded"] == "-" else row["apt_upgraded"],

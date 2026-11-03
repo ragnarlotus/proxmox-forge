@@ -638,9 +638,11 @@ else
     printf 'ERROR: could not log LXC reboot check warning\n' >&2
 fi
 
-# Finalize before stopping an initially stopped guest.
+# Finalize before stopping an initially stopped guest. Only a completed
+# application update may contribute confirmed version output; failed
+# mutations and rollbacks use the post-recovery installed state instead.
 forge_apt_finalize "$vmid"
-forge_app_finalize "$vmid"
+forge_app_finalize "$vmid" "$log_file" true
 restore_initial_state
 stage_result=$?
 if (( stage_result != 0 )); then
