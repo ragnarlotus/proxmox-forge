@@ -145,18 +145,85 @@ class ForgeSelfUpdateTests(unittest.TestCase):
                          self.git("rev-parse", "origin/experimental"))
         self.assertEqual(self.git("rev-parse", "main"), initial)
 
-    def test_dirty_tracked_files_and_untracked_files_block(self):
+    def test_dirty_tracked_files_still_block(self):
         self.push_update()
         file = self.checkout / "forge.conf.default"
         file.write_text(file.read_text() + "\n# local edit\n")
+        original = self.git("rev-parse", "HEAD")
         result = self.run_helper("update")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("local changes", result.stderr)
+        self.assertIn("changes to tracked files", result.stderr)
+        self.assertEqual(self.git("rev-parse", "HEAD"), original)
+
         self.git("checkout", "--", "forge.conf.default")
-        (self.checkout / "new-unknown-file").write_text("keep me")
+        staged = self.checkout / "new-staged-file"
+        staged.write_text("must not silently commit or overwrite")
+        self.git("add", "new-staged-file")
         result = self.run_helper("update")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("untracked files", result.stderr)
+        self.assertIn("changes to tracked files", result.stderr)
+        self.assertEqual(staged.read_text(), "must not silently commit or overwrite")
+        self.assertEqual(self.git("rev-parse", "HEAD"), original)
+
+    def test_untracked_and_ignored_local_files_survive_fast_forward(self):
+        original = self.git("rev-parse", "HEAD")
+        (self.checkout / "forge.conf").write_text("EMAIL_NOTIFICATIONS=true\n")
+        (self.checkout / "forge.conf~").write_text("local joe backup\n")
+        (self.checkout / "new-unknown-file").write_text("keep me")
+        self.push_update()
+        checked = self.run_helper("check")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertIn("self_update=available", checked.stdout)
+        updated = self.run_cli("update", "self-update")
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertNotEqual(self.git("rev-parse", "HEAD"), original)
+        self.assertEqual(self.git("rev-parse", "HEAD"),
+                         self.git("rev-parse", "origin/main"))
+        self.assertEqual((self.checkout / "forge.conf").read_text(),
+                         "EMAIL_NOTIFICATIONS=true\n")
+        self.assertEqual((self.checkout / "forge.conf~").read_text(),
+                         "local joe backup\n")
+        self.assertEqual((self.checkout / "new-unknown-file").read_text(),
+                         "keep me")
+
+    def test_untracked_path_becoming_tracked_is_never_overwritten(self):
+        # Git refuses this collision by default, and Forge checks before merge.
+        local = self.checkout / "new-unknown-file"
+        local.write_text("my local content\n")
+        self.push_update()
+        incoming = self.writer / "new-unknown-file"
+        incoming.write_text("incoming tracked content\n")
+        self.git("add", "new-unknown-file", cwd=self.writer)
+        self.git("commit", "-m", "add incoming path", cwd=self.writer)
+        self.git("push", "origin", "main", cwd=self.writer)
+        previous = self.git("rev-parse", "HEAD")
+
+        result = self.run_helper("update")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("would overwrite local untracked or ignored file", result.stderr)
+        self.assertIn("new-unknown-file", result.stderr)
+        self.assertEqual(self.git("rev-parse", "HEAD"), previous)
+        self.assertEqual(local.read_text(), "my local content\n")
+
+    def test_ignored_path_becoming_tracked_is_never_overwritten(self):
+        # Git can silently overwrite ignored files during ff-only merges.
+        # Protect local forge.conf even if a future commit starts tracking it.
+        local = self.checkout / "forge.conf"
+        local.write_text("my local configuration\n")
+        self.push_update()
+        incoming = self.writer / "forge.conf"
+        incoming.write_text("upstream configuration\n")
+        self.git("add", "-f", "forge.conf", cwd=self.writer)
+        self.git("commit", "-m", "add ignored path upstream", cwd=self.writer)
+        self.git("push", "origin", "main", cwd=self.writer)
+        previous = self.git("rev-parse", "HEAD")
+
+        result = self.run_helper("update")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("would overwrite local untracked or ignored file", result.stderr)
+        self.assertIn("forge.conf", result.stderr)
+        self.assertEqual(self.git("rev-parse", "HEAD"), previous)
+        self.assertEqual(local.read_text(), "my local configuration\n")
 
     def test_divergence_blocks_without_switching_or_rewriting(self):
         self.push_update()
