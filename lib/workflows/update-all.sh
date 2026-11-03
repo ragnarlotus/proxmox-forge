@@ -290,7 +290,359 @@ if [[ "$update_host" == true ]]; then
   fi
 
   if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-host" ]]; then
-    IFS=
+    IFS= =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
+          ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
+          ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+      host_detail="$detail"
+      host_failed_stage="$stage"
+      host_recovery="$recovery"
+      if [[ "$platform" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ ]]; then
+        host_platform="$platform"
+      fi
+    fi
+  fi
+
+  if (( host_result != 0 )); then
+    host_status=ERROR
+    host_reason=update_failed
+    host_exit="$host_result"
+    host_failure_code="$host_result"
+    # Host and LXC recovery points are independent. The already validated
+    # guest scope must continue even when host backup/update fails.
+    if [[ "${update_running_lxc}" == true && "$lxc_targets" -gt 0 ]]; then
+      printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=true\n' \
+        "$host_result"
+      printf 'WARNING: host update failed (exit code %s); continuing with selected LXCs\n' \
+        "$host_result" >&2
+    else
+      printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=false\n' \
+        "$host_result"
+    fi
+  else
+    host_status=OK
+    host_reason=completed
+    printf 'update_all_stage=success stage=host exit_code=0\n'
+  fi
+elif [[ "$mode" != lxc ]]; then
+  printf 'update_all_stage=skipped stage=host reason=disabled\n'
+fi
+
+succeeded=0
+failed=0
+if [[ "${update_running_lxc}" == true ]]; then
+  failed_targets=()
+
+  printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
+
+  for vmid in "${vmids[@]}"; do
+    printf 'update_all_target=start vmid=%s\n' "$vmid"
+
+    lxc_started=true
+    result_attempted[$vmid]=true
+    FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" \
+      FORGE_APP_RESULT_FILE="${apt_result_dir:+$apt_result_dir/app-$vmid}" \
+      FORGE_RESULT_DETAIL_FILE="${apt_result_dir:+$apt_result_dir/result-lxc-$vmid}" \
+      bash "$lxc_update_script" "$vmid" scope
+    target_result=$?
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/lxc-$vmid" ]]; then
+      apt_value="$(< "$apt_result_dir/lxc-$vmid")"
+      [[ "$apt_value" =~ ^[0-9]+$ ]] && result_apt[$vmid]="$apt_value"
+    fi
+
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/app-$vmid" ]]; then
+      IFS=$'\t' read -r app_before app_after app_repository < "$apt_result_dir/app-$vmid"
+      if [[ "$app_before" == "-" || "$app_before" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]]; then
+        if [[ "$app_after" == "-" || "$app_after" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]]; then
+          result_app_before[$vmid]="$app_before"
+          result_app_after[$vmid]="$app_after"
+        fi
+      fi
+      if [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+        result_app_repository[$vmid]="$app_repository"
+      fi
+    fi
+
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-lxc-$vmid" ]]; then
+      IFS=$'\t' read -r detail stage recovery < "$apt_result_dir/result-lxc-$vmid"
+      if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
+            ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
+            ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+        result_detail[$vmid]="$detail"
+        result_failed_stage[$vmid]="$stage"
+        result_recovery[$vmid]="$recovery"
+      fi
+    fi
+
+    if (( target_result == 0 )); then
+      result_status[$vmid]=OK
+      result_reason[$vmid]=completed
+      succeeded=$((succeeded + 1))
+      printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
+    else
+      result_status[$vmid]=ERROR
+      result_reason[$vmid]=update_failed
+      result_exit[$vmid]="$target_result"
+      failed=$((failed + 1))
+      failed_targets+=("$vmid (exit code $target_result)")
+      printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
+    fi
+  done
+
+  if (( failed != 0 )); then
+    printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+      "$lxc_targets" "$succeeded" "$failed"
+    if (( host_failure_code != 0 )); then
+      printf 'update_all=failed stage=host exit_code=%s lxc_started=%s lxc_succeeded=%s lxc_failed=%s\n' \
+        "$host_failure_code" "$lxc_started" "$succeeded" "$failed"
+      printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
+      if (( succeeded > 0 )); then
+        overall_status=PARTIAL
+      else
+        overall_status=FAILED
+      fi
+    else
+      printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+        "$lxc_targets" "$succeeded" "$failed"
+      printf '\nForge update summary: '
+      if [[ "$mode" != lxc ]]; then
+        if [[ "$update_host" == true ]]; then
+          printf 'host SUCCESS; '
+        else
+          printf 'host skipped; '
+        fi
+      fi
+      overall_status=FAILED
+    fi
+    printf '%s LXCs selected, %s succeeded, %s failed; overall %s.\n' \
+      "$lxc_targets" "$succeeded" "$failed" "$overall_status"
+    for failed_target in "${failed_targets[@]}"; do
+      printf '  Failed LXC: %s\n' "$failed_target"
+    done
+    if (( host_failure_code != 0 )); then
+      exit "$host_failure_code"
+    fi
+    exit 1
+  fi
+
+  printf 'update_all_stage=success stage=lxc total=%s succeeded=%s failed=0 exit_code=0\n' \
+    "$lxc_targets" "$succeeded"
+else
+  printf 'update_all_stage=skipped stage=lxc reason=running_lxc_disabled\n'
+fi
+
+# A failed host always makes the combined CLI run fail, even if every
+# selected guest updated successfully. Preserve the original host exit code.
+if (( host_failure_code != 0 )); then
+  printf 'update_all=failed stage=host exit_code=%s lxc_started=%s lxc_succeeded=%s lxc_failed=0\n' \
+    "$host_failure_code" "$lxc_started" "$succeeded"
+  if (( succeeded > 0 )); then
+    overall_status=PARTIAL
+  else
+    overall_status=FAILED
+  fi
+  printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
+  if [[ "${update_running_lxc}" == true ]]; then
+    printf '%s LXCs selected, %s succeeded, 0 failed; overall %s.\n' \
+      "$lxc_targets" "$succeeded" "$overall_status"
+  else
+    printf 'LXC updates skipped (disabled); overall FAILED.\n'
+  fi
+  exit "$host_failure_code"
+fi
+
+printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
+  "$mode" "$update_host" "${update_running_lxc}" "$lxc_targets"
+
+printf '\nForge update summary: '
+if [[ "$mode" != lxc ]]; then
+  if [[ "$update_host" == true ]]; then
+    printf 'host SUCCESS; '
+  else
+    printf 'host skipped; '
+  fi
+fi
+if [[ "${update_running_lxc}" == true ]]; then
+  printf '%s LXCs selected, %s succeeded, 0 failed; overall SUCCESS.\n' \
+    "$lxc_targets" "$succeeded"
+else
+  printf 'LXC updates skipped (disabled); overall SUCCESS.\n'
+fi
+\t' read -r detail stage recovery platform < "$apt_result_dir/result-host"
+    if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
+          ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
+          ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+      host_detail="$detail"
+      host_failed_stage="$stage"
+      host_recovery="$recovery"
+    fi
+  fi
+
+  if (( host_result != 0 )); then
+    host_status=ERROR
+    host_reason=update_failed
+    host_exit="$host_result"
+    host_failure_code="$host_result"
+    # Host and LXC recovery points are independent. The already validated
+    # guest scope must continue even when host backup/update fails.
+    if [[ "${update_running_lxc}" == true && "$lxc_targets" -gt 0 ]]; then
+      printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=true\n' \
+        "$host_result"
+      printf 'WARNING: host update failed (exit code %s); continuing with selected LXCs\n' \
+        "$host_result" >&2
+    else
+      printf 'update_all_stage=failed stage=host exit_code=%s continuing_with_lxc=false\n' \
+        "$host_result"
+    fi
+  else
+    host_status=OK
+    host_reason=completed
+    printf 'update_all_stage=success stage=host exit_code=0\n'
+  fi
+elif [[ "$mode" != lxc ]]; then
+  printf 'update_all_stage=skipped stage=host reason=disabled\n'
+fi
+
+succeeded=0
+failed=0
+if [[ "${update_running_lxc}" == true ]]; then
+  failed_targets=()
+
+  printf 'update_all_stage=start stage=lxc targets=%s\n' "$lxc_targets"
+
+  for vmid in "${vmids[@]}"; do
+    printf 'update_all_target=start vmid=%s\n' "$vmid"
+
+    lxc_started=true
+    result_attempted[$vmid]=true
+    FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" \
+      FORGE_APP_RESULT_FILE="${apt_result_dir:+$apt_result_dir/app-$vmid}" \
+      FORGE_RESULT_DETAIL_FILE="${apt_result_dir:+$apt_result_dir/result-lxc-$vmid}" \
+      bash "$lxc_update_script" "$vmid" scope
+    target_result=$?
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/lxc-$vmid" ]]; then
+      apt_value="$(< "$apt_result_dir/lxc-$vmid")"
+      [[ "$apt_value" =~ ^[0-9]+$ ]] && result_apt[$vmid]="$apt_value"
+    fi
+
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/app-$vmid" ]]; then
+      IFS=$'\t' read -r app_before app_after app_repository < "$apt_result_dir/app-$vmid"
+      if [[ "$app_before" == "-" || "$app_before" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]]; then
+        if [[ "$app_after" == "-" || "$app_after" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]]; then
+          result_app_before[$vmid]="$app_before"
+          result_app_after[$vmid]="$app_after"
+        fi
+      fi
+      if [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+        result_app_repository[$vmid]="$app_repository"
+      fi
+    fi
+
+    if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-lxc-$vmid" ]]; then
+      IFS=$'\t' read -r detail stage recovery < "$apt_result_dir/result-lxc-$vmid"
+      if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
+            ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
+            ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+        result_detail[$vmid]="$detail"
+        result_failed_stage[$vmid]="$stage"
+        result_recovery[$vmid]="$recovery"
+      fi
+    fi
+
+    if (( target_result == 0 )); then
+      result_status[$vmid]=OK
+      result_reason[$vmid]=completed
+      succeeded=$((succeeded + 1))
+      printf 'update_all_target=success vmid=%s exit_code=0\n' "$vmid"
+    else
+      result_status[$vmid]=ERROR
+      result_reason[$vmid]=update_failed
+      result_exit[$vmid]="$target_result"
+      failed=$((failed + 1))
+      failed_targets+=("$vmid (exit code $target_result)")
+      printf 'update_all_target=failed vmid=%s exit_code=%s\n' "$vmid" "$target_result"
+    fi
+  done
+
+  if (( failed != 0 )); then
+    printf 'update_all_stage=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+      "$lxc_targets" "$succeeded" "$failed"
+    if (( host_failure_code != 0 )); then
+      printf 'update_all=failed stage=host exit_code=%s lxc_started=%s lxc_succeeded=%s lxc_failed=%s\n' \
+        "$host_failure_code" "$lxc_started" "$succeeded" "$failed"
+      printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
+      if (( succeeded > 0 )); then
+        overall_status=PARTIAL
+      else
+        overall_status=FAILED
+      fi
+    else
+      printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
+        "$lxc_targets" "$succeeded" "$failed"
+      printf '\nForge update summary: '
+      if [[ "$mode" != lxc ]]; then
+        if [[ "$update_host" == true ]]; then
+          printf 'host SUCCESS; '
+        else
+          printf 'host skipped; '
+        fi
+      fi
+      overall_status=FAILED
+    fi
+    printf '%s LXCs selected, %s succeeded, %s failed; overall %s.\n' \
+      "$lxc_targets" "$succeeded" "$failed" "$overall_status"
+    for failed_target in "${failed_targets[@]}"; do
+      printf '  Failed LXC: %s\n' "$failed_target"
+    done
+    if (( host_failure_code != 0 )); then
+      exit "$host_failure_code"
+    fi
+    exit 1
+  fi
+
+  printf 'update_all_stage=success stage=lxc total=%s succeeded=%s failed=0 exit_code=0\n' \
+    "$lxc_targets" "$succeeded"
+else
+  printf 'update_all_stage=skipped stage=lxc reason=running_lxc_disabled\n'
+fi
+
+# A failed host always makes the combined CLI run fail, even if every
+# selected guest updated successfully. Preserve the original host exit code.
+if (( host_failure_code != 0 )); then
+  printf 'update_all=failed stage=host exit_code=%s lxc_started=%s lxc_succeeded=%s lxc_failed=0\n' \
+    "$host_failure_code" "$lxc_started" "$succeeded"
+  if (( succeeded > 0 )); then
+    overall_status=PARTIAL
+  else
+    overall_status=FAILED
+  fi
+  printf '\nForge update summary: host FAILED (exit code %s); ' "$host_failure_code"
+  if [[ "${update_running_lxc}" == true ]]; then
+    printf '%s LXCs selected, %s succeeded, 0 failed; overall %s.\n' \
+      "$lxc_targets" "$succeeded" "$overall_status"
+  else
+    printf 'LXC updates skipped (disabled); overall FAILED.\n'
+  fi
+  exit "$host_failure_code"
+fi
+
+printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targets=%s\n' \
+  "$mode" "$update_host" "${update_running_lxc}" "$lxc_targets"
+
+printf '\nForge update summary: '
+if [[ "$mode" != lxc ]]; then
+  if [[ "$update_host" == true ]]; then
+    printf 'host SUCCESS; '
+  else
+    printf 'host skipped; '
+  fi
+fi
+if [[ "${update_running_lxc}" == true ]]; then
+  printf '%s LXCs selected, %s succeeded, 0 failed; overall SUCCESS.\n' \
+    "$lxc_targets" "$succeeded"
+else
+  printf 'LXC updates skipped (disabled); overall SUCCESS.\n'
+fi
+\t' read -r detail stage recovery platform < "$apt_result_dir/result-host"
     if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
           ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
           ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
