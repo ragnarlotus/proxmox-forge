@@ -74,6 +74,7 @@ class HostRebootFlowTests(unittest.TestCase):
             "results/record.sh": None,
             "results/table.py": None,
             "results/apt.sh": None,
+            "results/host-software.sh": None,
         }
         for path, kind in paths.items():
             dest = self.base / "lib" / path
