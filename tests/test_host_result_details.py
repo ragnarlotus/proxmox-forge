@@ -76,7 +76,7 @@ class HostResultDetailsTests(unittest.TestCase):
         for path in paths:
             dest = self.lib / path
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if path in ("host/update.sh", "results/record.sh", "results/table.py", "notifications/send.py"):
+            if path in ("host/update.sh", "results/record.sh", "results/table.py", "results/host-software.sh", "notifications/send.py"):
                 dest.symlink_to(ROOT / "lib" / path)
             elif path == "logging/capture.sh":
                 dest.write_text(CAPTURE, encoding="utf-8")
