@@ -26,3 +26,5 @@ After the host APT update stage (successful or failed), Forge checks `apt-mark s
 F220: completed individual host runs emit one structured `result_target` record with the target and authoritative result. Combined bulk runs suppress the nested host record; the coordinator emits it instead.
 
 F221: a read-only pre/post dpkg comparison adds `apt_upgraded=N|-` to the final result. The host never rolls back; partial upgrades persist and are counted if verifiable. Measurement failures do not affect the update exit code.
+
+The host `Software version` cell reports Proxmox VE's installed pve-manager version, Debian's VERSION_ID and the running Proxmox kernel, plus the latest installed PVE kernel when it differs. The facts come from `pveversion`, `/etc/os-release`, `uname -r` and F094's existing kernel inventory; unavailable facts stay unknown. They are read only, recorded in the authoritative escaped `host_platform` field and carried through bulk results without changing update execution or reboot policy.
