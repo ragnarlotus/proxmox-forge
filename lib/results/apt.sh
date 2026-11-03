@@ -14,7 +14,7 @@ forge_apt_snapshot() (
   if [[ "$target" == host ]]; then
     dpkg-query -W "-f=$format"
   elif [[ "$target" =~ ^[0-9]+$ ]]; then
-    pct exec "$target" -- dpkg-query -W "-f=$format" </dev/null
+    pct exec "$target" -- dpkg-query -W "-f=$format" </dev/null 200>&-
   else
     return 2
   fi | awk -F '\t' 'NF == 3 && $3 ~ /^ii/ && $1 != "" && $2 != "" { print $1 "\t" $2 }'
