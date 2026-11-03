@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDERER = ROOT / "lib/results/table.py"
-HEADER = "VMID | Name | APT | Application version | Changelog | Result"
+HEADER = "VMID | Name | APT | Software version | Changelog | Result"
 
 
 def record(vmid="101", name="pihole", status="OK", reason="completed",
