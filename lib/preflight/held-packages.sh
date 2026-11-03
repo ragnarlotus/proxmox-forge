@@ -72,7 +72,7 @@ if [[ "$target" == host ]]; then
   result=$?
 else
   command -v pct >/dev/null 2>&1 || fail "pct is not available"
-  pct exec "$target" -- bash -c "$probe" _ "$target" </dev/null
+  pct exec "$target" -- bash -c "$probe" _ "$target" </dev/null 200>&-
   result=$?
 fi
 
