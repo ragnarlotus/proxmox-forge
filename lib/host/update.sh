@@ -38,6 +38,7 @@ log_capture_script="$lib_dir/logging/capture.sh"
 log_write_script="$lib_dir/logging/write.sh"
 result_record_script="$lib_dir/results/record.sh"
 apt_results_script="$lib_dir/results/apt.sh"
+host_software_script="$lib_dir/results/host-software.sh"
 
 for helper in \
   "$config_get_script" \
@@ -50,7 +51,8 @@ for helper in \
   "$log_capture_script" \
   "$log_write_script" \
   "$result_record_script" \
-  "$apt_results_script"; do
+  "$apt_results_script" \
+  "$host_software_script"; do
   [[ -r "$helper" ]] || fail "required helper is not readable: $helper"
 done
 
@@ -66,6 +68,8 @@ source "$result_record_script" || fail "could not load result record helper"
 FORGE_RESULT_TABLE=true
 # shellcheck source=/dev/null
 source "$apt_results_script" || fail "could not load APT results helper"
+# shellcheck source=/dev/null
+source "$host_software_script" || fail "could not load host software version helper"
 trap forge_apt_cleanup EXIT
 
 if [[ "${FORGE_SCHEDULED_MODE:-}" == scheduled ]]; then
@@ -120,6 +124,7 @@ finish_failed() {
     failure_error="$(forge_result_stage_error "$log_file" "$failed_stage")"
   fi
   forge_apt_finalize host
+  host_software="$(forge_host_software "$reboot_script")"
   finished_at="$(date +%s)" || finished_at="$started_at"
   duration_seconds=$((finished_at - started_at))
 
@@ -138,7 +143,7 @@ finish_failed() {
   printf 'Forge update summary: host %s FAILED at %s (exit code %s; no automatic rollback).\n' \
     "$hostname_fqdn" "$failed_stage" "$primary_result"
   forge_result_publish host HOST "$hostname_fqdn" true true ERROR update_failed "$primary_result" \
-    "$FORGE_APT_COUNT" "-" "-" "-" "$failed_stage" "$failure_error" "-" "$result_warning"
+    "$FORGE_APT_COUNT" "-" "-" "-" "$failed_stage" "$failure_error" "-" "$result_warning" "$host_software"
   exit "$primary_result"
 }
 
@@ -235,6 +240,7 @@ else
 fi
 
 forge_apt_finalize host
+host_software="$(forge_host_software "$reboot_script")"
 finished_at="$(date +%s)" || finished_at="$started_at"
 duration_seconds=$((finished_at - started_at))
 
@@ -255,4 +261,4 @@ elif [[ "$reboot_required" == unknown ]]; then
   printf 'WARNING: Proxmox host reboot requirement could not be determined.\n' >&2
 fi
 forge_result_publish host HOST "$hostname_fqdn" true true OK completed "" \
-  "$FORGE_APT_COUNT" "-" "-" "-" "-" "" "-" "$result_warning"
+  "$FORGE_APT_COUNT" "-" "-" "-" "-" "" "-" "$result_warning" "$host_software"
