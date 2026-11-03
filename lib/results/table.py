@@ -58,6 +58,9 @@ def parse(line):
         raise ValueError("invalid LXC identifier")
     if not re.fullmatch(r"([A-Za-z0-9_.~-]|%[0-9A-F]{2})+", record["result_detail"]):
         raise ValueError("invalid encoded result")
+    if "host_platform" in record and not re.fullmatch(
+            r"([A-Za-z0-9_.~-]|%[0-9A-F]{2})+", record["host_platform"]):
+        raise ValueError("invalid encoded host platform")
     if "exit_code" in record and not re.fullmatch(r"[0-9]+", record["exit_code"]):
         raise ValueError("invalid exit code")
     return record
