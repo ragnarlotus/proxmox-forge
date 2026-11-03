@@ -211,7 +211,7 @@ class HostResultDetailsTests(unittest.TestCase):
         self.assertNotIn("result_target ", result.stdout)
         self.assertNotIn("Forge final results", result.stdout)
         fields = handoff.read_text().rstrip("\n").split("\t")
-        self.assertEqual(fields, ["OK", "-", "-"])
+        self.assertEqual(fields, ["OK", "-", "-", "-"])
 
 
 if __name__ == "__main__":
