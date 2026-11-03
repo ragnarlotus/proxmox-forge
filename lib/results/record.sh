@@ -79,7 +79,7 @@ forge_result_stage_error() {
       return lower ~ /under-provisioned|insufficient[[:space:]]+(cpu|ram|memory|resources?)|not[[:space:]]+enough[[:space:]]+(cpu|ram|memory)|out of memory|cannot allocate memory|oom[- ]killed|memory limit exceeded/
     }
     function resource_requirements(text) {
-      return text ~ /Required:[[:space:]]*[0-9]+[[:space:]]*CPU,[[:space:]]*[0-9]+[[:space:]]*MB[[:space:]]*RAM[[:space:]]*\\|[[:space:]]*Current:[[:space:]]*[0-9]+[[:space:]]*CPU,[[:space:]]*[0-9]+[[:space:]]*MB[[:space:]]*RAM/
+      return text ~ /Required:[[:space:]]*[0-9]+[[:space:]]*CPU,[[:space:]]*[0-9]+[[:space:]]*MB[[:space:]]*RAM[[:space:]]*\|[[:space:]]*Current:[[:space:]]*[0-9]+[[:space:]]*CPU,[[:space:]]*[0-9]+[[:space:]]*MB[[:space:]]*RAM/
     }
     function save(text, slot) {
       if (length(text) > 500)
