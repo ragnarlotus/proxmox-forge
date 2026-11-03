@@ -46,7 +46,17 @@ started_at="$(date +%s)" || fail "could not create stage start timestamp"
 
 # Consume each byte once, stream immediately to the terminal, and append
 # sanitized plain-text lines to the target and run logs.
-"$@" 2>&1 | LC_ALL=C python3 -u "$stream_script" "$log_file" "${FORGE_RUN_LOG:-}"
+# Direct pct lifecycle commands may launch persistent LXC processes. They
+# need no Forge runtime context, so keep fd 200 in this guarded orchestrator
+# while explicitly closing it for pct and all processes it starts.
+run_stage_command() {
+  if [[ "$1" == pct ]]; then
+    "$@" 200>&-
+  else
+    "$@"
+  fi
+}
+run_stage_command "$@" 2>&1 | LC_ALL=C python3 -u "$stream_script" "$log_file" "${FORGE_RUN_LOG:-}"
 pipeline_status=("${PIPESTATUS[@]}")
 command_status="${pipeline_status[0]}"
 stream_status="${pipeline_status[1]}"
