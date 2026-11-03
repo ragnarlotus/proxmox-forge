@@ -9,7 +9,8 @@ All `lib/**/*.sh` files are internal implementation components and require the r
 The active lock is held on file descriptor 200 throughout an invocation.
 Forge's internal helpers inherit it to validate the runtime guard. Every `pct exec` boundary closes descriptor 200 **for the
 spawned guest command only**, after its owning Forge helper has passed that
-guard. This prevents application updaters, custom health scripts and background
+guard. Direct `pct start`/`stop`/`shutdown` stages dispatched through the
+capture helper close the same descriptor for the `pct` subprocess. This prevents application updaters, custom health scripts and background
 daemons started within LXCs (for example Nx) from retaining Forge's lock after
 the owning update process exits. Do not close the descriptor before running
 an internal Forge helper: that would bypass its guard and break the single-run
