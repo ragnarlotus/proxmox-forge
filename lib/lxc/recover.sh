@@ -152,7 +152,7 @@ fi
 ready=false
 deadline=$((SECONDS + 30))
 while (( SECONDS < deadline )); do
-  if timeout 2 pct exec "$vmid" -- true </dev/null >/dev/null 2>&1; then
+  if timeout 2 pct exec "$vmid" -- true </dev/null 200>&- >/dev/null 2>&1; then
     ready=true
     break
   fi
