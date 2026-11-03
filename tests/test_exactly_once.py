@@ -464,7 +464,7 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertNotIn("result_target ", result.stdout)
         self.assertEqual(steps.count("recover"), 1)
         parts = handoff.read_text(encoding="utf-8").strip().split("\t")
-        self.assertEqual(parts[1:], ["application_update", "success"])
+        self.assertEqual(parts[1:], ["application_update", "success", "-"])
         self.assertIn("ERROR%3A%20application_update", parts[0])
 
     def test_app_version_after_rollback_matches_before(self):
