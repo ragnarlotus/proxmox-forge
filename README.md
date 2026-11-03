@@ -129,9 +129,11 @@ forge update self-update
 
 This updates `main` by default. An optional branch name (`forge update
 self-update BRANCH`) selects that branch only when the update is a safe
-fast-forward. Forge rejects unexpected remotes, dirty worktrees and divergent
-history. Local `forge.conf` and ignored target-specific customizations are
-preserved.
+fast-forward. Forge rejects unexpected remotes, changes to tracked files
+(including staged changes), and divergent history. Untracked or ignored local
+files (including editor backups such as `forge.conf~`) are preserved and do
+not block updates, unless an incoming revision would start tracking the same
+path; such collisions are refused to prevent data loss.
 
 `CHECK_FORGE_UPDATES_BEFORE_UPDATE=true` by default: before an interactive
 manual host or LXC update, Forge checks for a newer `main` revision and, if

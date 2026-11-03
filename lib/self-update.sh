@@ -59,9 +59,12 @@ case "$remote_url" in
   *) fail "configured Forge remote is not the approved ragnarlotus/proxmox-forge repository" ;;
 esac
 
-# Do not silently discard tracked edits or untracked non-ignored files.
-if [[ -n "$(git -C "$repo" status --porcelain=v1 --untracked-files=normal)" ]]; then
-  fail "Forge checkout contains local changes or untracked files; update manually after reviewing them"
+# Refuse modified/staged tracked files, but leave untracked and ignored
+# host-local files alone. Git already protects ordinary untracked files from
+# checkout collisions; ignored files need explicit protection (git merge may
+# otherwise overwrite them when the upstream branch starts tracking that path).
+if [[ -n "$(git -C "$repo" status --porcelain=v1 --untracked-files=no)" ]]; then
+  fail "Forge checkout contains changes to tracked files; update manually after reviewing them"
 fi
 
 # Fetch exactly the requested branch, without touching the worktree or tags.
@@ -92,6 +95,22 @@ if [[ "$mode" == check ]]; then
   fi
   exit 0
 fi
+
+# An upstream addition must never replace a host-local file, including an
+# ignored file (e.g. forge.conf). For an unchanged tracked checkout, any path
+# newly tracked by the requested revision that already exists locally is a
+# collision. Preserve it and fail without switching branches or merging.
+incoming_paths_file="$(mktemp)" || fail "cannot create temporary path inventory"
+trap 'rm -f -- "$incoming_paths_file"' EXIT
+git -C "$repo" diff --name-only --diff-filter=A -z "$current_sha" "$remote_sha" > "$incoming_paths_file" ||
+  fail "cannot inspect paths added by Forge update"
+while IFS= read -r -d '' incoming_path; do
+  if [[ -e "$repo/$incoming_path" || -L "$repo/$incoming_path" ]]; then
+    fail "Forge update would overwrite local untracked or ignored file: $incoming_path"
+  fi
+done < "$incoming_paths_file"
+rm -f -- "$incoming_paths_file" || fail "cannot remove temporary path inventory"
+trap - EXIT
 
 if [[ "$current_branch" != "$branch" ]]; then
   if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
