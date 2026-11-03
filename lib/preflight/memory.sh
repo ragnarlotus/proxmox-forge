@@ -24,7 +24,7 @@ if [[ $# -eq 3 ]]; then
   available_kb="$3"
 else
   [[ "$target" =~ ^[0-9]+$ ]] || fail "a running LXC VMID is required to query available memory"
-  available_kb="$(pct exec "$target" -- awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo </dev/null)" || fail "could not inspect available memory of LXC $target"
+  available_kb="$(pct exec "$target" -- awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo </dev/null 200>&-)" || fail "could not inspect available memory of LXC $target"
 fi
 
 [[ "$available_kb" =~ ^[0-9]+$ ]] || fail "invalid available-memory value for $target: '$available_kb'"
