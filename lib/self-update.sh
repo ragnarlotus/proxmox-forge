@@ -100,11 +100,17 @@ fi
 # ignored file (e.g. forge.conf). For an unchanged tracked checkout, any path
 # newly tracked by the requested revision that already exists locally is a
 # collision. Preserve it and fail without switching branches or merging.
+incoming_paths_file="$(mktemp)" || fail "cannot create temporary path inventory"
+trap 'rm -f -- "$incoming_paths_file"' EXIT
+git -C "$repo" diff --name-only --diff-filter=A -z "$current_sha" "$remote_sha" > "$incoming_paths_file" ||
+  fail "cannot inspect paths added by Forge update"
 while IFS= read -r -d '' incoming_path; do
   if [[ -e "$repo/$incoming_path" || -L "$repo/$incoming_path" ]]; then
     fail "Forge update would overwrite local untracked or ignored file: $incoming_path"
   fi
-done < <(git -C "$repo" diff --name-only --diff-filter=A -z "$current_sha" "$remote_sha")
+done < "$incoming_paths_file"
+rm -f -- "$incoming_paths_file" || fail "cannot remove temporary path inventory"
+trap - EXIT
 
 if [[ "$current_branch" != "$branch" ]]; then
   if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
