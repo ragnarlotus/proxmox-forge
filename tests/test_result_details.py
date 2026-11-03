@@ -176,7 +176,7 @@ class ActionableResultTests(unittest.TestCase):
                 log.write_text(
                     "2026 level=INFO event=stage_start stage=application_update command=helper\n"
                     "Building application...\n"
-                    f"  \\U0001f4a1 {requirements}\n"
+                    f"  💡 {requirements}\n"
                     "Please ensure that this LXC has sufficient resources for the build.\n"
                     "  Not continuing: LXC is under-provisioned and there is nobody to ask.\n"
                     f"ERROR: application updater failed for LXC {vmid} (exit code: 113)\n"
@@ -214,8 +214,9 @@ class ActionableResultTests(unittest.TestCase):
                     input=result.stdout, capture_output=True, text=True, check=False,
                 )
                 self.assertEqual(table.returncode, 0, table.stderr)
-                self.assertIn(requirements, table.stdout)
                 self.assertIn("Insufficient update CPU/RAM", table.stdout)
+                self.assertIn(f"{required_ram}MB", table.stdout)
+                self.assertIn(f"{actual_ram}MB", table.stdout)
 
     def test_resource_diagnosis_requires_explicit_failure_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:
