@@ -18,7 +18,8 @@ run_update_command() {
   local description="$1"
   shift
 
-  "$@"
+  # The guest updater must not inherit Forge's active flock descriptor.
+  "$@" 200>&-
   local result=$?
 
   if (( result != 0 )); then
@@ -42,7 +43,7 @@ if [[ -z "$package_manager" ]]; then
     else
       printf unknown
     fi
-  ' </dev/null)" || fail "could not determine package manager for LXC $vmid"
+  ' </dev/null 200>&-)" || fail "could not determine package manager for LXC $vmid"
 fi
 
 case "$package_manager" in
