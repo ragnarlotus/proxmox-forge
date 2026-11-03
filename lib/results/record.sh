@@ -71,6 +71,16 @@ forge_result_stage_error() {
     function explicit_error(text) {
       return text ~ /^[[:space:]]*(ERROR:|Error:|error:|FATAL:|Fatal:|fatal:|Failed:|failed:|Failed to |E:|Err:[0-9]+|npm (ERR!|error)|pnpm (ERR|error)|ERR_PNPM_|yarn (error|ERR!)|dpkg: error|curl: \([0-9]+\)|Traceback \(most recent call last\):|[[:alnum:]_]*(Error|Exception):|Exception in thread |Error response from daemon:|CMake Error|make: \*\*\*|gmake: \*\*\*|\[[Ee][Rr][Rr][Oo][Rr]\]|File "[^"]+", line [0-9]+)/
     }
+    # Resource failures are not always prefixed with ERROR: (Community
+    # Scripts prints its CPU/RAM requirement and rejection as plain lines).
+    # Diagnose only the failed stage, and only from explicit failure text.
+    function resource_shortfall(text, lower) {
+      lower = tolower(text)
+      return lower ~ /under-provisioned|insufficient[[:space:]]+(cpu|ram|memory|resources?)|not[[:space:]]+enough[[:space:]]+(cpu|ram|memory)|out of memory|cannot allocate memory|oom[- ]killed|memory limit exceeded/
+    }
+    function resource_requirements(text) {
+      return text ~ /Required:[[:space:]]*[0-9]+[[:space:]]*CPU,[[:space:]]*[0-9]+[[:space:]]*MB[[:space:]]*RAM[[:space:]]*\|[[:space:]]*Current:[[:space:]]*[0-9]+[[:space:]]*CPU,[[:space:]]*[0-9]+[[:space:]]*MB[[:space:]]*RAM/
+    }
     function save(text, slot) {
       if (length(text) > 500)
         text = substr(text, 1, 500) " [line truncated; see log]"
@@ -85,6 +95,8 @@ forge_result_stage_error() {
         found = 0
         delete first
         delete tail
+        shortage = 0
+        requirement = ""
       }
       next
     }
@@ -92,8 +104,25 @@ forge_result_stage_error() {
       if (active && index($0, " " token " ") > 0) active = 0
       next
     }
-    active && explicit_error($0) { save($0) }
+    active {
+      if (resource_requirements($0)) {
+        requirement = substr($0, index($0, "Required:"))
+        if (length(requirement) > 500)
+          requirement = substr(requirement, 1, 500) " [line truncated; see log]"
+      }
+      if (resource_shortfall($0)) {
+        shortage = 1
+        if (!explicit_error($0)) save($0)
+      }
+      if (explicit_error($0)) save($0)
+    }
     END {
+      if (shortage) {
+        if (requirement != "")
+          print "ERROR: Insufficient update CPU/RAM: " requirement
+        else
+          print "ERROR: Updater reported insufficient CPU or memory"
+      }
       if (!found) exit
       if (found <= 12) {
         if (found <= 8) {

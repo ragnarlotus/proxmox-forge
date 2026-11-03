@@ -159,6 +159,99 @@ class ActionableResultTests(unittest.TestCase):
             self.assertNotIn("unrelated earlier stage", detail)
             self.assertNotIn("rollback health failure", detail)
 
+    def test_under_provisioned_guests_report_required_and_current_resources(self):
+        # The two real Community Scripts failure shapes must work for any VMID,
+        # not just the WireGuard and Trek containers that exposed the problem.
+        for vmid, required_cpu, required_ram, actual_cpu, actual_ram in (
+            ("100", 1, 1024, 1, 512),
+            ("115", 2, 4096, 2, 2048),
+            ("213", 4, 8192, 2, 4096),
+        ):
+            with self.subTest(vmid=vmid), tempfile.TemporaryDirectory() as tmp:
+                log = Path(tmp) / "stage.log"
+                requirements = (
+                    f"Required: {required_cpu} CPU, {required_ram}MB RAM | "
+                    f"Current: {actual_cpu} CPU, {actual_ram}MB RAM"
+                )
+                log.write_text(
+                    "2026 level=INFO event=stage_start stage=application_update command=helper\n"
+                    "Building application...\n"
+                    f"  💡 {requirements}\n"
+                    "Please ensure that this LXC has sufficient resources for the build.\n"
+                    "  Not continuing: LXC is under-provisioned and there is nobody to ask.\n"
+                    f"ERROR: application updater failed for LXC {vmid} (exit code: 113)\n"
+                    "2026 level=ERROR event=stage_end stage=application_update status=failed exit_code=113\n"
+                    "2026 level=INFO event=stage_start stage=recovery_health command=check\n"
+                    "ERROR: unrelated recovery failure\n"
+                    "2026 level=ERROR event=stage_end stage=recovery_health status=failed exit_code=2\n",
+                    encoding="utf-8",
+                )
+                extracted = self.run_helper(
+                    f"forge_result_stage_error '{log}' application_update"
+                )
+                self.assertEqual(extracted.returncode, 0, extracted.stderr)
+                self.assertIn(
+                    "ERROR: Insufficient update CPU/RAM: " + requirements,
+                    extracted.stdout,
+                )
+                self.assertIn("under-provisioned", extracted.stdout)
+                self.assertNotIn("unrelated recovery failure", extracted.stdout)
+                # Verify the existing encoded handoff also puts the diagnosis
+                # in the user's actual final Result column and failures list.
+                result = self.run_helper(
+                    f'forge_result_publish lxc {vmid} guest true true ERROR '
+                    f'update_failed 113 - - - - application_update '
+                    f'"$(forge_result_stage_error \'{log}\' application_update)" '
+                    f'success ""'
+                )
+                row, detail = self.parse(result)
+                self.assertEqual(row["failed_stage"], "application_update")
+                self.assertEqual(row["recovery"], "success")
+                self.assertIn(requirements, detail)
+                self.assertIn("recovery succeeded", detail)
+                table = subprocess.run(
+                    ["python3", str(ROOT / "lib/results/table.py")],
+                    input=result.stdout, capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(table.returncode, 0, table.stderr)
+                self.assertIn("Insufficient update CPU/RAM", table.stdout)
+                self.assertIn(f"{required_ram}MB", table.stdout)
+                self.assertIn(f"{actual_ram}MB", table.stdout)
+
+    def test_resource_diagnosis_requires_explicit_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stage.log"
+            log.write_text(
+                "2026 level=INFO event=stage_start stage=application_update command=helper\n"
+                "Required: 2 CPU, 4096MB RAM | Current: 2 CPU, 2048MB RAM\n"
+                "ERROR: request failed with HTTP 404\n"
+                "2026 level=ERROR event=stage_end stage=application_update status=failed exit_code=113\n"
+                "2026 level=INFO event=stage_start stage=recovery_health command=health\n"
+                "Not continuing: LXC is under-provisioned\n"
+                "2026 level=INFO event=stage_end stage=recovery_health status=success exit_code=0\n",
+                encoding="utf-8",
+            )
+            r = self.run_helper(
+                f"forge_result_stage_error '{log}' application_update"
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), "ERROR: request failed with HTTP 404")
+
+    def test_unprefixed_out_of_memory_is_reported_without_fabricated_limits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "stage.log"
+            log.write_text(
+                "2026 level=INFO event=stage_start stage=custom_scripts command=script\n"
+                "Build exited: out of memory\n"
+                "2026 level=ERROR event=stage_end stage=custom_scripts status=failed exit_code=137\n",
+                encoding="utf-8",
+            )
+            r = self.run_helper(f"forge_result_stage_error '{log}' custom_scripts")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("Updater reported insufficient CPU or memory", r.stdout)
+            self.assertIn("Build exited: out of memory", r.stdout)
+            self.assertNotIn("Required:", r.stdout)
+
     def test_verbose_failure_keeps_first_and_last_bounded_diagnostic_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "stage.log"
