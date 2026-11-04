@@ -61,6 +61,10 @@ forge_persistent_prepare() {
     printf 'ERROR: a persistent Forge update is already running. Execute: forge back\n' >&2
     return 1
   fi
+  if [[ ! -r "$FORGE_PERSISTENT_WORKER" ]]; then
+    printf 'ERROR: F131 worker component is unavailable; no persistent update started\n' >&2
+    return 1
+  fi
 
   # Keep the short worker exit-status handoff out of the Git checkout and
   # protect it from symlinks / other local users. The authoritative result
