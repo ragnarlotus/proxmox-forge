@@ -80,6 +80,23 @@ forge_persistent_prepare() {
     printf 'ERROR: F131 server is not confirmed independent of the SSH login (system.slice); update cancelled. Disable PERSISTENT_UPDATE_SESSION or fix systemd permissions\n' >&2
     return 1
   fi
+
+  # The transient service must have opened the tmux socket already. Without
+  # this check, new-session could implicitly start a second, SSH-owned server.
+  # Type=exec means the tmux process was launched, not that it finished setup.
+  local ready=false i
+  for ((i=0; i<10; i++)); do
+    if tmux -L "$FORGE_PERSISTENT_SOCKET" show-options -g -v exit-empty >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "$ready" != true ]]; then
+    forge_persistent_stop_server
+    printf 'ERROR: systemd-owned tmux server socket is not ready; persistent update cancelled\n' >&2
+    return 1
+  fi
   return 0
 }
 
