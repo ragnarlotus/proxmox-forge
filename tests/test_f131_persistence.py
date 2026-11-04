@@ -176,6 +176,22 @@ class F131Tests(unittest.TestCase):
         self.assertIn("new-session", self.calls_text())
         self.assertIn("set-option -g exit-empty on", self.calls_text())
 
+    def test_worker_refuses_ssh_owned_scope_before_updater_mutation(self):
+        output = self.base / "worker-exit"
+        touched = self.base / "updated"
+        updater = self.base / "update"
+        updater.write_text("#!/bin/bash\\ntouch \\"$1\\"\\n", encoding="utf-8")
+        updater.chmod(0o755)
+        result = subprocess.run(
+            ["bash", str(ROOT / "lib/runtime/persistent-worker.sh"),
+             str(output), str(updater), str(touched)],
+            env=self.env, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertFalse(touched.exists())
+        self.assertEqual(output.read_text(), "1\\n")
+        self.assertIn("not running in its independent systemd service", result.stderr)
+
     def test_running_back_attaches_without_trying_update_lock(self):
         self.active.touch()
         result = self.helper("forge_persistent_back", tty=True)
