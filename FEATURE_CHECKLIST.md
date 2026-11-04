@@ -72,11 +72,11 @@ Forge performs updates rather than checking what is available in advance. Reposi
 - [x] **F064** Check free filesystem space. `MIN_ROOT_FREE_MB` (default 1024 MiB) enforces free space on `/` for host/LXC updates. Bulk runs check all selected running LXCs before host/guest changes, and individual target requirements check before mutation.
 - [x] **F066** Check available memory. Configurable `MIN_MEM_AVAILABLE_MB` (128 MiB by default) enforces a minimum `MemAvailable` for the Proxmox host and running LXCs; bulk operations check selected LXC memory before any host/guest mutation and individual target requirements recheck immediately before updates. Missing/invalid readings block mutation. The real inspection shell payload and preflight paths are covered by automated regression tests.
 - **F068 — DESCARTADO (2026-10-15).** No implementar una comprobación propia de LVM-thin `Data%` / `Meta%` en Forge. Proxmox ya expone estas métricas y Forge ha dejado de crear snapshots persistentes: sus puntos de recuperación son backups `vzdump` en el almacenamiento configurado en Proxmox.
-- [ ] **F069** Check storage required for snapshots/backups.
+- **F069 — DESCARTADO (2026-11-04).** No implementar una estimación previa de espacio para backups comprimidos de Proxmox: el tamaño final de `vzdump` no es predecible con precisión. Forge ya exige crear correctamente el backup y obtener un volumen de recuperación identificable antes de modificar el LXC (F078/F082); si falla, detiene la actualización y comunica el error real en `Result` mediante F224.
 - [x] **F071** Detect package-manager locks/conflicting processes.
 - [x] **F075** A failed mandatory preflight blocks the update.
 
-> Root space (F064) and available memory (F066) are enforced preflight requirements. F068 was explicitly dropped from the roadmap; F069 remains deferred.
+> Root space (F064) and available memory (F066) remain enforced preflight requirements. F068 and F069 were explicitly dropped from the roadmap; backup creation success and failure diagnostics remain mandatory.
 
 ## H. Backup and recovery
 
@@ -250,7 +250,7 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 > **Roadmap cleanup (2026-10-16; documented 2026-10-18):** F227, F230 and F245 were rejected, not implemented or postponed. Their original proposals and rejection reasons are retained in the historical decision register below. Historical IDs are not reused; all remaining candidates are unapproved.
 
-> **Deduplication:** the original proposal to connect outcomes to their recovery backup is covered by F083/F141/F220–F225 and extended under the now-implemented F228; actionable failure diagnostics already exist under F224/F159, so neither received another feature ID. Previously listed F003, F069, F121, F131, F146 and F187 remain unchanged. F068 remains explicitly discarded.
+> **Deduplication:** the original proposal to connect outcomes to their recovery backup is covered by F083/F141/F220–F225 and extended under the now-implemented F228; actionable failure diagnostics already exist under F224/F159, so neither received another feature ID. Previously listed F003, F121, F131, F146 and F187 remain unchanged. F068 and F069 are explicitly discarded.
 
 ## W. Prioritisation and scope notes (2026-10-18)
 
@@ -283,7 +283,7 @@ These notes document current intent only; they do not mark capabilities implemen
 - ~~**F023 — Completely read-only preview/check mode.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** Incompatible with the update-only product scope, as later reiterated for F227.
 - ~~**F024 — Generate an exact update plan before execution.**~~ **REJECTED (roadmap scope cleanup, 2026-10-14).** A pre-execution update-plan preview is outside scope; deterministic scope resolution and safety preflights remain mandatory.
 
-**Already retained elsewhere:** F068 is explicitly marked rejected in section G. The large early brainstorming inventory was pruned on 2026-10-11 because it mixed speculative, duplicated and unrelated platform features; those unscreened ideas were not individually approved/rejected product decisions. Several were subsequently reintroduced as distinct F229–F244 candidates. This register records actual scope/rejection decisions, rather than treating every historical brainstorming omission as a rejected requirement.
+**Already retained elsewhere:** F068 and F069 are explicitly marked rejected in section G. The large early brainstorming inventory was pruned on 2026-10-11 because it mixed speculative, duplicated and unrelated platform features; those unscreened ideas were not individually approved/rejected product decisions. Several were subsequently reintroduced as distinct F229–F244 candidates. This register records actual scope/rejection decisions, rather than treating every historical brainstorming omission as a rejected requirement.
 
 ---
 
