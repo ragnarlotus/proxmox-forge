@@ -46,6 +46,7 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         (self.checkout / ".gitignore").write_text("forge.conf\n")
         for path in (
             "lib/self-update.sh", "lib/runtime/require-context.sh",
+            "lib/runtime/persistent.sh", "lib/runtime/persistent-worker.sh",
             "lib/config/get.sh", "lib/config/load.sh",
             "lib/config/validate.sh", "lib/cli/help.sh",
         ):
