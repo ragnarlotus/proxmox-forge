@@ -189,7 +189,7 @@ class F131Tests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertFalse(touched.exists())
-        self.assertEqual(output.read_text(), "1\\n")
+        self.assertEqual(output.read_text(), "1\n")
         self.assertIn("not running in its independent systemd service", result.stderr)
 
     def test_running_back_attaches_without_trying_update_lock(self):
