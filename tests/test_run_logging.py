@@ -249,7 +249,8 @@ class RunLoggingTests(unittest.TestCase):
         parts = [
             "forge", "forge.conf.default", "lib/config/get.sh",
             "lib/config/load.sh", "lib/config/validate.sh",
-            "lib/runtime/require-context.sh", "lib/logging/init.sh",
+            "lib/runtime/require-context.sh", "lib/runtime/persistent.sh",
+            "lib/runtime/persistent-worker.sh", "lib/logging/init.sh",
             "lib/logging/write.sh",
         ]
         for part in parts:
