@@ -276,11 +276,11 @@ esac
 # F131: only manual updates opt into persistent mode. The actual update,
 # self-update prompt and run log retain their existing behaviour; only the
 # interactive terminal is moved into tmux outside the SSH login scope.
-if [[ "${FORGE_PERSISTENT_INNER:-}" != 1 &&
-      "${CONFIG[PERSISTENT_UPDATE_SESSION]:-false}" == true ]]; then
+if [[ "${FORGE_PERSISTENT_INNER:-}" != 1 ]]; then
   case "${1:-}:${2:-}" in
     host:update|lxc:update|update:all)
-      forge_persistent_prepare || exit 1
+      if [[ "${CONFIG[PERSISTENT_UPDATE_SESSION]}" == true ]]; then
+        forge_persistent_prepare || exit 1
       if ! forge_persistent_spawn "$FORGE_ENTRYPOINT" "$@"; then
         exit 1
       fi
@@ -295,8 +295,9 @@ if [[ "${FORGE_PERSISTENT_INNER:-}" != 1 &&
       exec 200>&-
       unset FORGE_CONTEXT FORGE_RUN_ID FORGE_LOCK_FILE FORGE_LOCK_FD
       unset FORGE_RUNTIME_GUARD FORGE_RUNTIME_CONFIG_READY
-      forge_persistent_attach
-      exit $?
+        forge_persistent_attach
+        exit $?
+      fi
       ;;
   esac
 fi
