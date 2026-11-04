@@ -231,6 +231,24 @@ class ResultAggregationTests(unittest.TestCase):
                 records.append(dict(field.split("=", 1) for field in line.split()[1:]))
         return records
 
+    def test_host_kernel_reboot_notice_appears_in_combined_final_table(self):
+        from urllib.parse import quote, unquote
+        message = (
+            "OK; WARNING: reboot the Proxmox host to activate "
+            "the newer installed kernel"
+        )
+        result, _ = self.invoke(
+            "all",
+            FORGE_TEST_HOST_DETAIL=json.dumps([quote(message, safe=""), "-", "-"]),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = self.inventory(result)
+        self.assertEqual(rows[0]["status"], "OK")
+        self.assertEqual(unquote(rows[0]["result_detail"]), message)
+        self.assertIn("activate the newer installed kernel", result.stdout)
+        self.assertIn("Overall result: SUCCESS", result.stdout)
+        self.assertEqual(result.stdout.count("Forge final results"), 1)
+
     def test_host_platform_metadata_survives_bulk_handoff(self):
         from urllib.parse import quote, unquote
         platform = (
