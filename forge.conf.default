@@ -55,6 +55,13 @@ EXCLUDE=""
 # and templates are never started or updated by scheduled runs.
 SCHEDULED_UPDATE_HOST=false
 SCHEDULED_UPDATE_LXC=""
+
+# F131: persist manually launched host/LXC/bulk updates across SSH disconnects
+# while keeping their live terminal output through a reattachable tmux session.
+# When enabled, unsupported/unavailable persistence aborts before any update.
+# Other CLI commands, self-update and scheduled updates never use tmux.
+# After reconnecting, use 'forge back' to reattach to an active update.
+PERSISTENT_UPDATE_SESSION=false
 #
 #
 # Update operations themselves are deterministic and non-interactive: Forge
