@@ -1,0 +1,120 @@
+#!/bin/bash
+# F131: manually launched Forge updates can run in a tmux server managed by
+# systemd, outside the initiating SSH login session. Source from the public CLI.
+# This file never performs or retries an update itself.
+
+forge_persistent_init() {
+  local uid
+  uid="$(id -u)" || return 1
+  [[ "$uid" =~ ^[0-9]+$ ]] || return 1
+  FORGE_PERSISTENT_SOCKET="proxmox-forge-f131-$uid"
+  FORGE_PERSISTENT_SESSION="forge-update"
+  FORGE_PERSISTENT_UNIT="proxmox-forge-f131-$uid.service"
+}
+
+forge_persistent_active() {
+  command -v tmux >/dev/null 2>&1 || return 1
+  tmux -L "$FORGE_PERSISTENT_SOCKET" has-session \
+    -t "=$FORGE_PERSISTENT_SESSION" >/dev/null 2>&1
+}
+
+forge_persistent_back() {
+  if ! forge_persistent_active; then
+    printf 'No persistent update is running. View earlier results with: forge history\n'
+    return 0
+  fi
+  if [[ ! -t 0 || ! -t 1 ]]; then
+    printf 'ERROR: forge back requires an interactive terminal\n' >&2
+    return 1
+  fi
+  tmux -L "$FORGE_PERSISTENT_SOCKET" attach-session \
+    -t "=$FORGE_PERSISTENT_SESSION"
+}
+
+forge_persistent_stop_server() {
+  # Called only after this invocation successfully created its own transient
+  # unit and before launching an update. Never stop an existing active update.
+  systemctl --no-pager stop "$FORGE_PERSISTENT_UNIT" >/dev/null 2>&1 ||
+    printf 'WARNING: unable to stop unused F131 service %s\n' \
+      "$FORGE_PERSISTENT_UNIT" >&2
+}
+
+forge_persistent_prepare() {
+  local tool properties
+  [[ -t 0 && -t 1 && -r /dev/tty ]] || {
+    printf 'ERROR: persistent updates require an interactive SSH/terminal session; disable PERSISTENT_UPDATE_SESSION to run without tmux\n' >&2
+    return 1
+  }
+  [[ -z "${TMUX:-}" ]] || {
+    printf 'ERROR: persistent Forge updates cannot be launched from inside an existing tmux client\n' >&2
+    return 1
+  }
+  for tool in tmux systemd-run systemctl; do
+    command -v "$tool" >/dev/null 2>&1 || {
+      printf 'ERROR: persistent updates require %s; install/configure it or set PERSISTENT_UPDATE_SESSION=false\n' "$tool" >&2
+      return 1
+    }
+  done
+  if forge_persistent_active; then
+    printf 'ERROR: a persistent Forge update is already running. Execute: forge back\n' >&2
+    return 1
+  fi
+
+  if ! systemd-run --unit="${FORGE_PERSISTENT_UNIT%.service}" \
+    --collect --property=Type=exec -- \
+    "$(command -v tmux)" -D -L "$FORGE_PERSISTENT_SOCKET" -f /dev/null; then
+    printf 'ERROR: cannot start a persistent tmux server outside the SSH session; configure systemd access or set PERSISTENT_UPDATE_SESSION=false\n' >&2
+    return 1
+  fi
+
+  properties="$(systemctl --no-pager show "$FORGE_PERSISTENT_UNIT" \
+    -p ActiveState -p MainPID -p ControlGroup)" || {
+    forge_persistent_stop_server
+    printf 'ERROR: cannot verify the F131 systemd service\n' >&2
+    return 1
+  }
+  if ! grep -Fxq 'ActiveState=active' <<<"$properties" ||
+     ! grep -Eq '^MainPID=[1-9][0-9]*$' <<<"$properties" ||
+     ! grep -Fxq "ControlGroup=/system.slice/$FORGE_PERSISTENT_UNIT" <<<"$properties"; then
+    forge_persistent_stop_server
+    printf 'ERROR: F131 server is not confirmed independent of the SSH login (system.slice); update cancelled. Disable PERSISTENT_UPDATE_SESSION or fix systemd permissions\n' >&2
+    return 1
+  fi
+  return 0
+}
+
+forge_persistent_spawn() {
+  local entry="$1"
+  shift
+  if ! tmux -L "$FORGE_PERSISTENT_SOCKET" new-session -d \
+    -s "$FORGE_PERSISTENT_SESSION" -c "$PWD" \
+    -e "PATH=$PATH" -e "HOME=${HOME:-/root}" \
+    -e "FORGE_PERSISTENT_INNER=1" -e "FORGE_SELF_UPDATE_SKIP_PROMPT=1" \
+    "$entry" "$@"; then
+    forge_persistent_stop_server
+    printf 'ERROR: cannot create the persistent Forge update session; no update launched\n' >&2
+    return 1
+  fi
+
+  # tmux -D intentionally disables exit-empty. Restore automatic shutdown
+  # only after the worker session exists; the systemd unit then cleans up
+  # when the last update pane exits.
+  if ! tmux -L "$FORGE_PERSISTENT_SOCKET" set-option -g exit-empty on; then
+    if forge_persistent_active; then
+      printf 'WARNING: could not configure automatic tmux server shutdown; update remains accessible with forge back\n' >&2
+    else
+      tmux -L "$FORGE_PERSISTENT_SOCKET" kill-server 2>/dev/null || :
+    fi
+  fi
+}
+
+forge_persistent_attach() {
+  # The initiating SSH client owns no Forge lock. If it disconnects, the
+  # systemd-owned tmux server and updater remain alive.
+  if forge_persistent_active; then
+    tmux -L "$FORGE_PERSISTENT_SOCKET" attach-session \
+      -t "=$FORGE_PERSISTENT_SESSION"
+  else
+    printf 'Persistent update has already ended; inspect its result with: forge history\n'
+  fi
+}
