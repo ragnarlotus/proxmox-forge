@@ -111,7 +111,9 @@ class F131Tests(unittest.TestCase):
             if not done:
                 os.kill(pid, 9)
                 os.waitpid(pid, 0)
-                self.fail("F131 helper hung")
+                self.fail("F131 helper hung; output=" +
+                          output.decode(errors="replace") +
+                          "; calls=" + self.calls_text())
             return subprocess.CompletedProcess(argv,
                 os.waitstatus_to_exitcode(status),
                 output.decode(errors="replace"), "")
