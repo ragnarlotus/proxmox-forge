@@ -46,7 +46,10 @@ elif kind == "reboot":
     if code:
         sys.exit(code)
     status = os.environ.get("FORGE_TEST_REBOOT_STATE", "yes")
-    print(f"reboot_required={status} type=host marker=no kernel_update=yes "
+    kernel_update = os.environ.get(
+        "FORGE_TEST_KERNEL_UPDATE", "yes" if status == "yes" else "no"
+    )
+    print(f"reboot_required={status} type=host marker=no kernel_update={kernel_update} "
           "running_kernel=7.0.14-14-pve latest_installed_kernel=7.0.14-16-pve")
 elif kind == "write":
     pass
@@ -150,6 +153,16 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertIn("reboot_required=yes", result.stdout)
         self.assertIn("result_target type=host vmid=HOST name=bv.deulo.com selected=true attempted=true status=OK reason=completed apt_upgraded=1", result.stdout)
         self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
+        from urllib.parse import unquote
+        record = next(line for line in result.stdout.splitlines()
+                      if line.startswith("result_target type=host"))
+        detail = next(token.split("=", 1)[1] for token in record.split()
+                      if token.startswith("result_detail="))
+        self.assertIn(
+            "WARNING: reboot the Proxmox host to activate the newer installed kernel",
+            unquote(detail),
+        )
+        self.assertIn("Overall result: SUCCESS", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
         self.assertEqual([c["kind"] for c in calls].count("held"), 1)
         self.assertGreater([c["kind"] for c in calls].index("held"), [c["kind"] for c in calls].index("os"))
@@ -170,6 +183,18 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("reboot_required=no", result.stdout)
         self.assertNotIn("NOTICE: Proxmox host reboot", result.stdout)
+        self.assertNotIn("activate the newer installed kernel", result.stdout)
+        self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
+
+    def test_reboot_marker_without_newer_kernel_has_no_kernel_notice(self):
+        result, calls = self.invoke(
+            FORGE_TEST_REBOOT_STATE="yes",
+            FORGE_TEST_KERNEL_UPDATE="no",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("NOTICE: Proxmox host reboot", result.stdout)
+        self.assertNotIn("activate the newer installed kernel", result.stdout)
+        self.assertIn("Overall result: SUCCESS", result.stdout)
         self.assertEqual([c["kind"] for c in calls].count("reboot"), 1)
 
     def test_host_detector_failure_is_nonfatal(self):
