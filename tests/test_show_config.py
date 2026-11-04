@@ -36,6 +36,7 @@ class ShowConfigTests(unittest.TestCase):
 
         for path in (
             "lib/runtime/require-context.sh",
+            "lib/runtime/persistent.sh", "lib/runtime/persistent-worker.sh",
             "lib/config/get.sh",
             "lib/config/load.sh",
             "lib/config/validate.sh",

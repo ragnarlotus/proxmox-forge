@@ -23,6 +23,7 @@ printf 'EMAIL_NOTIFICATIONS=%s\n' "${CONFIG[EMAIL_NOTIFICATIONS]}"
 printf 'NOTIFY_MANUAL=%s\n' "${CONFIG[NOTIFY_MANUAL]}"
 printf 'NOTIFY_SCHEDULED=%s\n' "${CONFIG[NOTIFY_SCHEDULED]}"
 printf 'CHECK_FORGE_UPDATES_BEFORE_UPDATE=%s\n' "${CONFIG[CHECK_FORGE_UPDATES_BEFORE_UPDATE]}"
+printf 'PERSISTENT_UPDATE_SESSION=%s\n' "${CONFIG[PERSISTENT_UPDATE_SESSION]}"
 printf 'SCHEDULED_UPDATE_HOST=%s\n' "${CONFIG[SCHEDULED_UPDATE_HOST]}"
 printf 'SCHEDULED_UPDATE_LXC=%s\n' "${CONFIG[SCHEDULED_UPDATE_LXC]}"
 printf 'EXCLUDE=%s\n' "${CONFIG[EXCLUDE]}"
@@ -126,6 +127,16 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("CHECK_FORGE_UPDATES_BEFORE_UPDATE=false\n", result.stdout)
         self.assert_invalid("CHECK_FORGE_UPDATES_BEFORE_UPDATE=yes\n",
                             "CHECK_FORGE_UPDATES_BEFORE_UPDATE")
+
+    def test_f131_opt_in_is_validated_and_defaults_off(self):
+        result = self.load()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PERSISTENT_UPDATE_SESSION=false", result.stdout)
+        result = self.load("PERSISTENT_UPDATE_SESSION=true\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PERSISTENT_UPDATE_SESSION=true", result.stdout)
+        self.assert_invalid("PERSISTENT_UPDATE_SESSION=auto\n",
+                            "PERSISTENT_UPDATE_SESSION must be true or false")
 
     def test_scheduled_defaults_are_fail_closed(self):
         result = self.load()

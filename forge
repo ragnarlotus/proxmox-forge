@@ -34,6 +34,36 @@ LOCAL_CONFIG_FILE="$FORGE_DIR/forge.conf"
 RUNTIME_GUARD_SCRIPT="$FORGE_DIR/lib/runtime/require-context.sh"
 LOCK_FILE="/run/lock/proxmox-forge.lock"
 LOCK_FD=200
+PERSISTENT_SCRIPT="$FORGE_DIR/lib/runtime/persistent.sh"
+
+[[ -r "$PERSISTENT_SCRIPT" ]] || {
+  printf 'ERROR: Forge persistent session helper is not readable: %s\n' "$PERSISTENT_SCRIPT" >&2
+  exit 1
+}
+# shellcheck source=/dev/null
+source "$PERSISTENT_SCRIPT" || exit 1
+forge_persistent_init || exit 1
+
+# Reattachment is a CLI frontend action, not a new Forge run; the updater
+# already owns the lock, and attempting to take it here would block access.
+if [[ "${1:-}" == back ]]; then
+  [[ $# -eq 1 ]] || { printf 'ERROR: usage: forge back\n' >&2; exit 1; }
+  forge_persistent_back
+  exit $?
+fi
+
+# An active persistent job is checked BEFORE the existing flock rejection, so
+# the operator gets an actionable instruction even after reconnecting via SSH.
+if [[ "${FORGE_PERSISTENT_INNER:-}" != 1 ]]; then
+  case "${1:-}:${2:-}" in
+    host:update|lxc:update|update:all)
+      if forge_persistent_active; then
+        printf 'ERROR: a persistent Forge update is already running. Execute: forge back\n' >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
 
 [[ -r "$RUNTIME_GUARD_SCRIPT" ]] || {
   printf 'ERROR: Forge runtime guard is not readable: %s\n' "$RUNTIME_GUARD_SCRIPT" >&2
@@ -68,7 +98,14 @@ else
   }
 fi
 
-if ! flock -n "$LOCK_FD"; then
+# The tmux worker is created while its short-lived CLI parent holds the lock.
+# Give that specific worker time to acquire the same lock after handoff.
+if [[ "${FORGE_PERSISTENT_INNER:-}" == 1 ]]; then
+  flock -w 15 "$LOCK_FD"
+else
+  flock -n "$LOCK_FD"
+fi
+if (( $? != 0 )); then
   holder="$(awk -F '\t' '
     $1 == "meta" && ($2 == "pid" || $2 == "run_id" || $2 == "command") {
       if (length(out)) out = out " ";
@@ -235,6 +272,35 @@ case "${1:-}:${2:-}" in
     offer_self_update "$@" || exit 1
     ;;
 esac
+
+# F131: only manual updates opt into persistent mode. The actual update,
+# self-update prompt and run log retain their existing behaviour; only the
+# interactive terminal is moved into tmux outside the SSH login scope.
+if [[ "${FORGE_PERSISTENT_INNER:-}" != 1 ]]; then
+  case "${1:-}:${2:-}" in
+    host:update|lxc:update|update:all)
+      if [[ "${CONFIG[PERSISTENT_UPDATE_SESSION]}" == true ]]; then
+        forge_persistent_prepare || exit 1
+      if ! forge_persistent_spawn "$FORGE_ENTRYPOINT" "$@"; then
+        exit 1
+      fi
+      # The outer CLI must not retain flock while attached, or the tmux
+      # worker would be blocked. The real worker takes a fresh flock itself.
+      : > "$LOCK_FILE" || fail "could not release Forge launcher state"
+      trap - EXIT
+      flock -u "$LOCK_FD" || {
+        printf 'ERROR: could not hand off the Forge update lock\n' >&2
+        exit 1
+      }
+      exec 200>&-
+      unset FORGE_CONTEXT FORGE_RUN_ID FORGE_LOCK_FILE FORGE_LOCK_FD
+      unset FORGE_RUNTIME_GUARD FORGE_RUNTIME_CONFIG_READY
+        forge_persistent_attach
+        exit $?
+      fi
+      ;;
+  esac
+fi
 
 # F141: open one run log only for update commands, after validated configuration
 # is loaded but before any update preflight or mutation. Utility commands do not

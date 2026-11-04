@@ -278,7 +278,8 @@ class HistoryTests(unittest.TestCase):
         parts = [
             "forge", "forge.conf.default", "lib/config/get.sh",
             "lib/config/load.sh", "lib/config/validate.sh",
-            "lib/runtime/require-context.sh", "lib/results/history.py",
+            "lib/runtime/require-context.sh", "lib/runtime/persistent.sh",
+            "lib/runtime/persistent-worker.sh", "lib/results/history.py",
             "lib/results/table.py",
         ]
         for part in parts:

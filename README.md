@@ -119,6 +119,26 @@ Running LXCs remain the automatic scope; stopped LXCs are updated only by
 explicit request. See [Configuration](lib/config/README.md) and
 [Backup and recovery](lib/backup/README.md).
 
+## Optional persistent manual updates (F131)
+
+Set `PERSISTENT_UPDATE_SESSION=true` in the Git-ignored `forge.conf` to have
+manual `forge host update`, `forge lxc update TARGET|all` and `forge update all`
+start inside a reattachable tmux console hosted by a transient systemd service.
+The setting defaults to `false`, preserving existing direct foreground updates.
+The terminal shows live output immediately; if SSH drops, the update continues.
+After reconnecting, `forge back` resumes the **active** console. If no update is
+running, consult `forge history` (completed tmux sessions are not kept open).
+
+Every persistent start validates the current user's ability to run tmux under
+a systemd service in `system.slice`, outside the SSH login scope, **before**
+touching a host or LXC. A missing dependency or failed check blocks the update
+rather than running it without persistence. The updater owns Forge's existing
+global lock and logs; a second update while it runs tells the operator to use
+`forge back`. No automatic restart happens after a host reboot. Read-only
+commands, explicit Forge self-update and existing scheduled updates do not
+run inside tmux. The status of a completed update is available through the
+existing Forge result and history commands.
+
 ## Updating Forge itself
 
 Update the installed Forge checkout with:

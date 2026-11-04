@@ -52,6 +52,7 @@ required before LXC mutation even if automatic rollback is disabled.
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
+| `PERSISTENT_UPDATE_SESSION` | Boolean, default `false` | Opt into systemd-managed tmux sessions for **manual updates only**. Requires a working independent systemd service and tmux for the executing user; otherwise updates fail before mutation. Use `forge back` while running or `forge history` after completion. |
 | `CHECK_FORGE_UPDATES_BEFORE_UPDATE` | Boolean, default `true` | Before manual interactive host/LXC/bulk updates, check whether a newer Forge `main` revision exists and ask whether to update Forge first. Set `false` in local `forge.conf` to disable. Scheduled and noninteractive runs never prompt or automatically self-update. |
 | `EMAIL_NOTIFICATIONS` | Boolean; default `false` | Master switch for Proxmox root-mail notifications, independent of manual/scheduled policies. |
 | `NOTIFY_MANUAL` | `none`, `errors` or `all`; default `errors` | Notifications for manual host, LXC and bulk updates. `errors` mails only `FAILED`/`PARTIAL`; `all` also mails `SUCCESS` (including all-skipped/no-selected); `none` disables. |
