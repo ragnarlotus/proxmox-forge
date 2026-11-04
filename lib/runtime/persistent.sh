@@ -10,6 +10,9 @@ forge_persistent_init() {
   FORGE_PERSISTENT_SOCKET="proxmox-forge-f131-$uid"
   FORGE_PERSISTENT_SESSION="forge-update"
   FORGE_PERSISTENT_UNIT="proxmox-forge-f131-$uid.service"
+  FORGE_PERSISTENT_STATE_DIR="/run/lock/proxmox-forge-f131-$uid"
+  FORGE_PERSISTENT_RESULT_FILE="$FORGE_PERSISTENT_STATE_DIR/exit-code"
+  FORGE_PERSISTENT_WORKER="$(dirname "$PERSISTENT_SCRIPT")/persistent-worker.sh"
 }
 
 forge_persistent_active() {
@@ -27,8 +30,7 @@ forge_persistent_back() {
     printf 'ERROR: forge back requires an interactive terminal\n' >&2
     return 1
   fi
-  tmux -L "$FORGE_PERSISTENT_SOCKET" attach-session \
-    -t "=$FORGE_PERSISTENT_SESSION"
+  forge_persistent_attach
 }
 
 forge_persistent_stop_server() {
@@ -59,6 +61,21 @@ forge_persistent_prepare() {
     printf 'ERROR: a persistent Forge update is already running. Execute: forge back\n' >&2
     return 1
   fi
+
+  # Keep the short worker exit-status handoff out of the Git checkout and
+  # protect it from symlinks / other local users. The authoritative result
+  # and all diagnostics still belong to Forge's existing run logs.
+  if [[ -L "$FORGE_PERSISTENT_STATE_DIR" ]] ||
+     ! (umask 077; mkdir -p -m 0700 "$FORGE_PERSISTENT_STATE_DIR") ||
+     [[ "$(stat -c '%u:%a' "$FORGE_PERSISTENT_STATE_DIR")" != "$(id -u):700" ]] ||
+     [[ -L "$FORGE_PERSISTENT_RESULT_FILE" ]]; then
+    printf 'ERROR: F131 runtime result directory is not a private, owned directory; update cancelled\n' >&2
+    return 1
+  fi
+  rm -f -- "$FORGE_PERSISTENT_RESULT_FILE" || {
+    printf 'ERROR: cannot reset the persistent update exit-status handoff\n' >&2
+    return 1
+  }
 
   if ! systemd-run --unit="${FORGE_PERSISTENT_UNIT%.service}" \
     --collect --property=Type=exec -- \
@@ -107,6 +124,7 @@ forge_persistent_spawn() {
     -s "$FORGE_PERSISTENT_SESSION" -c "$PWD" \
     -e "PATH=$PATH" -e "HOME=${HOME:-/root}" \
     -e "FORGE_PERSISTENT_INNER=1" -e "FORGE_SELF_UPDATE_SKIP_PROMPT=1" \
+    /bin/bash "$FORGE_PERSISTENT_WORKER" "$FORGE_PERSISTENT_RESULT_FILE" \
     "$entry" "$@"; then
     forge_persistent_stop_server
     printf 'ERROR: cannot create the persistent Forge update session; no update launched\n' >&2
@@ -126,12 +144,27 @@ forge_persistent_spawn() {
 }
 
 forge_persistent_attach() {
+  local status
   # The initiating SSH client owns no Forge lock. If it disconnects, the
   # systemd-owned tmux server and updater remain alive.
   if forge_persistent_active; then
     tmux -L "$FORGE_PERSISTENT_SOCKET" attach-session \
-      -t "=$FORGE_PERSISTENT_SESSION"
+      -t "=$FORGE_PERSISTENT_SESSION" || {
+      if forge_persistent_active; then
+        printf 'WARNING: detached from running update; reconnect with: forge back\n' >&2
+        return 1
+      fi
+    }
+  fi
+  if [[ -r "$FORGE_PERSISTENT_RESULT_FILE" ]]; then
+    IFS= read -r status < "$FORGE_PERSISTENT_RESULT_FILE"
+    if [[ "$status" =~ ^(0|[1-9][0-9]{0,2})$ ]] && (( status <= 255 )); then
+      return "$status"
+    fi
+  fi
+  if forge_persistent_active; then
+    printf 'Persistent update continues independently; reconnect with: forge back\n'
   else
-    printf 'Persistent update has already ended; inspect its result with: forge history\n'
+    printf 'Persistent update ended; inspect its result with: forge history\n'
   fi
 }
