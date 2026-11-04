@@ -108,6 +108,12 @@ class F131Tests(unittest.TestCase):
                         os.waitstatus_to_exitcode(status),
                         output.decode(errors="replace"), "")
             done, status = os.waitpid(pid, os.WNOHANG)
+            # PTY EOF can precede child reaping by a scheduler tick.
+            for _ in range(20):
+                if done:
+                    break
+                time.sleep(0.05)
+                done, status = os.waitpid(pid, os.WNOHANG)
             if not done:
                 os.kill(pid, 9)
                 os.waitpid(pid, 0)
