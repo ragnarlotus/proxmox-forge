@@ -17,7 +17,7 @@ validate configuration
 
 APT runs non-interactively with configuration-file handling set to keep existing local configuration when package defaults differ.
 
-Forge does **not** reboot the Proxmox host automatically. After successful updates, `reboot_required=yes|no|unknown` is reported. Detection checks Debian's `/run/reboot-required` marker and compares the running kernel to newer `/boot/vmlinuz-*-pve` kernel images using Debian version ordering. `unknown` means no kernel inventory was available and no marker requested reboot; `no` means no checked signal was found, **not** that every daemon has restarted. Kernel pinning may mean a reboot alone will not activate the newest installed kernel. Detection errors are warnings, not update failures.
+Forge does **not** reboot the Proxmox host automatically. After successful updates, `reboot_required=yes|no|unknown` is reported. Detection checks Debian's `/run/reboot-required` marker and compares the running kernel to newer `/boot/vmlinuz-*-pve` kernel images using Debian version ordering. `unknown` means no kernel inventory was available and no marker requested reboot; `no` means no checked signal was found, **not** that every daemon has restarted. Kernel pinning may mean a reboot alone will not activate the newest installed kernel. Detection errors are warnings, not update failures. When F094 positively identifies a newer installed Proxmox kernel than the one running, the final host `Result` cell also includes an actionable reboot warning. It appears in individual and combined final tables without changing `SUCCESS`, triggering a reboot, or confusing a generic Debian reboot marker with a kernel upgrade.
 
 ## Held packages with available upgrades (F022)
 

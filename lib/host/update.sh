@@ -230,6 +230,13 @@ if (( reboot_check_result == 0 )) && [[ "$reboot_record" =~ ^reboot_required=(ye
   printf '%s\n' "$reboot_record"
   bash "$log_write_script" "$log_file" INFO reboot_status \
     "type=host" "reboot_required=$reboot_required" || fail "could not log host reboot status"
+  # F094 already verified that an installed PVE kernel is newer than the
+  # running one. Keep this nonfatal notice in the authoritative host result,
+  # so standalone and combined final tables both display it.
+  if [[ "$reboot_record" == *" kernel_update=yes "* ]]; then
+    if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
+    result_warning+="reboot the Proxmox host to activate the newer installed kernel"
+  fi
 else
   if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
   result_warning+="reboot requirement unknown (check exit $reboot_check_result)"
