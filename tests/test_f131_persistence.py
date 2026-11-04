@@ -180,7 +180,7 @@ class F131Tests(unittest.TestCase):
         output = self.base / "worker-exit"
         touched = self.base / "updated"
         updater = self.base / "update"
-        updater.write_text("#!/bin/bash\\ntouch \\"$1\\"\\n", encoding="utf-8")
+        updater.write_text('#!/bin/bash\ntouch "$1"\n', encoding="utf-8")
         updater.chmod(0o755)
         result = subprocess.run(
             ["bash", str(ROOT / "lib/runtime/persistent-worker.sh"),
