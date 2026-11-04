@@ -169,9 +169,19 @@ class HostRebootFlowTests(unittest.TestCase):
         self.assertEqual([c["kind"] for c in calls].count("os"), 1)
 
     def test_bulk_execution_suppresses_nested_host_record(self):
-        result, calls = self.invoke(FORGE_RESULTS_AGGREGATE="bulk")
+        from urllib.parse import unquote
+        handoff = self.base / "host-result-detail"
+        result, calls = self.invoke(
+            FORGE_RESULTS_AGGREGATE="bulk",
+            FORGE_RESULT_DETAIL_FILE=str(handoff),
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("result_target ", result.stdout)
+        detail, stage, recovery, platform = handoff.read_text().strip().split("\t")
+        self.assertIn("reboot the Proxmox host to activate the newer installed kernel",
+                      unquote(detail))
+        self.assertEqual(stage, "-")
+        self.assertEqual(recovery, "-")
 
     def test_unchanged_packages_report_zero(self):
         result, _ = self.invoke(FORGE_TEST_AFTER_VERSION="1.0")
