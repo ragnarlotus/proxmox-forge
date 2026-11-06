@@ -51,6 +51,50 @@ class RunLoggingTests(unittest.TestCase):
         self.assertTrue(path.is_file())
         return path
 
+    def test_host_logs_rotate_with_retention_and_preserve_old_content(self):
+        host = self.logs / "bv.deulos.com" / "host"
+        host.mkdir(parents=True)
+        (host / "common.log").write_text("legacy host output\\n", encoding="utf-8")
+        (host / "error.log").write_text("legacy failure\\n", encoding="utf-8")
+
+        for number in range(3):
+            result = self.command(INIT, self.logs, "2", "host", "bv.deulos.com")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), str(host / "common.log"))
+            self.assertIn("event=log_open scope=host",
+                          (host / "common.log").read_text())
+            event = self.command(
+                WRITE, host / "common.log", "ERROR", "test_error",
+                f"sequence={number}",
+                env={**self.env, "FORGE_ERROR_LOG": str(host / "error.log")},
+            )
+            self.assertEqual(event.returncode, 0, event.stderr)
+            self.assertIn(f"sequence={number}", (host / "error.log").read_text())
+
+            common_archives = list(host.glob("common_[0-9]*.log"))
+            error_archives = list(host.glob("error_[0-9]*.log"))
+            self.assertEqual(len(common_archives), min(number + 1, 1))
+            self.assertEqual(len(error_archives), min(number + 1, 1))
+            for log in (host / "common.log", host / "error.log"):
+                self.assertEqual(log.stat().st_mode & 0o777, 0o640)
+
+        self.assertFalse(any("legacy host output" in p.read_text()
+                             for p in host.glob("common_[0-9]*.log")))
+        self.assertFalse(any("legacy failure" in p.read_text()
+                             for p in host.glob("error_[0-9]*.log")))
+        self.assertIn("sequence=1", next(host.glob("error_[0-9]*.log")).read_text())
+        self.assertIn("sequence=2", (host / "error.log").read_text())
+
+    def test_first_host_log_initialization_and_keep_one(self):
+        host = self.logs / "bv.deulos.com" / "host"
+        for number in range(2):
+            result = self.command(INIT, self.logs, "1", "host", "bv.deulos.com")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), str(host / "common.log"))
+            self.assertTrue((host / "error.log").is_file())
+            self.assertEqual(list(host.glob("common_[0-9]*.log")), [])
+            self.assertEqual(list(host.glob("error_[0-9]*.log")), [])
+
     def test_run_log_initialization_retention_and_no_overwrite(self):
         first = self.open_run("20261014T180000-123", keep="2")
         first.write_text("previous complete run\n", encoding="utf-8")
