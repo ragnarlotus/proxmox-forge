@@ -54,8 +54,8 @@ class RunLoggingTests(unittest.TestCase):
     def test_host_logs_rotate_with_retention_and_preserve_old_content(self):
         host = self.logs / "bv.deulos.com" / "host"
         host.mkdir(parents=True)
-        (host / "common.log").write_text("legacy host output\\n", encoding="utf-8")
-        (host / "error.log").write_text("legacy failure\\n", encoding="utf-8")
+        (host / "common.log").write_text("legacy host output\n", encoding="utf-8")
+        (host / "error.log").write_text("legacy failure\n", encoding="utf-8")
 
         for number in range(3):
             result = self.command(INIT, self.logs, "2", "host", "bv.deulos.com")
