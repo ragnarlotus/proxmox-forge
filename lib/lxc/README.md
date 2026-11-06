@@ -8,13 +8,14 @@ validate configuration and resolve exact target/current state
 → if stopped, start temporarily
 → if Forge started it, wait for pct exec readiness (bounded to 30 seconds)
 → read-only requirements
-→ recovery backup according to the configured Proxmox job
-→ persistent Update_* snapshot, or preflight-authorized backup-only recovery
+→ same-run vzdump recovery backup according to the configured Proxmox job
+→ optional temporary update CPU/RAM limits
 → OS/package update
 → application update
 → target-specific custom scripts
 → generic health check
 → optional health.d/<VMID>/*.sh functional checks
+→ restore original CPU/RAM limits
 → pct fstrim
 → inspect /run/reboot-required inside the running LXC
 → if originally stopped, stop again
@@ -25,13 +26,13 @@ validate configuration and resolve exact target/current state
 
 `lib/config/conflicts.sh` checks Proxmox backup-job policy and snapshot compatibility for the selected LXCs before mutation. Bulk updates check every selected running LXC before the host update; `forge validate-config` checks the automatic running LXC scope. Stopped LXCs are included only when explicitly selected. Conflicts stop the entire operation before any changes.
 
-Forge uses Proxmox's `hasFeature` response for `snapshot`, not a homegrown mount-point count. In the verified host configuration, the bind-mount `mp0` entries on LXCs 111, 113 and 117 return `hasFeature=0`; lower-level `lxc.mount.entry` binds on other LXCs can coexist with `hasFeature=1`. See [Snapshot eligibility, mount points and external data](../backup/README.md#snapshot-eligibility-mount-points-and-external-data) for recovery implications.
+Forge does not use the LXC snapshot-capability API or create persistent `Update_*` snapshots. Recovery uses the exact same-run `vzdump` archive and guards against pre-existing snapshots that a forced restore could destroy. External bind-mounted data is outside the managed backup/rollback boundary. See [LXC recovery policy](../backup/README.md#lxc-recovery-policy).
 
 F094 reports `reboot_required=yes|no|unknown` after successful updates by checking the Debian `/run/reboot-required` marker inside the guest before restoring its original stopped state. Forge never restarts a guest automatically. The guest shares the Proxmox host kernel, so restarting a container cannot activate a new host kernel. A missing marker is not proof that no restart could ever be useful. Failed detection is a nonfatal warning.
 
 LXC requirements checks always run before backup creation or mutation. A failure stops the LXC update.
 
-The recovery backup is created whenever at least one mutating LXC stage is enabled and `CREATE_BACKUP_BEFORE_LXC_UPDATE=true`. Before mutation, Forge also creates a persistent Proxmox `Update_*` snapshot of the LXC. It reads `keep-last` from the single applicable enabled Proxmox backup job, prunes only the oldest `Update_*` snapshots **before** creating a new one, and leaves manually named snapshots untouched. Successful updates retain the new snapshot; failures roll back to that same-run snapshot using `pct rollback`. If no safe snapshot/retention plan is possible, mutation does not begin. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, a selected LXC that cannot create persistent snapshots instead retains the newly created `vzdump` backup as its recovery point, skipping snapshot creation. An automatic `pct restore --force` is permitted only when no persistent snapshots exist; the restore helper checks again immediately before any destructive step.
+When any mutating LXC stage is enabled, `CREATE_BACKUP_BEFORE_LXC_UPDATE=true` is mandatory. Forge creates a same-run `vzdump` recovery archive and uses `pct restore --force` for eligible failures only when `ROLLBACK_ON_FAILURE=true` and no existing persistent snapshots would be destroyed. The restore helper rechecks this safety condition before restoration. Forge never deletes old snapshots or calls `pct rollback`. Backup storage/mode/compression/retention follow the applicable Proxmox job; see [Backup and recovery](../backup/README.md).
 
 ## Explicitly held APT packages (F022)
 
