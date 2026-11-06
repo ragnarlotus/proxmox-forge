@@ -281,7 +281,7 @@ class RunLoggingTests(unittest.TestCase):
         self.assertEqual(logged.count("event=run_end"), 1)
         self.assertIn("exit_code=37", logged)
         self.assertRegex(logged, r"event=run_end .*duration_seconds=[0-9]+")
-        self.assertRegex(result.stdout, r"Forge run duration: [0-9]+ s")
+        self.assertRegex(result.stdout, r"Forge run duration: (?:[0-9]+ h [0-9]+ m |[0-9]+ m )?[0-9]+ s")
         self.assertEqual((self.root / "forge.lock").read_text(), "")
 
 

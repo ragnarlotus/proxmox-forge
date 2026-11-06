@@ -239,10 +239,10 @@ def duration_text(seconds):
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     if hours:
-        return f"{hours}h {minutes}m {seconds}s"
+        return f"{hours} h {minutes} m {seconds} s"
     if minutes:
-        return f"{minutes}m {seconds}s"
-    return f"{seconds}s"
+        return f"{minutes} m {seconds} s"
+    return f"{seconds} s"
 
 
 def show_detail(run):

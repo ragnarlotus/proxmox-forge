@@ -139,7 +139,15 @@ cleanup_run_state() {
       "${fields[@]}" || \
       printf 'WARNING: could not record Forge run completion: %s\n' "$FORGE_RUN_LOG" >&2
     if [[ -n "$duration_seconds" ]]; then
-      printf 'Forge run duration: %s s\n' "$duration_seconds"
+      if (( duration_seconds >= 3600 )); then
+        printf 'Forge run duration: %d h %d m %d s\n' \
+          "$((duration_seconds / 3600))" "$(((duration_seconds % 3600) / 60))" "$((duration_seconds % 60))"
+      elif (( duration_seconds >= 60 )); then
+        printf 'Forge run duration: %d m %d s\n' \
+          "$((duration_seconds / 60))" "$((duration_seconds % 60))"
+      else
+        printf 'Forge run duration: %d s\n' "$duration_seconds"
+      fi
     fi
   fi
   : > "$LOCK_FILE" 2>/dev/null || true

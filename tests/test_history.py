@@ -192,12 +192,23 @@ class HistoryTests(unittest.TestCase):
             {"name": "recovery", "status": "success", "duration_seconds": 15},
         ])
         human = self.query("status")
-        self.assertIn("Duration: 45m 0s", human.stdout)
-        self.assertIn("Duration: 2m 1s", human.stdout)
-        self.assertIn("Stage backup: 1m 40s (success)", human.stdout)
-        self.assertIn("Stage application_update: 30s (failed)", human.stdout)
+        self.assertIn("Duration: 45 m 0 s", human.stdout)
+        self.assertIn("Duration: 2 m 1 s", human.stdout)
+        self.assertIn("Stage backup: 1 m 40 s (success)", human.stdout)
+        self.assertIn("Stage application_update: 30 s (failed)", human.stdout)
         listing = self.query("history")
-        self.assertIn("duration=45m 0s", listing.stdout)
+        self.assertIn("duration=45 m 0 s", listing.stdout)
+
+    def test_f146_hour_minute_second_format_preserves_json_seconds(self):
+        content = self.fixture().replace(
+            f"run_id={self.newer} exit_code=1\n",
+            f"run_id={self.newer} exit_code=1 duration_seconds=3661\n",
+        )
+        self.store(self.newer, content)
+        self.assertEqual(json.loads(self.query("status", "--json").stdout)
+                         ["duration_seconds"], 3661)
+        self.assertIn("Duration: 1 h 1 m 1 s", self.query("status").stdout)
+        self.assertIn("duration=1 h 1 m 1 s", self.query("history").stdout)
 
     def test_f146_missing_or_incomplete_duration_is_never_inferred(self):
         self.store(self.newer, self.fixture(include_end=False))

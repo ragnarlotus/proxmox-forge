@@ -52,7 +52,7 @@ Only authoritative `result_target`, `result_global`, `run_start`/`run_end`, `rec
 
 ## Elapsed time reporting (F146)
 
-Each completed update prints the total measured execution duration in seconds.
+Each completed update prints the total measured execution duration in a human-readable format (for example, `33 m 16 s` or `1 h 2 m 3 s`).
 The run log records `duration_seconds` on `run_end`. Existing `stage_end`
 and `target_update_end` records already contain measured stage and host/LXC
 durations; these are now available through `forge status [--json]` and
