@@ -158,7 +158,7 @@ The final summary is a **per-execution results table**, inspired by the presenta
 
 > **Implementation order:** F220 → F221 → F222 → F223 → F224 → F225 → F157 (derive the global SUCCESS/FAILED/PARTIAL result from the finalized per-target table) → F159 (reuse the same recorded failure facts for notifications) → F153/F154 (email delivery and policy). F157 must reuse the F220–F225 result model; do not introduce independent aggregation or notification-only result logic.
 
-- [x] **F150** Configurable log/history retention. Current `LOG_KEEP` retention applies to timestamped per-LXC logs.
+- [x] **F150** Configurable log/history retention. `LOG_KEEP` applies independently to timestamped per-LXC and run logs, and to host `common.log` / `error.log` streams (active file plus retained timestamped archives).
 - [x] **F151** Distinguish warnings from errors.
 - [x] **F152** Audit what was attempted and its result.
 
