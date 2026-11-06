@@ -43,7 +43,7 @@ case "$scope" in
     stamp="$(date '+%Y%m%d_%H%M%S_%N')" || fail "could not create host log archive timestamp"
     for stream in common error; do
       active_log="$target_dir/$stream.log"
-      archived_log="$target_dir/${stream}_${stamp}_$.log"
+      archived_log="$target_dir/${stream}_${stamp}_${BASHPID}.log"
       if [[ -e "$active_log" || -L "$active_log" ]]; then
         [[ -f "$active_log" && ! -L "$active_log" ]] || \
           fail "host log is not a regular file: $active_log"
