@@ -201,8 +201,8 @@ class HistoryTests(unittest.TestCase):
 
     def test_f146_hour_minute_second_format_preserves_json_seconds(self):
         content = self.fixture().replace(
-            f"run_id={self.newer} exit_code=1\\n",
-            f"run_id={self.newer} exit_code=1 duration_seconds=3661\\n",
+            f"run_id={self.newer} exit_code=1\n",
+            f"run_id={self.newer} exit_code=1 duration_seconds=3661\n",
         )
         self.store(self.newer, content)
         self.assertEqual(json.loads(self.query("status", "--json").stdout)
