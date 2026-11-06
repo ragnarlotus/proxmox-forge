@@ -25,7 +25,7 @@ Partial, prefix and fuzzy matching are deliberately forbidden. An unknown target
 
 ## `forge validate-config`
 
-Loads `forge.conf.default`, then optional local `forge.conf`, validates the merged result, and checks backup-policy and persistent-snapshot compatibility for running LXCs selected by `UPDATE_RUNNING_LXC`. It reports all detected conflicts and performs no updates. When `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true`, compatible backup-only recovery is accepted, and the selected VMIDs are reported.
+Loads `forge.conf.default`, then optional local `forge.conf`, validates the merged result, and checks backup-policy and persistent-snapshot compatibility for running LXCs selected by `UPDATE_RUNNING_LXC`. It reports all detected conflicts and performs no updates. LXC recovery uses same-run `vzdump` backups; existing persistent snapshots that would make a forced restore unsafe block eligible updates.
 
 ## `forge show-config`
 
@@ -48,7 +48,7 @@ records, never individual per-target messages or Forge-managed SMTP.
 
 Read-only access to existing general run logs under `LOG_DIR/<PVE_FQDN>/runs/`. `forge status` displays the newest retained run; `forge history` lists retained runs newest first; `forge history RUN_ID` displays one run. Append `--json` for machine-readable output.
 
-Only authoritative `result_target`, `result_global`, `run_start`/`run_end`, `recovery_artifact`/`backup_artifact` and `reboot_status` records are used. Results, actual APT upgrade counts, application versions, failed stage/recovery, reboot indicator and exact backup reference are reported only when present. Missing or interrupted run data are unknown/incomplete; a backup reference is **not** proof of archive integrity. `LOG_KEEP` (8 by default) limits history. Queries do not inspect/update packages, contact guests or create logs. The existing global CLI lock still applies, so another simultaneous Forge execution blocks queries until F131 introduces independent jobs.
+Only authoritative `result_target`, `result_global`, `run_start`/`run_end`, `recovery_artifact`/`backup_artifact` and `reboot_status` records are used. Results, actual APT upgrade counts, application versions, failed stage/recovery, reboot indicator and exact backup reference are reported only when present. Missing or interrupted run data are unknown/incomplete; a backup reference is **not** proof of archive integrity. `LOG_KEEP` (8 by default) limits history. Queries do not inspect/update packages, contact guests or create logs. The global CLI lock still applies to these queries; F131's persistent sessions do not allow concurrent Forge runs.
 
 ## Elapsed time reporting (F146)
 
@@ -106,9 +106,9 @@ Successful host/LXC updates include `reboot_required=yes|no|unknown` in structur
 
 Both bulk commands apply `EXCLUDE` by exact VMID or hostname during automatic selection, before any preflight, backup or guest update. The Proxmox host is not affected by `EXCLUDE`.
 
-Both bulk commands check the entire selected running-LXC scope for free root filesystem space, available memory and recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. With `BACKUP_WHEN_SNAPSHOT_NOT_POSIBLE=true` (default), snapshot-incompatible LXCs use a `vzdump` recovery fallback only when preflight approves it; setting `false` blocks those LXCs.
+Both bulk commands check the entire selected running-LXC scope for free root filesystem space, available memory and recovery conflicts **before starting the host or any guest update**. If any LXC conflicts, the whole operation aborts before mutation. LXC recovery always uses an approved same-run `vzdump` backup, not a persistent `Update_*` snapshot.
 
-In either bulk command, any failed LXC is recorded as failed regardless of its exit code. Forge attempts eligible guest recovery and continues with later LXC targets. In `forge update all`, a host update failure aborts the run before LXC processing.
+In either bulk command, any failed LXC is recorded as failed regardless of its exit code. Forge attempts eligible guest recovery and continues with later LXC targets. In `forge update all`, a host failure is preserved but the already-preflight-approved LXC targets are still processed; the combined command remains failed.
 
 Target inspection, host requirements and LXC requirements are internal workflows, not public CLI commands.
 
@@ -133,8 +133,7 @@ for the local host, and/or exact numeric VMIDs in `SCHEDULED_UPDATE_LXC`.
 Both settings default to no authorization; an empty scheduled scope fails before
 any updates. `EXCLUDE` still applies; stopped/template LXCs are always skipped.
 An obsolete authorized VMID fails before host or LXC mutation. Manual selection
-flags do not expand this scope. Same preflights, backups, recovery, lock and
-final output as normal bulk updates; only scheduled target selection differs.
+flags do not expand this scope. Same preflights, backups, recovery and global lock as manual bulk updates; scheduled output remains verbose, whereas interactive manual updates use the compact view.
 
 The optional systemd service/timer definitions are shipped in
 [`systemd/`](../../systemd/README.md) but are not installed or enabled by Git
