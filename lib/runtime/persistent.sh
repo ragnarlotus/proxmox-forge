@@ -128,6 +128,7 @@ forge_persistent_spawn() {
     -s "$FORGE_PERSISTENT_SESSION" -c "$PWD" \
     -e "PATH=$PATH" -e "HOME=${HOME:-/root}" \
     -e "FORGE_PERSISTENT_INNER=1" -e "FORGE_SELF_UPDATE_SKIP_PROMPT=1" \
+    -e "FORGE_OUTPUT_MODE=${FORGE_OUTPUT_MODE:-compact}" \
     /bin/bash "$FORGE_PERSISTENT_WORKER" "$FORGE_PERSISTENT_RESULT_FILE" \
     "$entry" "$@"; then
     forge_persistent_stop_server
