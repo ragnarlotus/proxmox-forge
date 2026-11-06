@@ -192,6 +192,36 @@ class F131Tests(unittest.TestCase):
         self.assertEqual(output.read_text(), "1\n")
         self.assertIn("not running in its independent systemd service", result.stderr)
 
+    def test_worker_executes_updater_in_verified_systemd_scope(self):
+        # The mock reports a matching systemd cgroup only when the worker
+        # supplies its own actual PID's readable /proc/<pid>/cgroup path.
+        # In particular, /proc/$/cgroup must never pass this test.
+        grep = self.base / "bin" / "grep"
+        grep.write_text(
+            '#!/bin/bash\n'
+            '[[ "$1" == -Fq ]] && '
+            '[[ "$2" == "/system.slice/proxmox-forge-f131-$(id -u).service" ]] && '
+            '[[ "$3" == "/proc/$PPID/cgroup" ]] && [[ -r "$3" ]]\n',
+            encoding="utf-8",
+        )
+        grep.chmod(0o755)
+        output = self.base / "worker-exit-ok"
+        touched = self.base / "updated"
+        updater = self.base / "update-ok"
+        updater.write_text(
+            '#!/bin/bash\nprintf "executed\\n" > "$1"\nexit 37\n',
+            encoding="utf-8",
+        )
+        updater.chmod(0o755)
+        result = subprocess.run(
+            ["bash", str(ROOT / "lib/runtime/persistent-worker.sh"),
+             str(output), str(updater), str(touched)],
+            env=self.env, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 37, result.stderr)
+        self.assertEqual(touched.read_text(), "executed\n")
+        self.assertEqual(output.read_text(), "37\n")
+
     def test_running_back_attaches_without_trying_update_lock(self):
         self.active.touch()
         result = self.helper("forge_persistent_back", tty=True)

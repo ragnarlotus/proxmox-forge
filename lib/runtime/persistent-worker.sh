@@ -15,8 +15,8 @@ shift 2
 # the launcher's readiness check and new-session, tmux might create a fresh
 # SSH-owned server. The worker must refuse ALL update mutations in that case.
 unit="proxmox-forge-f131-$(id -u).service"
-if [[ -r "/proc/$/cgroup" ]] &&
-   grep -Fq "/system.slice/$unit" "/proc/$/cgroup"; then
+if [[ -r "/proc/${BASHPID}/cgroup" ]] &&
+   grep -Fq "/system.slice/$unit" "/proc/${BASHPID}/cgroup"; then
   "$entry" "$@"
   result=$?
 else
