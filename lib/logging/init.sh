@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Initializes Forge logging under the local Proxmox FQDN, using persistent host logs, per-LXC logs and one retained log for each Forge update run.
+# Description: Initializes Forge logging under the local Proxmox FQDN, using rotated host logs, per-LXC logs and one retained log for each Forge update run.
 
 set -u
 
@@ -37,10 +37,30 @@ case "$scope" in
 
     target_dir="$log_dir/$pve_fqdn/host"
     install -d -m 0750 "$target_dir" || fail "could not create host log directory: $target_dir"
+    # Keep the current paths stable for host update and error mirroring.
+    # Archive each previous host log when opening a new host update, retaining
+    # LOG_KEEP files per stream (the active file plus older archives).
+    stamp="$(date '+%Y%m%d_%H%M%S_%N')" || fail "could not create host log archive timestamp"
+    for stream in common error; do
+      active_log="$target_dir/$stream.log"
+      archived_log="$target_dir/${stream}_${stamp}_$.log"
+      if [[ -e "$active_log" || -L "$active_log" ]]; then
+        [[ -f "$active_log" && ! -L "$active_log" ]] || \
+          fail "host log is not a regular file: $active_log"
+        [[ ! -e "$archived_log" && ! -L "$archived_log" ]] || \
+          fail "host log archive already exists: $archived_log"
+        mv -- "$active_log" "$archived_log" || fail "could not archive host log: $active_log"
+      fi
+      install -m 0640 /dev/null "$active_log" || fail "could not create host log: $active_log"
+
+      mapfile -t logs < <(
+        find "$target_dir" -maxdepth 1 -type f -name "${stream}_[0-9]*.log" -printf '%f\\n' | LC_ALL=C sort -r
+      )
+      for ((i = log_keep - 1; i < ${#logs[@]}; i++)); do
+        rm -f -- "$target_dir/${logs[i]}" || fail "could not remove old host log: $target_dir/${logs[i]}"
+      done
+    done
     common_log="$target_dir/common.log"
-    error_log="$target_dir/error.log"
-    [[ -e "$common_log" ]] || install -m 0640 /dev/null "$common_log" || fail "could not create host common log"
-    [[ -e "$error_log" ]] || install -m 0640 /dev/null "$error_log" || fail "could not create host error log"
 
     timestamp="$(date --iso-8601=seconds)" || fail "could not create log timestamp"
     printf '%s level=INFO event=log_open scope=host identifier=%s\n' \
