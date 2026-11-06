@@ -327,6 +327,30 @@ case "${1:-}:${2:-}" in
     ;;
 esac
 
+# Compact presentation is a read-only stdout/stderr consumer. Raw workflows and
+# their logs remain authoritative; non-TTY and scheduled runs stay unchanged.
+run_with_progress() {
+  local view="$1" target="$2"
+  shift 2
+  local presenter="$FORGE_DIR/lib/ui/progress.py"
+  local -a statuses=()
+
+  if [[ -t 1 && "${FORGE_OUTPUT_MODE:-compact}" != full ]]; then
+    [[ -r "$presenter" ]] || fail "compact presenter is not readable: $presenter"
+    command -v python3 >/dev/null 2>&1 || fail "Python 3 is required for compact output"
+    "$@" 2>&1 | python3 -u "$presenter" "$view" "$target"
+    statuses=("${PIPESTATUS[@]}")
+    if (( statuses[1] != 0 )); then
+      printf 'ERROR: Forge compact output failed (exit %s); inspect the run log\n' "${statuses[1]}" >&2
+      # Preserve the original updater failure code whenever there was one.
+      (( statuses[0] != 0 )) && return "${statuses[0]}"
+      return "${statuses[1]}"
+    fi
+    return "${statuses[0]}"
+  fi
+  "$@"
+}
+
 run_update_all() {
   local mode="$1"
 
@@ -339,7 +363,11 @@ run_update_all() {
   elif [[ "${CONFIG[UPDATE_RUNNING_LXC]}" == true ]]; then
     ensure_lxc_environment
   fi
-  bash "$UPDATE_ALL_SCRIPT" "$mode"
+  if [[ "$mode" == scheduled ]]; then
+    bash "$UPDATE_ALL_SCRIPT" "$mode"
+  else
+    run_with_progress bulk "$mode" bash "$UPDATE_ALL_SCRIPT" "$mode"
+  fi
 }
 
 # F228: read the retained logs only; neither query creates a log nor invokes a target.
@@ -408,7 +436,7 @@ main() {
     host)
       [[ $# -eq 2 && "$2" == update ]] || fail "usage: forge host update"
       [[ -r "$HOST_UPDATE_SCRIPT" ]] || fail "host update workflow is not readable: $HOST_UPDATE_SCRIPT"
-      bash "$HOST_UPDATE_SCRIPT"
+      run_with_progress host HOST bash "$HOST_UPDATE_SCRIPT"
       ;;
     lxc)
       case "${2:-}" in
@@ -430,7 +458,7 @@ main() {
             target_record="$(bash "$LXC_GET_TARGET_SCRIPT" "$3")" || fail "could not resolve LXC target"
             [[ "$target_record" =~ (^|[[:space:]])vmid=([0-9]+) ]] || fail "invalid target record"
             check_lxc_conflicts "${BASH_REMATCH[2]}"
-            bash "$LXC_UPDATE_SCRIPT" "$3"
+            run_with_progress lxc "$3" bash "$LXC_UPDATE_SCRIPT" "$3"
           fi
           ;;
         *)
