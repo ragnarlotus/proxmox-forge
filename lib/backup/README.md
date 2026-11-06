@@ -55,11 +55,18 @@ bash lib/backup/host/restore.sh
 
 The restore script then guides the remaining PVE recovery process. The **Forge configuration and custom scripts** restore subject copies the saved `forge.conf` (if present in the archive), `scripts.d/` and `health.d/` back into `/opt/proxmox-forge/` after cloning Forge. For path-based restore subjects, the summary marks a subject as skipped when none of its paths exist in the archive, and warns about individual absent paths when at least one path was restored. This is a manual recovery procedure, not automatic host rollback. It is the only `lib/` script intended to be started directly and it participates in the same global Forge execution lock.
 
-## LXC backup and recovery semantics
+## LXC recovery policy
+
+Forge updates running LXCs in automatic scopes; an explicitly selected stopped
+LXC is temporarily started for its update and returned to the stopped state
+after the update or recovery attempt. Backups and rollback are governed by the
+same rules in either case.
+
+
 
 Forge does not maintain a second, competing LXC backup policy. Proxmox remains authoritative.
 
-For each LXC, Forge reads enabled Proxmox backup jobs and requires exactly one applicable job. It builds a one-target `vzdump` command from the job options exposed by the installed `vzdump` CLI, including the configured storage and applicable backup behaviour.
+For each selected LXC, Forge reads enabled Proxmox backup jobs and requires exactly one applicable job. It builds a one-target `vzdump` command from the job options exposed by the installed `vzdump` CLI. Proxmox remains authoritative for backup storage, mode, compression and retention.
 
 The important guarantees are:
 
