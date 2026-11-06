@@ -67,6 +67,21 @@ without end events report unknown duration rather than estimating it from
 wall-clock timestamps. Stage durations need not sum to total target duration
 because preflight and other work can occur between captured stages.
 
+## Interactive update progress
+
+Interactive manual host, single-LXC and bulk updates now show a compact live dashboard:
+completed targets, progress percentage, current stage, elapsed time and relevant
+warnings/errors. The existing result records, full stage output, final
+six-column table and exact exit statuses remain in the retained run/target
+logs. The dashboard is presentation-only, and can be reattached through
+`forge back` when persistent sessions are enabled.
+
+To see the original verbose output for one invocation, run
+`FORGE_OUTPUT_MODE=full forge update all` (or another manual update command).
+The mode is also carried into the F131 tmux worker. Non-interactive output and
+scheduled updates retain the existing full output without the dashboard.
+The display does not run an update again and never replaces `forge history`.
+
 ## `forge host update`
 
 Runs the protected local Proxmox host update when `UPDATE_HOST=true`. Host rollback is intentionally unsupported. Host requirements are checked internally before mutation.
