@@ -25,6 +25,36 @@ lib/backup/host/restore.sh
 
 That script must remain independently runnable for PVE disaster recovery after a clean reinstall. When invoked directly it acquires the same global lock and creates the same runtime context for any internal helpers it uses, so host restoration still cannot overlap another Forge execution.
 
+## Persistent manual update sessions (F131)
+
+Set `PERSISTENT_UPDATE_SESSION=true` in the Git-ignored `forge.conf` to run
+manual `forge host update`, `forge lxc update TARGET|all` and
+`forge update all` inside a reattachable tmux session hosted by a transient
+systemd service. The setting defaults to `false`, in which case those updates
+run directly in the invoking terminal.
+
+The terminal displays live progress. If SSH disconnects, the update continues
+in its independent systemd-managed tmux session. After reconnecting,
+`forge back` reattaches to the **currently active** update without launching
+another update or acquiring its already-held global lock. If no update is active
+(including after completion), use `forge history` to inspect the saved result.
+Completed tmux sessions are not retained.
+
+Each persistent start verifies that tmux can run for the current user under
+`system.slice`, outside the SSH login scope, before mutating anything. A
+missing dependency or failed independence check blocks the update rather than
+silently falling back to a foreground job. A second manual update detects the
+active persistent session and directs the operator to `forge back`.
+
+Only manual host/LXC/bulk updates use this mode. Read-only CLI commands,
+`forge update self-update` and systemd-scheduled updates do not start tmux
+sessions. No automatic resume occurs after a host reboot.
+
+The compact interactive progress view also works through `forge back`.
+Set `FORGE_OUTPUT_MODE=full` when launching a manual update to retain the
+detailed terminal stream in its tmux session; both views preserve the same
+complete run logs and authoritative exit status.
+
 ## Safety properties
 
 Current implementation deliberately enforces these rules:
@@ -39,7 +69,7 @@ Current implementation deliberately enforces these rules:
 - mutating commands are not repeated merely to capture errors;
 - synchronous `vzdump` completion and the newly created recovery volume are both validated;
 - guest failures remain failures even if recovery succeeds;
-- a host failure aborts `forge update all` before guest processing;
+- a host failure remains failed but does not prevent independently preflight-approved LXCs from updating in `forge update all`;
 - Forge never performs guest-style rollback on the host;
 - no automatic host reboot is performed;
 - post-update `fstrim` failure is non-destructive and non-rollback-triggering;
