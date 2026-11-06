@@ -54,7 +54,7 @@ case "$scope" in
       install -m 0640 /dev/null "$active_log" || fail "could not create host log: $active_log"
 
       mapfile -t logs < <(
-        find "$target_dir" -maxdepth 1 -type f -name "${stream}_[0-9]*.log" -printf '%f\\n' | LC_ALL=C sort -r
+        find "$target_dir" -maxdepth 1 -type f -name "${stream}_[0-9]*.log" -printf '%f\n' | LC_ALL=C sort -r
       )
       for ((i = log_keep - 1; i < ${#logs[@]}; i++)); do
         rm -f -- "$target_dir/${logs[i]}" || fail "could not remove old host log: $target_dir/${logs[i]}"
