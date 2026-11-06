@@ -199,11 +199,12 @@ CHECK_FORGE_UPDATES_BEFORE_UPDATE=true
 LOG_DIR="/var/log/proxmox-forge"
 
 # Host logs are stored as:
-#   LOG_DIR/<PVE_FQDN>/host/common.log
-#   LOG_DIR/<PVE_FQDN>/host/error.log
+#   LOG_DIR/<PVE_FQDN>/host/common.log (active; archived as common_<TIMESTAMP>_<PID>.log)
+#   LOG_DIR/<PVE_FQDN>/host/error.log (active; archived as error_<TIMESTAMP>_<PID>.log)
 # LXC logs are stored as:
 #   LOG_DIR/<PVE_FQDN>/lxc/<VMID>/<TIMESTAMP>.log
 # General update run logs are stored as:
 #   LOG_DIR/<PVE_FQDN>/runs/<RUN_ID>.log
-# LOG_KEEP applies independently to timestamped LXC logs and general run logs.
+# LOG_KEEP applies independently to each host log stream (active + archives),
+# timestamped LXC logs and general run logs.
 LOG_KEEP=8
