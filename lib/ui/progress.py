@@ -83,8 +83,7 @@ class Progress:
         if mode == "host":
             self.begin("HOST")
         elif mode == "lxc":
-            self.names[target] = f"LXC {safe_text(target, 40)}"
-            self.begin(target)
+            self.names[target] = safe_text(target, 40)
         self.render(force=True)
 
     def name(self, key):
@@ -177,6 +176,8 @@ class Progress:
             if match:
                 key, name = match.groups()
                 self.names[key] = safe_text(name.replace("_", " ").replace("-", " "), 38)
+                if self.mode == "lxc" and not self.completed and self.current is None:
+                    self.begin(key)
                 changed = True
             elif line.startswith("update=success ") or line.startswith("update=failed "):
                 if self.mode != "bulk":
@@ -201,6 +202,9 @@ class Progress:
         if message and message not in self.notices:
             self.notices.append(message)
             self.notices = self.notices[-6:]
+            if not self.tty:
+                sys.stdout.write("! " + message + "\n")
+                sys.stdout.flush()
 
     def colored(self, text, color):
         if self.color:
