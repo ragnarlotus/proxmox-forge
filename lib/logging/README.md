@@ -12,6 +12,8 @@ Host logs:
 ```text
 LOG_DIR/<PVE_FQDN>/host/common.log
 LOG_DIR/<PVE_FQDN>/host/error.log
+LOG_DIR/<PVE_FQDN>/host/common_<TIMESTAMP>_<PID>.log
+LOG_DIR/<PVE_FQDN>/host/error_<TIMESTAMP>_<PID>.log
 ```
 
 LXC logs:
@@ -39,7 +41,7 @@ progress remain unchanged). Initial log creation failures block the update;
 secondary log write failures are warned about without changing the update
 result. The logfile has mode 0640 inside a 0750 directory.
 
-`LOG_KEEP` also controls retention of timestamped per-LXC logs.
+`LOG_KEEP` also controls retention of timestamped per-LXC logs and each host log stream independently. Before every host update, Forge archives the previous `common.log` and `error.log` (if present), then creates new active files at the unchanged paths. It keeps up to `LOG_KEEP` files for each stream, counting its active file; previous unrotated logs are preserved as the first archives. Host archive rotation does not affect general run logs or LXC logs.
 
 F228 reads only retained general logs through `forge status [--json]` and `forge history [RUN_ID] [--json]`; it does not create a second results database. `run_end` records the actual CLI exit code; `result_global` and `result_target` remain authoritative for outcomes. The decoder maps recorded `recovery_artifact` (LXC), `backup_artifact` (host) and `reboot_status` events to attempted targets. Missing fields are unknown and inconsistent global counts are rejected. No guest commands or mutations occur during queries.
 
