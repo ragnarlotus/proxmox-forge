@@ -13,9 +13,9 @@ validate configuration and resolve exact target/current state
 → OS/package update
 → application update
 → target-specific custom scripts
+→ restore original CPU/RAM limits
 → generic health check
 → optional health.d/<VMID>/*.sh functional checks
-→ restore original CPU/RAM limits
 → pct fstrim
 → inspect /run/reboot-required inside the running LXC
 → if originally stopped, stop again
