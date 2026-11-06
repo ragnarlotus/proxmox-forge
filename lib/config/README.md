@@ -64,8 +64,8 @@ required before LXC mutation even if automatic rollback is disabled.
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
 | `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
 | `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |
-| `LXC_UPDATE_TEMP_CORES` | Nonnegative integer, default `0` | Temporarily raise an LXC's configured core limit to this minimum during its update; `0` disables this adjustment. |
-| `LXC_UPDATE_TEMP_MEMORY_MB` | Nonnegative integer, default `0` | Temporarily raise an LXC's configured RAM limit to this minimum in MiB; `0` disables this adjustment. |
+| `LXC_UPDATE_TEMP_CORES` | Integer 0–8192, default `0` | Temporarily raise an LXC's configured core limit to this minimum during its update; `0` disables this adjustment. |
+| `LXC_UPDATE_TEMP_MEMORY_MB` | Integer 0–1048576, default `0` | Temporarily raise an LXC's configured RAM limit to this minimum in MiB; `0` disables this adjustment. |
 | `CUSTOM_SCRIPTS_DIR` | Absolute path | Absolute directory containing per-target custom scripts. |
 | `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Boolean: `true` or `false` | Create and validate a host configuration backup before host package changes. |
 | `HOST_BACKUP_EXTRA_PATHS` | Empty string or comma-separated absolute paths | Optional paths appended to the fixed host-backup path set. Example: `/opt/custom,/srv/config`. |
