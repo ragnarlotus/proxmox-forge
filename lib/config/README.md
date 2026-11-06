@@ -52,6 +52,8 @@ required before LXC mutation even if automatic rollback is disabled.
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
+| `SCHEDULED_UPDATE_HOST` | Boolean, default `false` | Allow host updates in the separate scheduled workflow. |
+| `SCHEDULED_UPDATE_LXC` | Empty string or comma-separated numeric VMIDs | Positive allowlist for scheduled LXC updates, independent of manual discovery. |
 | `PERSISTENT_UPDATE_SESSION` | Boolean, default `false` | Opt into systemd-managed tmux sessions for **manual updates only**. Requires a working independent systemd service and tmux for the executing user; otherwise updates fail before mutation. Use `forge back` while running or `forge history` after completion. |
 | `CHECK_FORGE_UPDATES_BEFORE_UPDATE` | Boolean, default `true` | Before manual interactive host/LXC/bulk updates, check whether a newer Forge `main` revision exists and ask whether to update Forge first. Set `false` in local `forge.conf` to disable. Scheduled and noninteractive runs never prompt or automatically self-update. |
 | `EMAIL_NOTIFICATIONS` | Boolean; default `false` | Master switch for Proxmox root-mail notifications, independent of manual/scheduled policies. |
@@ -62,6 +64,8 @@ required before LXC mutation even if automatic rollback is disabled.
 | `UPDATE_LXC_OS` | Boolean: `true` or `false` | Run the LXC OS/package-manager stage. |
 | `UPDATE_LXC_APPLICATION` | Boolean: `true` or `false` | Run the detected Community Scripts application updater. |
 | `RUN_CUSTOM_SCRIPTS` | Boolean: `true` or `false` | Run local `scripts.d/<VMID>/*.sh` scripts. |
+| `LXC_UPDATE_TEMP_CORES` | Integer 0–8192, default `0` | Temporarily raise an LXC's configured core limit to this minimum during its update; `0` disables this adjustment. |
+| `LXC_UPDATE_TEMP_MEMORY_MB` | Integer 0–1048576, default `0` | Temporarily raise an LXC's configured RAM limit to this minimum in MiB; `0` disables this adjustment. |
 | `CUSTOM_SCRIPTS_DIR` | Absolute path | Absolute directory containing per-target custom scripts. |
 | `CREATE_BACKUP_BEFORE_HOST_UPDATE` | Boolean: `true` or `false` | Create and validate a host configuration backup before host package changes. |
 | `HOST_BACKUP_EXTRA_PATHS` | Empty string or comma-separated absolute paths | Optional paths appended to the fixed host-backup path set. Example: `/opt/custom,/srv/config`. |
@@ -72,4 +76,4 @@ required before LXC mutation even if automatic rollback is disabled.
 | `MIN_ROOT_FREE_MB` | Integer from 1 to 1048576, default 1024 | Minimum free space on `/` before updating host or LXC. |
 | `MIN_MEM_AVAILABLE_MB` | Integer from 1 to 1048576, default 128 | Minimum `MemAvailable` in MiB before host or LXC updates; fail closed when unavailable. |
 | `LOG_DIR` | Absolute path | Base Forge log directory. |
-| `LOG_KEEP` | Positive integer (`>= 1`) | Number of timestamped logs retained per LXC. |
+| `LOG_KEEP` | Positive integer (`>= 1`) | Number of timestamped logs retained independently per LXC, per-run logs and each host `common`/`error` log stream (active file included). |

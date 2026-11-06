@@ -2,79 +2,56 @@
 
 **Reliable Update Orchestration for Proxmox VE**
 
-Forge is a Bash-based update orchestrator designed to run directly on a Proxmox VE host. Its current implementation updates the local Proxmox host and LXC containers through a protected, deterministic workflow with configuration validation, Proxmox-native backups, application updates, custom per-target scripts, health checks, recovery, post-update maintenance and structured logging.
+Forge is a Bash-based update orchestrator for a local **Proxmox VE 9 / Debian 13** host and its LXC containers. It updates and verifies systems, creates recovery backups, and reports real failures without hiding them behind a successful rollback.
 
-Forge's responsibility is to **update and verify**, not to silently repair guest systems. When an eligible guest update fails and a same-run recovery artifact exists, Forge can restore that guest; otherwise it reports the real failure and leaves diagnosis or repair outside the updater.
+The [feature checklist](FEATURE_CHECKLIST.md) tracks implemented capabilities, acceptance status and future work.
 
-The implementation status and broader roadmap are tracked in [`FEATURE_CHECKLIST.md`](FEATURE_CHECKLIST.md).
+## Current capabilities
 
-## Current scope
+- **Host and LXC updates:** APT-based operating-system updates, Community Scripts application updaters (`/usr/bin/update`), optional per-LXC custom scripts and `apt-get autoremove`.
+- **Selection and lifecycle:** running LXCs in automatic runs; explicit updates of stopped LXCs with temporary startup and restoration of their original state; exclusions and scheduled allowlists.
+- **Backup and recovery:** Proxmox-job-based `vzdump` recovery archives for guests, optional automatic restore after eligible LXC failures, and Forge-created host configuration backups. Host rollback is not supported.
+- **Preflight and verification:** disk/memory checks, backup/restore safety validation, optional temporary CPU/RAM increases for LXC updates, service and functional health checks, reboot-needed detection and LXC `fstrim`.
+- **Results and diagnostics:** per-target and per-run logs, configurable retention, elapsed times, actual APT upgrade counts, detected application versions, actionable errors, and `forge status` / `forge history` (including JSON output).
+- **Console experience:** compact live progress for interactive manual updates; `FORGE_OUTPUT_MODE=full` restores detailed terminal output without changing the stored logs.
+- **Execution safety:** a single global lock, optional reattachable manual update sessions through `tmux` and `forge back`, and protected self-updates from Git.
+- **Automation and notifications:** optional explicitly authorized systemd scheduling (disabled until installed/enabled) and configurable final root-mail notifications through the existing Proxmox mail routing.
+- **Tests:** automated unit/integration regression tests in `tests/`, executed through GitHub Actions, alongside selected real-host acceptance checks.
 
-Forge currently supports:
+Forge is an updater, not a pending-upgrade preview tool. It does not provide standalone package-update discovery, CVE reporting or package-by-package selection.
 
-- one local **Proxmox VE 9 / Debian 13** host;
-- local **LXC containers** through `pct`, with automatic scope limited to running guests and explicit stopped-target updates supported;
-- host updates through APT;
-- LXC OS updates through APT;
-- Proxmox Community Scripts applications exposing `/usr/bin/update`;
-- target-specific local custom scripts;
-- Proxmox-native LXC recovery backups;
-- Forge-created host configuration backups;
-- automatic LXC rollback after eligible failures;
-- explicit updates of stopped LXCs with temporary startup and restoration of the original stopped state;
-- post-update generic health checks and optional per-LXC functional checks (`health.d/<VMID>/*.sh`);
-- APT `autoremove` maintenance;
-- post-update LXC `fstrim`;
-- per-target logging and deterministic terminal capture;
-- one retained chronological general log per update execution (including sanitized stage output, target results and final table);
-- read-only `forge status` / `forge history` queries over retained authoritative run logs, with optional JSON output;
-- one global execution lock preventing overlapping Forge runs;
-- optional, disabled-by-default systemd scheduled updates restricted to an explicit VMID allowlist.
-
-Forge is an updater, not a tool for querying pending upgrades: standalone package-update discovery, preview/check, speculative upgrade plans, CVE reporting and package-level selection are outside its scope. APT repository metadata is refreshed as part of actual OS updates.
-
-Not implemented yet:
-
-- QEMU VM updates;
-- external-host/SSH updates;
-- cluster-wide orchestration;
-- persistent background execution of manually started SSH jobs (F131);
-- a Web UI;
-- automatic Proxmox host rollback;
-- automatic host reboot;
-- generic pre/post hook frameworks;
-- an automated test suite.
+Not currently supported: QEMU VM updates, remote/SSH host updates, cluster orchestration, a Web UI, automatic Proxmox host rollback/reboot, or a generic pre/post-hook framework.
 
 ## Repository layout
 
 ```text
 proxmox-forge/
-├── forge                       # Public CLI and global runtime lock owner
-├── forge.conf.default          # Versioned complete defaults
-├── forge.conf                  # Optional local overrides; ignored by Git
-├── FEATURE_CHECKLIST.md        # Capability/roadmap tracking
+├── forge                       # Public CLI and global lock owner
+├── forge.conf.default          # Git-tracked default configuration
+├── forge.conf                  # Optional local overrides (Git-ignored)
+├── FEATURE_CHECKLIST.md
 ├── README.md
 ├── lib/
-│   ├── backup/                 # Host and LXC backup/recovery helpers
-│   ├── cli/                    # CLI help
-│   ├── config/                 # Config loading/parsing/validation
-│   ├── host/                   # Host preflight and update workflow
-│   ├── logging/                # Structured logging and terminal capture
-│   ├── lxc/                    # LXC discovery, update, health and maintenance
-│   ├── runtime/                # Internal runtime-context validation
-│   └── workflows/              # Higher-level orchestration
-└── scripts.d/
-    ├── README.md
-    └── <VMID>/*.sh             # Local target-specific custom scripts
-└── health.d/
-    └── <VMID>/*.sh             # Optional guest functional health checks
+│   ├── backup/                 # Host and LXC backup/restore helpers
+│   ├── cli/                    # CLI help and documentation
+│   ├── config/                 # Configuration and preflight policy
+│   ├── host/                   # Host update
+│   ├── logging/                # Complete output capture and retained logs
+│   ├── lxc/                    # Guest updates and lifecycle
+│   ├── runtime/                # Locking and persistent sessions
+│   ├── ui/                     # Compact live terminal presentation
+│   └── workflows/              # Bulk update orchestration
+├── health.d/                   # Local per-LXC functional checks
+├── scripts.d/                  # Local per-LXC custom update scripts
+├── systemd/                    # Optional scheduled update unit/timer
+└── tests/                      # Automated regression tests
 ```
 
-The project is run directly from its checkout, without an installer or daemon. Optional disabled-by-default systemd timer/service templates are available in `systemd/` for separately authorized scheduled updates.
+Forge runs directly from its checkout; there is no application installer or always-on web service. The optional systemd components only enable explicitly authorized scheduled updates or short-lived persistent manual sessions.
 
 ## Installation / checkout
 
-The expected checkout location is `/opt/proxmox-forge`, which also matches the default custom-script path.
+The expected checkout location is `/opt/proxmox-forge`. Run as `root` on the Proxmox host:
 
 ```bash
 cd /opt
@@ -83,98 +60,42 @@ cd /opt/proxmox-forge
 ./forge validate-config
 ```
 
-To inspect effective settings without checking Proxmox guest state, use `./forge show-config`; it prints the merged configuration with each setting's default/override origin.
+The checkout requires Git authentication appropriate for its configured remote. A read-only deploy key is sufficient for updates; Forge does not need Git write access on the Proxmox host.
 
-Forge must be run as `root` on the Proxmox host because it uses `pvesh`, `pct`, package management, host configuration backup and restore operations.
+Put host-specific overrides in the Git-ignored `forge.conf`, not `forge.conf.default`. Inspect the effective configuration with `./forge show-config`.
 
-An optional convenience symlink can expose the CLI as `forge`:
+An optional symlink makes `forge` available on `PATH`:
 
 ```bash
 ln -s /opt/proxmox-forge/forge /usr/local/bin/forge
 ```
 
-The top-level `forge` script resolves launcher symbolic links to the real checkout before locating its components. Values such as `CUSTOM_SCRIPTS_DIR` remain configuration paths.
-
-## LXC recovery policy
-
-Forge creates a new `vzdump` recovery backup before any LXC mutation. The
-applicable enabled Proxmox backup job determines its **storage, backup mode,
-compression and retention**; Forge does not create persistent `Update_*`
-snapshots or call `pct rollback`. A Proxmox job in `snapshot` mode may use
-a **temporary** storage snapshot while producing the compressed archive; it
-removes that temporary snapshot after backup completion.
-
-With `ROLLBACK_ON_FAILURE=true`, the same-run `vzdump` archive can be
-restored automatically if a mandatory stage fails, using the guarded advanced
-`pct restore --force` helper and the usual functional health check. The
-original update failure stays failed even if recovery succeeds. This requires
-`CREATE_BACKUP_BEFORE_LXC_UPDATE=true`, an applicable Proxmox backup job, a
-storage-backed rootfs and **no pre-existing persistent guest snapshots**
-that forced restore could destroy. The preflight blocks unsafe updates and
-`restore.sh` rechecks immediately before restoration. Forge never deletes
-old snapshots automatically. After verifying their backups, users may choose
-to remove old snapshots manually before the next update.
-
-Running LXCs remain the automatic scope; stopped LXCs are updated only by
-explicit request. See [Configuration](lib/config/README.md) and
-[Backup and recovery](lib/backup/README.md).
-
-## Optional persistent manual updates (F131)
-
-Set `PERSISTENT_UPDATE_SESSION=true` in the Git-ignored `forge.conf` to have
-manual `forge host update`, `forge lxc update TARGET|all` and `forge update all`
-start inside a reattachable tmux console hosted by a transient systemd service.
-The setting defaults to `false`, preserving existing direct foreground updates.
-The terminal shows live output immediately; if SSH drops, the update continues.
-After reconnecting, `forge back` resumes the **active** console. If no update is
-running, consult `forge history` (completed tmux sessions are not kept open).
-
-Every persistent start validates the current user's ability to run tmux under
-a systemd service in `system.slice`, outside the SSH login scope, **before**
-touching a host or LXC. A missing dependency or failed check blocks the update
-rather than running it without persistence. The updater owns Forge's existing
-global lock and logs; a second update while it runs tells the operator to use
-`forge back`. No automatic restart happens after a host reboot. Read-only
-commands, explicit Forge self-update and existing scheduled updates do not
-run inside tmux. The status of a completed update is available through the
-existing Forge result and history commands.
+The launcher resolves this symlink to the real checkout before loading internal files.
 
 ## Updating Forge itself
-
-Update the installed Forge checkout with:
 
 ```bash
 forge update self-update
 ```
 
-This updates `main` by default. An optional branch name (`forge update
-self-update BRANCH`) selects that branch only when the update is a safe
-fast-forward. Forge rejects unexpected remotes, changes to tracked files
-(including staged changes), and divergent history. Untracked or ignored local
-files (including editor backups such as `forge.conf~`) are preserved and do
-not block updates, unless an incoming revision would start tracking the same
-path; such collisions are refused to prevent data loss.
+By default this fast-forwards the installed checkout to `main`. An optional branch argument is accepted only if the requested branch safely contains the installed revision. Tracked local changes, unexpected remotes and divergent history block the operation; Git-ignored local configuration and scripts remain untouched unless an incoming tracked path conflicts.
 
-`CHECK_FORGE_UPDATES_BEFORE_UPDATE=true` by default: before an interactive
-manual host or LXC update, Forge checks for a newer `main` revision and, if
-one exists, asks whether to update Forge, continue without updating it or
-cancel. Set the option to `false` in local `forge.conf` to disable the
-prompt. Scheduled or noninteractive updates do not prompt or self-update.
+With `CHECK_FORGE_UPDATES_BEFORE_UPDATE=true` (the default), interactive manual updates check for a newer Forge `main` revision and ask whether to self-update first, skip that version or cancel. Scheduled and noninteractive updates do not prompt or self-update. The existing global lock prevents self-updating during another Forge execution.
 
-Do not update Forge from a separate process while a Forge run is active; the
-self-update command uses the existing global lock to prevent that.
+For commands and output modes, see the [CLI reference](lib/cli/README.md).
 
 ## Documentation
 
 | Section | Description |
 | --- | --- |
-| [CLI](lib/cli/README.md) | CLI commands and operations |
-| [Optional scheduling](systemd/README.md) | Explicit scheduled authorization and systemd timer installation |
-| [Configuration](lib/config/README.md) | Configuration and available options |
-| [Host update](lib/host/README.md) | Proxmox host update |
-| [LXC](lib/lxc/README.md) | LXC selection, updates and maintenance |
-| [Backup and recovery](lib/backup/README.md) | Host/LXC backups, restore and recovery |
-| [Workflows](lib/workflows/README.md) | Complete and LXC-only update runs |
-| [Logging](lib/logging/README.md) | Logs and terminal output |
-| [Runtime](lib/runtime/README.md) | Single-run execution model and safety |
-| [Custom scripts](scripts.d/README.md) | Per-LXC extension scripts |
+| [CLI](lib/cli/README.md) | Commands, interactive progress, results and self-update |
+| [Configuration](lib/config/README.md) | Defaults, local overrides, validation and options |
+| [Backup and recovery](lib/backup/README.md) | Host backup/restore and the **LXC recovery policy** |
+| [Runtime and safety](lib/runtime/README.md) | Global lock and **persistent manual updates (F131)** |
+| [Host update](lib/host/README.md) | Local Proxmox host update and reboot notices |
+| [LXC](lib/lxc/README.md) | Guest selection, lifecycle, updates and maintenance |
+| [Workflows](lib/workflows/README.md) | Full and LXC-only bulk runs and failure handling |
+| [Logging](lib/logging/README.md) | Full logs, retention and console capture |
+| [Optional scheduling](systemd/README.md) | Authorized systemd service and timer |
+| [Custom scripts](scripts.d/README.md) | Per-LXC update scripts |
+| [Functional health checks](health.d/README.md) | Optional per-LXC service/application verification |
