@@ -16,6 +16,7 @@ Example local override:
 UPDATE_HOST=false
 HOST_BACKUP_EXTRA_PATHS="/opt/custom,/srv/config"
 LOG_KEEP=12
+LANGUAGE=es
 ```
 
 Rules:
@@ -51,6 +52,7 @@ required before LXC mutation even if automatic rollback is disabled.
 
 | Key | Type / accepted value | Purpose |
 | --- | --- | --- |
+| `LANGUAGE` | `en` or `es`, default `en` | Language for Forge-owned terminal presentations and email messages. Stable technical logs and JSON are unaffected; see [Languages](../i18n/README.md). |
 | `UPDATE_HOST` | Boolean: `true` or `false` | Enable local Proxmox host updates. |
 | `SCHEDULED_UPDATE_HOST` | Boolean, default `false` | Allow host updates in the separate scheduled workflow. |
 | `SCHEDULED_UPDATE_LXC` | Empty string or comma-separated numeric VMIDs | Positive allowlist for scheduled LXC updates, independent of manual discovery. |
