@@ -26,6 +26,8 @@ if kind == "inventory":
     if len(args) == 3:
         authorized = os.environ["FORGE_TEST_SCHEDULED_LXC"]
         expected = ["true" if authorized else "false", expected[1], authorized]
+    elif os.environ.get("FORGE_TEST_EXPLICIT_INVENTORY") == "true":
+        expected = ["true", ""]
     if args != expected:
         sys.exit("unexpected inventory policy")
     vmids = os.environ.get("FORGE_TEST_INVENTORY_VMIDS", os.environ["FORGE_TEST_VMIDS"])
