@@ -292,6 +292,7 @@ class HistoryTests(unittest.TestCase):
             "lib/runtime/require-context.sh", "lib/runtime/persistent.sh",
             "lib/runtime/persistent-worker.sh", "lib/results/history.py",
             "lib/results/table.py",
+            "lib/i18n/translate.py", "lib/i18n/en.json", "lib/i18n/es.json",
         ]
         for part in parts:
             dest = sandbox / part
