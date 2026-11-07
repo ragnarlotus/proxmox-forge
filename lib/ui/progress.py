@@ -123,7 +123,10 @@ class Progress:
         raw_line = raw.decode("utf-8", "replace")
         line = safe_text(raw_line, 2000)
         if self.final_table_lines is not None:
-            self.final_table_lines.append(table_text(raw_line))
+            # Consume the machine-readable result for dashboard status, but
+            # keep it out of the human-facing final table.
+            if not line.startswith("result_global "):
+                self.final_table_lines.append(table_text(raw_line))
         elif line == tr("table.title"):
             self.final_table_lines = [table_text(raw_line)]
         if not line:

@@ -305,7 +305,7 @@ class ResultAggregationTests(unittest.TestCase):
                 self.assertEqual(result.stdout.count("Forge final results"), 1)
                 self.assertEqual(result.stdout.count("Totals: targets="), 1)
                 self.assertIn(
-                    f"Totals: targets={target_count} ", result.stdout
+                    f"\n\nTotals: targets={target_count} ", result.stdout
                 )
                 self.assertIn(
                     f"ERROR={error_count} ", result.stdout

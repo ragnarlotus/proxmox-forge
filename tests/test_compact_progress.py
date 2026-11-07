@@ -106,6 +106,7 @@ class CompactProgressTests(unittest.TestCase):
             "Enlaces del historial de cambios:\n"
             "  [1] Cambios: https://github.com/pi-hole/pi-hole\n"
             "  [2] Cambios: https://github.com/caddyserver/caddy\n"
+            "\n"
             "Totales: targets=2 selected=2 attempted=2 OK=1 ERROR=1 SKIPPED=0 NOT_RUN=0\n"
             "result_global status=PARTIAL targets=2 selected=2 attempted=2 succeeded=1 failed=1 skipped=0 not_run=0\n"
             "Resultado global: PARTIAL\n"
@@ -126,7 +127,14 @@ class CompactProgressTests(unittest.TestCase):
             + table
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(table, result.stdout)
+        self.assertIn(table.replace(
+            "result_global status=PARTIAL targets=2 selected=2 attempted=2 "
+            "succeeded=1 failed=1 skipped=0 not_run=0\n", ""
+        ), result.stdout)
+        self.assertNotIn("result_global status=", result.stdout)
+        self.assertIn("resultado PARTIAL", result.stdout)
+        self.assertIn("  [2] Cambios: https://github.com/caddyserver/caddy\n\nTotales:",
+                      result.stdout)
         self.assertEqual(result.stdout.count("Resultados finales de Forge"), 1)
         self.assertLess(
             result.stdout.index("forge history 20261106T185000-100"),
@@ -161,6 +169,7 @@ class CompactProgressTests(unittest.TestCase):
             self.assertIn("Resultados finales de Forge", output)
             self.assertIn("101  | pihole | OK", output)
             self.assertIn("Resultado global: SUCCESS", output)
+            self.assertNotIn("result_global status=", output)
             self.assertIn("100%", output)
         finally:
             if slave >= 0:
