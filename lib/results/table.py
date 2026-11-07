@@ -261,6 +261,7 @@ def emit(rows, width, enabled):
                 output(physical)
     else:
         emit_compact_table(rows, values, width, enabled)
+    print()
     counts, selected, attempted, status = summarize(rows)
     print(
         tr("table.total") + " targets={total} selected={selected} attempted={attempted} "
