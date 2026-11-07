@@ -95,5 +95,6 @@
   "cli.prompt.invalid": "Please answer y, n or c.",
   "cli.run_duration": "Forge run duration: {duration}",
   "cli.config_ok": "Forge configuration OK: defaults={defaults} overrides={overrides}",
-  "cli.no_overrides": "none"
+  "cli.no_overrides": "none",
+  "email.subject": "[Proxmox Forge] [{mode}] {status} - update results"
 }
