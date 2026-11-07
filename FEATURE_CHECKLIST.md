@@ -44,6 +44,7 @@ Forge performs updates rather than checking what is available in advance. Reposi
 - [x] **F026** `EXCLUDE` selection by ID/name. `EXCLUDE=""` defaults to no exclusions. Comma-separated exact VMIDs or hostnames are removed from the running-LXC selection used by `forge lxc list-targets`, `forge lxc update all`, `forge update all` and `validate-config`. Filtering occurs before resource and recovery preflights, backup and update. Explicit `forge lxc update TARGET` and host updates remain unaffected. Malformed configuration is rejected; automated tests cover matching and bulk enforcement.
 - [x] **F029** Filter automatic LXC scope by running state. `UPDATE_RUNNING_LXC` controls inclusion of currently running LXCs; stopped LXCs are never selected automatically.
 - [x] **F030** Skip templates automatically.
+- [x] **F247 — Explicit multi-LXC selection.** `forge lxc update TARGET [TARGET...]` accepts two or more exact numeric VMIDs/hostnames, resolves and deduplicates the entire set before mutation, rejects mixed `all` or invalid/template targets, and updates in the requested order using the existing bulk preflight, per-LXC backup, recovery, functional health checks, result aggregation and notification policy. Explicit scope ignores `EXCLUDE`/`UPDATE_RUNNING_LXC` and permits stopped guests using their existing temporary-start lifecycle. Stopped guests cannot be probed through `pct exec` before startup, so their resource checks run during per-guest requirements. Single-target and automatic `all` behavior is unchanged.
 
 ## D. Update execution
 
@@ -226,7 +227,7 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 ### Visibility, discovery and policy
 
-- [ ] **F231 — Optional Proxmox tag selection.** Add explicit, deterministic tag-based groups for eligible update/check targets without changing existing VMID/name exclusions, implicitly selecting stopped LXCs or making ambiguous matching acceptable.
+No active tag-selection candidate; see rejected F231 in section X.
 
 ### Execution and target compatibility
 
@@ -259,7 +260,7 @@ These notes document current intent only; they do not mark capabilities implemen
 - **F238 — Implemented:** `forge update self-update [BRANCH]` and default-on `CHECK_FORGE_UPDATES_BEFORE_UPDATE`. The pre-update prompt is limited to interactive manual runs, and the original command is restarted under the retained lock after successful self-update.
 - **F131 — Implemented (2026-11-04), live acceptance pending:** optional systemd-owned tmux for manual host/LXC updates, explicit opt-in, per-run compatibility validation, running update detection and `forge back` without acquiring the update lock. Verify the actual SSH-disconnect/reconnect flow on `bv` before activating the option permanently.
 - **After F131 — Console visibility and performance review:** investigation of the 2026-11-06 full update showed that backups and application updates dominated time; no reproduced missing-output defect. The interactive manual CLI now uses a compact live progress dashboard, while full technical capture and machine-readable history stay unchanged.
-- **F231 — Under consideration:** Proxmox tags may be read automatically but must never silently change target selection; selecting a tag-based scope or policy must be explicitly authorised. No concrete selection policy has been approved.
+- **F247 — Implemented:** multiple explicit VMIDs/hostnames update serially, preserving the current CLI grammar and safety preflights. F231's tag selection was rejected as unnecessary.
 - **F232 — Low current priority:** additional package managers are interesting, but existing running LXC workloads use APT.
 - **F243 — Low current priority:** staged/canary gates require meaningful functional verification; existing serial failure isolation is not a canary policy.
 - **VMs, external targets, clusters and Web UI:** expand only after the primary single-host Proxmox/LXC backend is dependable; a Web UI must reuse that backend.
@@ -267,6 +268,8 @@ These notes document current intent only; they do not mark capabilities implemen
 ## X. Rejected proposals — historical decision register
 
 **Rejected is not the same as postponed or implemented.** These entries preserve the idea and the reason it was rejected so that a future contributor can challenge the rationale with new evidence. They are outside the active backlog; IDs remain reserved. The original historical wording is retained or summarised without reinstating incompatible scope.
+
+- ~~**F231 — Optional Proxmox tag selection.**~~ **REJECTED (2026-11-07).** Considered selecting LXC groups through Proxmox tags. **Reason:** the tag categories do not correspond to a useful update policy for the current infrastructure, and a separate `--tag` selection mode would complicate the existing explicit CLI grammar without a concrete operational benefit. F247 provides selective multi-LXC updates using exact IDs or names instead.
 
 - ~~**F244 — Declared service dependency ordering.**~~ **REJECTED (2026-11-07).** Proposed explicit inter-LXC update dependencies, ordering and health-based gating. **Reason:** for the current Proxmox/LXC scope, service downtime occurs during maintenance regardless of order, while Forge already isolates guest failures, attempts same-run backup recovery when enabled and available, and checks guest/systemd health plus optional functional checks. Additional cross-target dependency rules would add configuration, complexity and possible unnecessary blocking without a demonstrated operational benefit. Do not infer ordering from Proxmox startup/shutdown priorities. Reconsider only if a concrete dependency-related failure case is identified.
 
