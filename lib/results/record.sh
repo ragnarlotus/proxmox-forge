@@ -150,6 +150,7 @@ forge_result_text() {
         template) msg="SKIPPED: container is a template" ;;
         stopped) msg="SKIPPED: container is stopped" ;;
         excluded) msg="SKIPPED: excluded by configuration" ;;
+        not_selected) msg="SKIPPED: not selected for this manual update" ;;
         scheduled_not_authorized) msg="SKIPPED: not authorized for scheduled updates" ;;
         running_lxc_disabled) msg="SKIPPED: running LXC updates disabled" ;;
         host_disabled) msg="SKIPPED: host updates disabled" ;;

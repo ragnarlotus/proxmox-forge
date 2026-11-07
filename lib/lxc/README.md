@@ -22,7 +22,7 @@ validate configuration and resolve exact target/current state
 → success
 ```
 
-`UPDATE_RUNNING_LXC` and `EXCLUDE` apply only to automatic target discovery for `forge lxc list-targets` and both bulk update commands. `EXCLUDE` accepts comma-separated, case-sensitive exact VMIDs or hostnames, filters before preflights and mutation, and never blocks `forge lxc update TARGET`.
+`UPDATE_RUNNING_LXC` and `EXCLUDE` apply only to automatic target discovery for `forge lxc list-targets`, `forge lxc update all` and `forge update all`. `EXCLUDE` accepts comma-separated, case-sensitive exact VMIDs or hostnames and filters before preflights and mutation. Explicit `forge lxc update TARGET [TARGET...]` ignores these automatic-scope settings. Two or more targets are updated sequentially in argument order with one combined result; all identities are resolved and backup recovery policies are checked before the first mutation. A selected stopped LXC retains the existing temporary-start and original-state restoration behavior; its root/memory checks run after startup rather than through `pct exec` while stopped.
 
 `lib/config/conflicts.sh` checks Proxmox backup-job policy and snapshot compatibility for the selected LXCs before mutation. Bulk updates check every selected running LXC before the host update; `forge validate-config` checks the automatic running LXC scope. Stopped LXCs are included only when explicitly selected. Conflicts stop the entire operation before any changes.
 

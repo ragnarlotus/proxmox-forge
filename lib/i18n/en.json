@@ -79,7 +79,7 @@
   "cli.help.history": "List retained runs or show details for one run.",
   "cli.help.host": "Update the local Proxmox VE host.",
   "cli.help.list": "List the selected running LXCs.",
-  "cli.help.lxc": "Update one LXC; start it temporarily if stopped.",
+  "cli.help.lxc": "Update explicit LXCs; temporarily start stopped guests.",
   "cli.help.lxc_all": "Update selected LXCs without updating the host.",
   "cli.help.all": "Update the host, then the selected LXCs.",
   "cli.help.scheduled": "Update only explicitly authorized scheduled targets.",

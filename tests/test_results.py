@@ -26,6 +26,8 @@ if kind == "inventory":
     if len(args) == 3:
         authorized = os.environ["FORGE_TEST_SCHEDULED_LXC"]
         expected = ["true" if authorized else "false", expected[1], authorized]
+    elif os.environ.get("FORGE_TEST_EXPLICIT_INVENTORY") == "true":
+        expected = ["true", ""]
     if args != expected:
         sys.exit("unexpected inventory policy")
     vmids = os.environ.get("FORGE_TEST_INVENTORY_VMIDS", os.environ["FORGE_TEST_VMIDS"])
@@ -126,7 +128,7 @@ elif kind == "lxc":
         Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
             str(counts.get(args[0], 0)) + "\n"
         )
-    if len(args) != 2 or args[1] != "scope":
+    if len(args) != 2 or args[1] not in ("scope", "explicit"):
         sys.exit("unexpected LXC invocation")
     code = int(json.loads(os.environ.get("FORGE_TEST_LXC_CODES", "{}")).get(args[0], 0))
     print(f"update={'success' if code == 0 else 'failed'} vmid={args[0]}")

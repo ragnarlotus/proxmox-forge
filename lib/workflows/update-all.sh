@@ -22,12 +22,31 @@ fail() {
   exit 1
 }
 
-[[ $# -eq 1 ]] || fail "usage: update-all.sh all|lxc|scheduled"
+(( $# >= 1 )) || fail "usage: update-all.sh all|lxc|scheduled|selected VMID VMID..."
 mode="$1"
+shift
 case "$mode" in
-  all|lxc|scheduled) ;;
+  all|lxc|scheduled)
+    (( $# == 0 )) || fail "unexpected targets for update mode '$mode'"
+    ;;
+  selected)
+    (( $# >= 2 )) || fail "selected updates require at least two explicit VMIDs"
+    ;;
   *) fail "unsupported update mode '$mode'" ;;
 esac
+
+# Explicit selection is frozen in caller order before any update. Reject
+# repeated VMIDs and malformed inputs rather than silently widening scope.
+declare -a requested_ids=()
+declare -A requested_set=()
+if [[ "$mode" == selected ]]; then
+  for id in "$@"; do
+    [[ "$id" =~ ^[1-9][0-9]*$ ]] || fail "invalid explicit LXC VMID '$id'"
+    [[ -z "${requested_set[$id]+x}" ]] || fail "duplicate explicit LXC VMID $id"
+    requested_set[$id]=true
+    requested_ids+=("$id")
+  done
+fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || fail "could not determine workflow directory"
 lib_dir="$(cd "$script_dir/.." && pwd)" || fail "could not determine lib directory"
@@ -75,6 +94,10 @@ if [[ "$mode" == scheduled ]]; then
     fail "scheduled updates have no authorized targets; configure SCHEDULED_UPDATE_HOST or SCHEDULED_UPDATE_LXC"
   fi
   selection_args=("$update_running_lxc" "${CONFIG[EXCLUDE]}" "${CONFIG[SCHEDULED_UPDATE_LXC]}")
+elif [[ "$mode" == selected ]]; then
+  # Explicit selections ignore automatic scope/exclusions, like one TARGET.
+  update_running_lxc=true
+  selection_args=(true "")
 fi
 
 # F220: build a read-only inventory independently of the selected target scope.
@@ -83,7 +106,7 @@ fi
 source "$result_record_script" || fail "could not load result record helper"
 
 declare -a result_ids=()
-declare -A result_name=() result_policy=() result_status=()
+declare -A result_name=() result_state=() result_policy=() result_status=()
 declare -A result_reason=() result_attempted=() result_exit=() result_apt=()
 declare -A result_app_before=() result_app_after=() result_app_repository=()
 declare -A result_detail=() result_failed_stage=() result_recovery=()
@@ -102,6 +125,7 @@ while IFS=$'\t' read -r id name state policy; do
   esac
   result_ids+=("$id")
   result_name[$id]="$name"
+  result_state[$id]="$state"
   result_policy[$id]="$policy"
   result_attempted[$id]=false
   result_exit[$id]=""
@@ -120,6 +144,29 @@ while IFS=$'\t' read -r id name state policy; do
     result_reason[$id]="$policy"
   fi
 done <<< "$inventory_output"
+
+if [[ "$mode" == selected ]]; then
+  # Resolve against the same frozen inventory used for final results.
+  for id in "${requested_ids[@]}"; do
+    [[ -n "${result_name[$id]+x}" ]] ||
+      fail "explicitly selected LXC $id does not exist; no updates started"
+    [[ "${result_policy[$id]}" != template ]] ||
+      fail "LXC $id is a template and cannot be updated"
+  done
+  for id in "${result_ids[@]}"; do
+    if [[ -n "${requested_set[$id]+x}" ]]; then
+      # An explicitly selected stopped guest is eligible: update.sh handles
+      # temporary start and restoration of its initial stopped state.
+      result_policy[$id]=eligible
+      result_status[$id]=NOT_RUN
+      result_reason[$id]=not_started
+    elif [[ "${result_policy[$id]}" == eligible ]]; then
+      result_policy[$id]=not_selected
+      result_status[$id]=SKIPPED
+      result_reason[$id]=not_selected
+    fi
+  done
+fi
 
 # Reject stale authorized VMIDs before host or guest mutation.
 # Stopped, excluded and template guests exist but are skipped.
@@ -144,7 +191,7 @@ host_platform="-"
 host_detail=""
 host_failed_stage="-"
 host_recovery="-"
-if [[ "$mode" != lxc ]]; then
+if [[ "$mode" != lxc && "$mode" != selected ]]; then
   host_name="$(hostname -f)" || fail "could not read host FQDN for inventory"
   [[ "$host_name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "invalid host FQDN"
   if [[ "$update_host_enabled" == true ]]; then
@@ -167,7 +214,7 @@ emit_final_inventory() {
   trap - EXIT
   local -a final_records=()
   [[ "$inventory_ready" == true ]] || return 0
-  if [[ "$mode" != lxc ]]; then
+  if [[ "$mode" != lxc && "$mode" != selected ]]; then
     if [[ "$host_status" == NOT_RUN ]]; then host_reason="$result_not_run_reason"; fi
     if forge_result_print host HOST "$host_name" "$host_selected" "$host_attempted" \
       "$host_status" "$host_reason" "$host_exit" "$host_apt" "-" "-" "-" \
@@ -207,29 +254,33 @@ trap emit_final_inventory EXIT
 
 
 # Freeze only the effective LXC VMID scope before the first mutating operation. Each LXC is resolved again by update.sh when its turn begins so current state/template metadata are revalidated.
-targets_output="$(
-  bash "$lxc_list_targets_script" "${selection_args[@]}"
-)" || fail "could not resolve effective LXC target set"
-
 vmids=()
-while IFS= read -r target_record; do
-  [[ -n "$target_record" ]] || continue
+if [[ "$mode" == selected ]]; then
+  vmids=("${requested_ids[@]}")
+else
+  targets_output="$(
+    bash "$lxc_list_targets_script" "${selection_args[@]}"
+  )" || fail "could not resolve effective LXC target set"
 
-  vmid=""
-  for field in $target_record; do
-    if [[ "$field" == vmid=* ]]; then
-      vmid="${field#*=}"
-      break
-    fi
-  done
+  while IFS= read -r target_record; do
+    [[ -n "$target_record" ]] || continue
 
-  [[ -n "$vmid" ]] || fail "target record returned no vmid: $target_record"
-  [[ "$vmid" =~ ^[0-9]+$ ]] || fail "target record returned invalid vmid '$vmid'"
+    vmid=""
+    for field in $target_record; do
+      if [[ "$field" == vmid=* ]]; then
+        vmid="${field#*=}"
+        break
+      fi
+    done
 
-  [[ "${result_policy[$vmid]:-}" == eligible ]] ||
-    fail "selected LXC $vmid is absent or not eligible in the frozen inventory"
-  vmids+=("$vmid")
-done <<< "$targets_output"
+    [[ -n "$vmid" ]] || fail "target record returned no vmid: $target_record"
+    [[ "$vmid" =~ ^[0-9]+$ ]] || fail "target record returned invalid vmid '$vmid'"
+
+    [[ "${result_policy[$vmid]:-}" == eligible ]] ||
+      fail "selected LXC $vmid is absent or not eligible in the frozen inventory"
+    vmids+=("$vmid")
+  done <<< "$targets_output"
+fi
 
 # Assert reporting inventory agrees with effective selection before mutation.
 declare -A selected_vmids=()
@@ -245,6 +296,11 @@ done
 
 # Verify all selected running LXCs before updating the host or any guest.
 for vmid in "${vmids[@]}"; do
+  # A stopped LXC cannot answer pct exec until update.sh starts it.
+  # The per-target requirements phase checks its space after startup.
+  if [[ "$mode" == selected && "${result_state[$vmid]}" == stopped ]]; then
+    continue
+  fi
   bash "$root_space_script" "$vmid" "${CONFIG[MIN_ROOT_FREE_MB]}" || {
     result_not_run_detail="LXC $vmid root space preflight failed"
     fail "LXC $vmid root space preflight failed; no updates started"
@@ -253,6 +309,9 @@ done
 
 # Memory preflight for the frozen running LXC scope, before any mutations.
 for vmid in "${vmids[@]}"; do
+  if [[ "$mode" == selected && "${result_state[$vmid]}" == stopped ]]; then
+    continue
+  fi
   bash "$memory_script" "$vmid" "${CONFIG[MIN_MEM_AVAILABLE_MB]}" || {
     result_not_run_detail="LXC $vmid memory preflight failed"
     fail "LXC $vmid memory preflight failed; no updates started"
@@ -270,7 +329,7 @@ lxc_targets="${#vmids[@]}"
 host_failure_code=0
 lxc_started=false
 update_host=false
-if [[ "$mode" != lxc && "$update_host_enabled" == true ]]; then
+if [[ "$mode" != lxc && "$mode" != selected && "$update_host_enabled" == true ]]; then
   update_host=true
 fi
 
@@ -324,12 +383,14 @@ if [[ "$update_host" == true ]]; then
     host_reason=completed
     printf 'update_all_stage=success stage=host exit_code=0\n'
   fi
-elif [[ "$mode" != lxc ]]; then
+elif [[ "$mode" != lxc && "$mode" != selected ]]; then
   printf 'update_all_stage=skipped stage=host reason=disabled\n'
 fi
 
 succeeded=0
 failed=0
+lxc_selection_mode=scope
+[[ "$mode" == selected ]] && lxc_selection_mode=explicit
 if [[ "${update_running_lxc}" == true ]]; then
   failed_targets=()
 
@@ -343,7 +404,7 @@ if [[ "${update_running_lxc}" == true ]]; then
     FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" \
       FORGE_APP_RESULT_FILE="${apt_result_dir:+$apt_result_dir/app-$vmid}" \
       FORGE_RESULT_DETAIL_FILE="${apt_result_dir:+$apt_result_dir/result-lxc-$vmid}" \
-      bash "$lxc_update_script" "$vmid" scope
+      bash "$lxc_update_script" "$vmid" "$lxc_selection_mode"
     target_result=$?
     if [[ -n "$apt_result_dir" && -f "$apt_result_dir/lxc-$vmid" ]]; then
       apt_value="$(< "$apt_result_dir/lxc-$vmid")"
@@ -405,7 +466,7 @@ if [[ "${update_running_lxc}" == true ]]; then
       printf 'update_all=failed stage=lxc total=%s succeeded=%s failed=%s exit_code=1\n' \
         "$lxc_targets" "$succeeded" "$failed"
       printf '\nForge update summary: '
-      if [[ "$mode" != lxc ]]; then
+      if [[ "$mode" != lxc && "$mode" != selected ]]; then
         if [[ "$update_host" == true ]]; then
           printf 'host SUCCESS; '
         else
@@ -455,7 +516,7 @@ printf 'update_all=success mode=%s update_host=%s update_running_lxc=%s lxc_targ
   "$mode" "$update_host" "${update_running_lxc}" "$lxc_targets"
 
 printf '\nForge update summary: '
-if [[ "$mode" != lxc ]]; then
+if [[ "$mode" != lxc && "$mode" != selected ]]; then
   if [[ "$update_host" == true ]]; then
     printf 'host SUCCESS; '
   else

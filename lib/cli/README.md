@@ -8,7 +8,7 @@ forge status [--json]
 forge history [RUN_ID] [--json]
 forge host update
 forge lxc list-targets
-forge lxc update TARGET
+forge lxc update TARGET [TARGET...]
 forge lxc update all
 forge update all
 forge update scheduled
@@ -98,9 +98,11 @@ Runs the protected local Proxmox host update when `UPDATE_HOST=true`. Host rollb
 
 Lists the automatic LXC scope controlled by `UPDATE_RUNNING_LXC`: currently running non-template containers only, excluding those specified in `EXCLUDE`. When this setting is `false`, the list is empty. Stopped containers are never selected automatically.
 
-## `forge lxc update TARGET`
+## `forge lxc update TARGET [TARGET...]`
 
-Runs one protected LXC update transaction independently of `UPDATE_RUNNING_LXC` and `EXCLUDE`, checking its recovery compatibility before starting or changing that LXC. If the explicitly selected LXC is stopped, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe to succeed, performs the update while it is running, and returns it to stopped state afterwards. LXCs that were already running do not use this startup-readiness phase.
+One `TARGET` runs the existing protected single-LXC transaction. Two or more exact VMIDs/hostnames update those specific guests **sequentially, in argument order**, with one combined summary and final-results table. Forge resolves every target and rejects missing, ambiguous, template, duplicate or mixed `all` targets before starting updates; an invalid selection never updates only a subset. Multiple targets ignore `UPDATE_RUNNING_LXC` and `EXCLUDE`, just like a single explicit `TARGET`; stopped guests are allowed. Running guests receive preflight root-space, memory and backup-recovery checks for the entire selected set before any update; stopped guests cannot be probed using `pct exec` until they start, so their resource checks run in the existing per-LXC requirements phase after temporary startup. Recovery-policy conflicts block the entire selection. If one guest update fails, Forge attempts its existing same-run recovery and continues to the next, reporting a nonzero global command exit code.
+
+For any explicitly selected stopped LXC, Forge starts it temporarily, waits up to 30 seconds for a minimal `pct exec` readiness probe, performs the update, and returns it to stopped state afterwards. Guests already running do not use this startup-readiness phase.
 
 ## `forge lxc update all`
 
