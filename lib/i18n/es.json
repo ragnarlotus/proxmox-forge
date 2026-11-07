@@ -79,7 +79,7 @@
   "cli.help.history": "Listar ejecuciones o consultar una detallada.",
   "cli.help.host": "Actualizar el host Proxmox VE.",
   "cli.help.list": "Listar los LXC seleccionados en ejecución.",
-  "cli.help.lxc": "Actualizar un LXC; iniciarlo temporalmente si está parado.",
+  "cli.help.lxc": "Actualizar LXC explícitos; iniciar temporalmente los detenidos.",
   "cli.help.lxc_all": "Actualizar los LXC seleccionados sin actualizar el host.",
   "cli.help.all": "Actualizar el host y después los LXC seleccionados.",
   "cli.help.scheduled": "Actualizar solo objetivos autorizados en programación.",
