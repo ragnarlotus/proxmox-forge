@@ -242,7 +242,7 @@ def emit(rows, width, enabled):
         ]
         def output(cells):
             print(" | ".join(cell.ljust(sizes[i]) for i, cell in enumerate(cells)).rstrip())
-        output(HEADERS)
+        output(headers())
         print("-+-".join("-" * size for size in sizes))
         for row, cells in zip(rows, values):
             parts = [wrap(value, sizes[i]) for i, value in enumerate(cells)]
