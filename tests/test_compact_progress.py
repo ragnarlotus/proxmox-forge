@@ -92,6 +92,78 @@ class CompactProgressTests(unittest.TestCase):
                         "package manager failed", "resultado FAILED"):
             self.assertIn(message, result.stdout)
 
+    def test_final_table_survives_compact_mode_without_losing_columns(self):
+        table = (
+            "Resultados finales de Forge\n"
+            "VMID | Nombre     | APT | Versión software   | Cambios | Resultado\n"
+            "-----+------------+-----+--------------------+---------+----------------\n"
+            "101  | pihole     | 2   | v6.4.3 → v6.4.4   | [1]     | OK\n"
+            "105  | caddy      | 0   | v2.11.6           | [2]     | ERROR: health\n"
+            "\n"
+            "Enlaces del historial de cambios:\n"
+            "  [1] Cambios: https://github.com/pi-hole/pi-hole\n"
+            "  [2] Cambios: https://github.com/caddyserver/caddy\n"
+            "Totales: targets=2 selected=2 attempted=2 OK=1 ERROR=1 SKIPPED=0 NOT_RUN=0\n"
+            "result_global status=PARTIAL targets=2 selected=2 attempted=2 succeeded=1 failed=1 skipped=0 not_run=0\n"
+            "Resultado global: PARTIAL\n"
+            "\n"
+            "Objetivos fallidos o bloqueados (1):\n"
+            "  105 | caddy | ERROR\n"
+            "    Detalle: ERROR: health (exit 1); recovery succeeded\n"
+        )
+        result = run_presenter(
+            "update_all=start mode=selected update_host=false lxc_targets=2\n"
+            "update_all_target=start vmid=101\n"
+            "stage=start name=os_update\n"
+            "Reading package lists (must remain hidden)\n"
+            "update_all_target=success vmid=101 exit_code=0\n"
+            "update_all_target=start vmid=105\n"
+            "stage=start name=health\n"
+            "update_all_target=failed vmid=105 exit_code=1\n"
+            + table
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(table, result.stdout)
+        self.assertEqual(result.stdout.count("Resultados finales de Forge"), 1)
+        self.assertLess(
+            result.stdout.index("forge history 20261106T185000-100"),
+            result.stdout.index("Resultados finales de Forge"),
+        )
+        self.assertNotIn("Reading package lists", result.stdout)
+
+    def test_terminal_keeps_final_table_after_dashboard(self):
+        master, slave = pty.openpty()
+        try:
+            process = subprocess.Popen(
+                ["python3", "-u", str(PRESENTER), "bulk", "selected"],
+                stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE,
+                env={**os.environ, "TERM": "xterm-256color", "FORGE_LANGUAGE": "es"},
+            )
+            os.close(slave)
+            slave = -1
+            process.stdin.write(
+                b"update_all=start mode=selected update_host=false lxc_targets=1\n"
+                b"update_all_target=start vmid=101\n"
+                b"stage=start name=health\n"
+                b"update_all_target=success vmid=101 exit_code=0\n"
+                b"Resultados finales de Forge\n"
+                b"VMID | Nombre | Resultado\n"
+                b"101  | pihole | OK\n"
+                b"result_global status=SUCCESS targets=1 succeeded=1 failed=0\n"
+                b"Resultado global: SUCCESS\n"
+            )
+            process.stdin.close()
+            self.assertEqual(process.wait(timeout=10), 0, process.stderr.read().decode())
+            output = read_pty(master)
+            self.assertIn("Resultados finales de Forge", output)
+            self.assertIn("101  | pihole | OK", output)
+            self.assertIn("Resultado global: SUCCESS", output)
+            self.assertIn("100%", output)
+        finally:
+            if slave >= 0:
+                os.close(slave)
+            os.close(master)
+
     def test_terminal_draws_live_dashboard_in_place(self):
         master, slave = pty.openpty()
         try:
