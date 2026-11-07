@@ -29,6 +29,13 @@ FORGE_DIR="$(cd "$(dirname "$FORGE_ENTRYPOINT")" && pwd)" || {
   exit 1
 }
 
+# F246: user-facing presentation only; the validated configuration owns the
+# language, never untrusted environment values or external updater output.
+export FORGE_LANGUAGE=en
+forge_tr() {
+  python3 "$FORGE_DIR/lib/i18n/translate.py" "$@"
+}
+
 CONFIG_FILE="$FORGE_DIR/forge.conf.default"
 LOCAL_CONFIG_FILE="$FORGE_DIR/forge.conf"
 RUNTIME_GUARD_SCRIPT="$FORGE_DIR/lib/runtime/require-context.sh"
@@ -139,15 +146,17 @@ cleanup_run_state() {
       "${fields[@]}" || \
       printf 'WARNING: could not record Forge run completion: %s\n' "$FORGE_RUN_LOG" >&2
     if [[ -n "$duration_seconds" ]]; then
+      local duration=""
       if (( duration_seconds >= 3600 )); then
-        printf 'Forge run duration: %d h %d m %d s\n' \
+        printf -v duration '%d h %d m %d s' \
           "$((duration_seconds / 3600))" "$(((duration_seconds % 3600) / 60))" "$((duration_seconds % 60))"
       elif (( duration_seconds >= 60 )); then
-        printf 'Forge run duration: %d m %d s\n' \
+        printf -v duration '%d m %d s' \
           "$((duration_seconds / 60))" "$((duration_seconds % 60))"
       else
-        printf 'Forge run duration: %d s\n' "$duration_seconds"
+        printf -v duration '%d s' "$duration_seconds"
       fi
+      forge_tr cli.run_duration "duration=$duration"
     fi
   fi
   : > "$LOCK_FILE" 2>/dev/null || true
@@ -217,8 +226,15 @@ ensure_lxc_environment() {
 case "${1:-}" in
   validate-config|show-config|status|history|host|lxc)
     config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
+    export FORGE_LANGUAGE="${CONFIG[LANGUAGE]}"
     write_runtime_state
     export FORGE_RUNTIME_CONFIG_READY=true
+    ;;
+  help|-h|--help|'')
+    # Keep help available in English even if local config is invalid.
+    if config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" >/dev/null 2>&1; then
+      export FORGE_LANGUAGE="${CONFIG[LANGUAGE]}"
+    fi
     ;;
 esac
 
@@ -226,6 +242,7 @@ esac
 # explicit self-update: a self-update may need to repair invalid defaults.
 if [[ "${1:-}" == update && "${2:-}" != self-update ]]; then
   config_get_files "$CONFIG_FILE" "$LOCAL_CONFIG_FILE" || exit 1
+  export FORGE_LANGUAGE="${CONFIG[LANGUAGE]}"
   write_runtime_state
   export FORGE_RUNTIME_CONFIG_READY=true
 fi
@@ -249,28 +266,29 @@ offer_self_update() {
     return 0
   }
   [[ "$check_result" == self_update=available\ * ]] || return 0
-  printf 'New Forge revision available on main:\n%s\n' "$check_result"
+  forge_tr cli.prompt.available
+  printf '%s\n' "$check_result"
   while :; do
-    printf 'Update Forge first? [y]es/[n]o/[c]ancel (default: no): '
+    printf '%s ' "$(forge_tr cli.prompt.question)"
     if ! IFS= read -r answer </dev/tty; then
-      printf '\nERROR: Forge update prompt was interrupted; system update cancelled\n' >&2
+      printf '\n%s\n' "$(forge_tr cli.prompt.interrupted)" >&2
       return 1
     fi
     case "$answer" in
-      y|Y|yes|YES)
+      y|Y|yes|YES|s|S|si|SI|sí|SÍ)
         bash "$SELF_UPDATE_SCRIPT" update "$FORGE_DIR" main || {
-          printf 'ERROR: Forge self-update failed; system update cancelled\n' >&2
+          forge_tr cli.prompt.failed >&2
           return 1
         }
-        printf 'Forge updated; restarting the requested command with the new code.\n'
+        forge_tr cli.prompt.restarting
         # The new CLI must acquire the global lock before any new mutation.
         # The old shell is replaced; its exit trap is not run.
         export FORGE_SELF_UPDATE_SKIP_PROMPT=1 FORGE_SELF_UPDATE_REEXEC=1
         exec "$FORGE_ENTRYPOINT" "$@"
         ;;
       n|N|no|NO|'') return 0 ;;
-      c|C|cancel|CANCEL) printf 'System update cancelled.\n'; return 1 ;;
-      *) printf 'Please answer y, n or c.\n' ;;
+      c|C|cancel|CANCEL|cancelar|CANCELAR) forge_tr cli.prompt.cancelled; return 1 ;;
+      *) forge_tr cli.prompt.invalid ;;
     esac
   done
 }
@@ -413,9 +431,9 @@ main() {
       [[ $# -eq 1 ]] || fail "validate-config does not accept additional arguments"
       check_running_lxc_conflicts
       if [[ -f "$LOCAL_CONFIG_FILE" ]]; then
-        printf 'Forge configuration OK: defaults=%s overrides=%s\n' "$CONFIG_FILE" "$LOCAL_CONFIG_FILE"
+        forge_tr cli.config_ok "defaults=$CONFIG_FILE" "overrides=$LOCAL_CONFIG_FILE"
       else
-        printf 'Forge configuration OK: defaults=%s overrides=none\n' "$CONFIG_FILE"
+        forge_tr cli.config_ok "defaults=$CONFIG_FILE" "overrides=$(forge_tr cli.no_overrides)"
       fi
       ;;
     show-config)
