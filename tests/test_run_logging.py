@@ -146,6 +146,8 @@ class RunLoggingTests(unittest.TestCase):
             CAPTURE, target, "os", "--", "python3", "-c", producer, env=env,
         )
         self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertIn("stage=start name=os", result.stdout)
+        self.assertIn("stage=failed name=os exit_code=23", result.stdout)
         self.assertIn("coloured", result.stdout)
         self.assertIn("\x1b[31m", result.stdout)
         for path in (run, target):
@@ -159,6 +161,23 @@ class RunLoggingTests(unittest.TestCase):
             self.assertEqual(content.count("event=stage_end"), 1)
             self.assertEqual(content.count("error from producer"), 1)
         self.assertEqual(run.read_text(), target.read_text())
+
+    def test_successful_stage_emits_completion_once_after_output(self):
+        run = self.open_run()
+        target = self.root / "target.log"
+        target.touch()
+        result = self.command(
+            CAPTURE, target, "health", "--", "bash", "-c",
+            "printf 'health=ok\\n'",
+            env={**self.env, "FORGE_RUN_LOG": str(run)},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("stage=completed name=health"), 1)
+        self.assertLess(result.stdout.index("health=ok"),
+                        result.stdout.index("stage=completed name=health"))
+        self.assertIn("stage=start name=health", result.stdout)
+        self.assertEqual(target.read_text().count("event=stage_end"), 1)
+        self.assertEqual(run.read_text().count("event=stage_end"), 1)
 
     def test_stage_output_is_streamed_before_producer_finishes(self):
         import select

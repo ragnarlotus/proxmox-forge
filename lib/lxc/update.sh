@@ -172,6 +172,10 @@ bash "$log_write_script" "$log_file" INFO target_update_start \
   "state=$initial_state" \
   "selection_mode=$selection_mode" || fail "could not record update start for LXC $vmid"
 
+# Identify explicit single-guest runs before their first stage. Bulk runs
+# already identify the current VMID through update_all_target=start.
+printf 'type=lxc vmid=%s name=%s state=%s template=false\n' "$vmid" "$name" "$initial_state"
+
 started_at="$(date +%s)" || fail "could not create update start timestamp"
 backup_volume=""
 package_manager=""
@@ -189,6 +193,7 @@ record_skipped_stage() {
   bash "$log_write_script" "$log_file" INFO stage_skipped \
     "stage=$stage_name" \
     "reason=$reason" || fail "could not record skipped $stage_name stage"
+  printf 'stage=skipped name=%s reason=%s\n' "$stage_name" "$reason"
 }
 
 wait_for_guest_exec() {
@@ -246,6 +251,7 @@ restore_initial_state() {
       bash "$log_write_script" "$log_file" INFO stage_skipped \
         "stage=lifecycle_stop" \
         "reason=already_stopped" || true
+      printf 'stage=skipped name=lifecycle_stop reason=already_stopped\n'
       return 0
       ;;
     running)
@@ -391,6 +397,8 @@ if [[ "$initial_state" == stopped ]]; then
   wait_for_guest_exec || finish_failed lifecycle_readiness 1
 
   target_record="type=lxc vmid=$vmid name=$name state=running template=false"
+else
+  record_skipped_stage lifecycle_start already_running
 fi
 
 requirements_output_file="$(mktemp)" || finish_failed requirements 1
@@ -504,6 +512,8 @@ if [[ "$mutation_planned" == true && ( "$temp_cores" != 0 || "$temp_memory" != 0
     rm -f -- "$resource_state_file"
     resource_state_file=""
   fi
+else
+  record_skipped_stage resource_apply no_resource_adjustments
 fi
 
 if [[ "${CONFIG[UPDATE_LXC_OS]}" == true ]]; then
@@ -545,6 +555,8 @@ else
         "vmid=$vmid" "status=unknown" "exit_code=$held_result" || \
         printf 'ERROR: could not log LXC held-package warning\n' >&2
     fi
+  else
+    record_skipped_stage held_packages no_applicable_apt_update
   fi
 fi
 
@@ -579,8 +591,13 @@ else
 fi
 
 # Verify health at the ORIGINAL resource limits rather than at boosted limits.
-restore_temp_resources
-stage_result=$?
+if [[ "$resource_cleanup_pending" == true ]]; then
+  restore_temp_resources
+  stage_result=$?
+else
+  record_skipped_stage resource_restore no_resource_adjustments
+  stage_result=0
+fi
 if (( stage_result != 0 )); then
   finish_failed resource_restore "$stage_result" "could not restore original LXC resources"
 fi
@@ -621,6 +638,7 @@ else
 fi
 
 # Inspect while still running, before restoring an originally stopped guest.
+printf 'stage=start name=reboot_check\n'
 reboot_required=unknown
 reboot_record="$(bash "$reboot_script" "$vmid")"
 reboot_check_result=$?
@@ -629,6 +647,7 @@ if (( reboot_check_result == 0 )) && [[ "$reboot_record" =~ ^reboot_required=(ye
   printf '%s\n' "$reboot_record"
   bash "$log_write_script" "$log_file" INFO reboot_status \
     "vmid=$vmid" "reboot_required=$reboot_required" || fail "could not log LXC reboot status"
+  printf 'stage=completed name=reboot_check\n'
 else
   if [[ -n "$result_warning" ]]; then result_warning+="; "; fi
   result_warning+="reboot requirement unknown (check exit $reboot_check_result)"
@@ -636,6 +655,7 @@ else
   bash "$log_write_script" "$log_file" WARN reboot_status \
     "vmid=$vmid" "reboot_required=unknown" "check_exit_code=$reboot_check_result" || \
     printf 'ERROR: could not log LXC reboot check warning\n' >&2
+  printf 'stage=completed name=reboot_check\n'
 fi
 
 # Finalize before stopping an initially stopped guest. Only a completed
@@ -643,6 +663,9 @@ fi
 # mutations and rollbacks use the post-recovery installed state instead.
 forge_apt_finalize "$vmid"
 forge_app_finalize "$vmid" "$log_file" true
+if [[ "$initial_state" == running ]]; then
+  record_skipped_stage lifecycle_stop already_running
+fi
 restore_initial_state
 stage_result=$?
 if (( stage_result != 0 )); then

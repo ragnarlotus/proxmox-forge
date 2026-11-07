@@ -27,6 +27,7 @@
   "progress.stage.resource_restore": "Restoring resources",
   "progress.stage.health": "Checking services",
   "progress.stage.fstrim": "Trimming filesystem",
+  "progress.stage.reboot_check": "Checking restart requirement",
   "progress.stage.recovery": "Restoring backup",
   "progress.stage.lifecycle_start": "Starting container",
   "progress.stage.lifecycle_stop": "Restoring original state",

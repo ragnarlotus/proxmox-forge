@@ -261,6 +261,25 @@ class ExactlyOnceTests(unittest.TestCase):
         self.assertIn("result_target type=lxc vmid=111 name=share selected=true attempted=true status=OK reason=completed apt_upgraded=2", result.stdout)
 
 
+    def test_skipped_lxc_stages_emit_progress_markers(self):
+        result, steps, _ = self.invoke(
+            FORGE_TEST_OS="false",
+            FORGE_TEST_APPLICATION="false",
+            FORGE_TEST_CUSTOM_SCRIPTS="false",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("type=lxc vmid=111 name=share state=running", result.stdout)
+        for stage in (
+            "lifecycle_start", "backup", "snapshot", "resource_apply",
+            "os_update", "held_packages", "application_update",
+            "custom_scripts", "resource_restore", "health", "fstrim",
+            "lifecycle_stop",
+        ):
+            with self.subTest(stage=stage):
+                self.assertEqual(result.stdout.count(f"stage=skipped name={stage} "), 1)
+        self.assertEqual(result.stdout.count("stage=completed name=reboot_check"), 1)
+        self.assertEqual(steps.count("reboot"), 1)
+
     def test_f234_temp_resources_surround_mutation_not_backup_or_health(self):
         result, steps, _ = self.invoke(FORGE_TEST_TEMP_CORES="4",
                                        FORGE_TEST_TEMP_MEMORY_MB="4096")

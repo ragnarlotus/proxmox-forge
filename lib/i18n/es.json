@@ -27,6 +27,7 @@
   "progress.stage.resource_restore": "Restaurando recursos",
   "progress.stage.health": "Verificando servicios",
   "progress.stage.fstrim": "Optimizando almacenamiento",
+  "progress.stage.reboot_check": "Comprobando necesidad de reinicio",
   "progress.stage.recovery": "Restaurando desde copia de seguridad",
   "progress.stage.lifecycle_start": "Iniciando contenedor",
   "progress.stage.lifecycle_stop": "Restaurando estado inicial",

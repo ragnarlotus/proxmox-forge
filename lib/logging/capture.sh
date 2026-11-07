@@ -68,6 +68,7 @@ if (( command_status != 0 )); then
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=failed" "exit_code=$command_status" "duration_seconds=$duration_seconds" || \
     printf 'ERROR: could not record failed stage result in %s\n' "$log_file" >&2
+  printf 'stage=failed name=%s exit_code=%s\n' "$stage" "$command_status"
   exit "$command_status"
 fi
 
@@ -76,6 +77,7 @@ if (( stream_status != 0 )); then
     "$stage" "$stream_status" >&2
   bash "$write_script" "$log_file" ERROR stage_end \
     "stage=$stage" "status=logging_failed" "exit_code=$stream_status" "duration_seconds=$duration_seconds" 2>/dev/null || true
+  printf 'stage=failed name=%s exit_code=%s\n' "$stage" "$stream_status"
   exit "$stream_status"
 fi
 
@@ -83,4 +85,7 @@ bash "$write_script" "$log_file" INFO stage_end \
   "stage=$stage" "status=success" "exit_code=0" "duration_seconds=$duration_seconds" || \
   fail "command succeeded but its final log record could not be written"
 
+# Presentation-only completion signal: the authoritative stage_end is already
+# stored in the target/run logs. Do not change stage outcome or execute twice.
+printf 'stage=completed name=%s\n' "$stage"
 exit 0
