@@ -8,6 +8,9 @@ import shlex
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "i18n"))
+from translate import tr  # noqa: E402
+
 from table import clean, fields, parse, summarize
 
 RUN_ID = re.compile(r"[0-9]{8}T[0-9]{6}-[0-9]+")
@@ -235,7 +238,7 @@ def available_runs(root, fqdn):
 
 def duration_text(seconds):
     if seconds is None:
-        return "unknown"
+        return tr("history.unknown")
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
     if hours:
@@ -246,61 +249,61 @@ def duration_text(seconds):
 
 
 def show_detail(run):
-    print("Forge execution")
+    print(tr("history.title"))
     for name, value in (
-        ("Run", run["run_id"]), ("Started", run["started_at"]),
-        ("Finished", run["finished_at"]),
-        ("Duration", duration_text(run["duration_seconds"])),
-        ("Command", run["command"]),
-        ("Result", run["status"]), ("Exit code", run["exit_code"]),
+        (tr("history.run"), run["run_id"]), (tr("history.started"), run["started_at"]),
+        (tr("history.finished"), run["finished_at"]),
+        (tr("history.duration"), duration_text(run["duration_seconds"])),
+        (tr("history.command"), run["command"]),
+        (tr("history.result"), run["status"]), (tr("history.exit"), run["exit_code"]),
     ):
-        print(f"  {name}: {clean(value) if value is not None else 'unknown'}")
+        print(f"  {name}: {clean(value) if value is not None else tr('history.unknown')}")
     if not run["complete"]:
-        print("  Execution: INCOMPLETE (no recorded run_end; running or interrupted)")
+        print(tr("history.execution_incomplete"))
     totals = run["totals"]
     if totals:
         print(
-            f"  Targets: {totals['targets']} | OK: {totals['succeeded']} | "
+            f"  {tr('history.targets')}: {totals['targets']} | OK: {totals['succeeded']} | "
             f"ERROR: {totals['failed']} | SKIPPED: {totals['skipped']} | "
             f"NOT_RUN: {totals['not_run']}"
         )
     else:
-        print("  Totals: unknown (no authoritative global result)")
+        print(tr("history.totals_unknown"))
     for target in run["targets"]:
         print(f"  {target['vmid']} ({target['name']}): {target['status']}")
-        print(f"    Detail: {target['result_detail']}")
+        print(f"    {tr('history.detail')}: {target['result_detail']}")
         if target["attempted"]:
-            print(f"    Duration: {duration_text(target['duration_seconds'])}")
+            print(f"    {tr('history.duration')}: {duration_text(target['duration_seconds'])}")
             for stage in target["stages"]:
-                print(f"    Stage {stage['name']}: "
+                print(f"    {tr('history.stage')} {stage['name']}: "
                       f"{duration_text(stage['duration_seconds'])} ({stage['status']})")
-            print(f"    APT upgraded: {target['apt_upgraded'] if target['apt_upgraded'] is not None else 'unknown'}")
+            print(f"    {tr('history.apt')}: {target['apt_upgraded'] if target['apt_upgraded'] is not None else tr('history.unknown')}")
             before, after = target["app_before"], target["app_after"]
             if before or after:
-                print(f"    Application: {before or 'unknown'} -> {after or 'unknown'}")
-            print(f"    Reboot required: {target['reboot_required'] or 'unknown'}")
+                print(f"    {tr('history.application')}: {before or tr('history.unknown')} -> {after or tr('history.unknown')}")
+            print(f"    {tr('history.reboot')}: {target['reboot_required'] or tr('history.unknown')}")
             if target["failed_stage"]:
-                print(f"    Failed stage: {target['failed_stage']}")
+                print(f"    {tr('history.failed_stage')}: {target['failed_stage']}")
             if target["recovery"]:
-                print(f"    Recovery: {target['recovery']}")
+                print(f"    {tr('history.recovery')}: {target['recovery']}")
             if target["backup"]:
-                print(f"    Backup: {target['backup']}")
+                print(f"    {tr('history.backup')}: {target['backup']}")
     if not run["targets"]:
-        print("  No authoritative target records available.")
-    print(f"  Log: {run['log_path']}")
+        print(tr("history.no_targets"))
+    print(f"  {tr('history.log')}: {run['log_path']}")
 
 
 def show_history(runs):
     if not runs:
-        print("No retained Forge update executions found.")
+        print(tr("history.no_runs"))
         return
-    print("Retained Forge update executions (newest first):")
+    print(tr("history.list"))
     for run in runs:
         totals = run["totals"]
         counts = (
             f"OK={totals['succeeded']} ERROR={totals['failed']} "
             f"SKIPPED={totals['skipped']} NOT_RUN={totals['not_run']}"
-            if totals else "target totals unknown"
+            if totals else tr("history.totals_unknown_short")
         )
         completion = "" if run["complete"] else " [INCOMPLETE]"
         print(f"  {run['run_id']}  {run['status']}{completion}  "
