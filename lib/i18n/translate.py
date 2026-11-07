@@ -37,7 +37,7 @@ def language():
 
 
 def tr(key, lang=None, **kwargs):
-    chosen = lang if lang in SUPPORTED else language()
+    chosen = language() if lang is None else (lang if lang in SUPPORTED else "en")
     template = load(chosen).get(key) or load("en").get(key, key)
     return template.format(**kwargs)
 
