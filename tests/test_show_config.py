@@ -42,6 +42,8 @@ class ShowConfigTests(unittest.TestCase):
             "lib/config/validate.sh",
             "lib/config/show.sh",
             "lib/cli/help.sh",
+            "lib/i18n/help.py", "lib/i18n/translate.py",
+            "lib/i18n/en.json", "lib/i18n/es.json",
         ):
             target = checkout / path
             target.parent.mkdir(parents=True, exist_ok=True)
