@@ -47,7 +47,7 @@ silently falling back to a foreground job. A second manual update detects the
 active persistent session and directs the operator to `forge back`.
 
 Only manual host/LXC/bulk updates use this mode. Read-only CLI commands,
-`forge update self-update` and systemd-scheduled updates do not start tmux
+`forge self-update` and systemd-scheduled updates do not start tmux
 sessions. No automatic resume occurs after a host reboot.
 
 The compact interactive progress view also works through `forge back`.
