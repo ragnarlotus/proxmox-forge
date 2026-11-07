@@ -262,6 +262,15 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("self-update [BRANCH]", result.stdout)
 
+    def test_obsolete_nested_command_and_extra_args_are_rejected(self):
+        old = self.run_cli("update", "self-update")
+        self.assertNotEqual(old.returncode, 0)
+        self.assertIn("usage: forge update all|scheduled", old.stderr)
+
+        extra = self.run_cli("self-update", "main", "unexpected")
+        self.assertNotEqual(extra.returncode, 0)
+        self.assertIn("usage: forge self-update [BRANCH]", extra.stderr)
+
     def test_accept_default_prompt_reexecutes_under_same_lock(self):
         self.push_update()
         # No local override: the default must prompt on interactive manual runs.
