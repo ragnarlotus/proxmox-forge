@@ -85,9 +85,12 @@ recovery-only stages are excluded from the planned total. The percent reflects
 completed work, not remaining time. Host updates contribute as one target upon
 completion. After the dashboard finishes, the original six-column
 final-results table is displayed, including application version changes, warnings,
-changelog links and the failure/blocked-target digest. All authoritative result
-records, full stage output, the same final table and exact exit statuses remain
-in the retained run/target logs. The dashboard is presentation-only and can be
+changelog links and the failure/blocked-target digest. Totals are separated from
+the table/links by a blank line; the machine-readable `result_global` record
+remains available to the dashboard and run logs but is hidden in the compact
+table. All authoritative result records, full stage output, the same final
+table and exact exit statuses remain in the retained run/target logs. The
+dashboard is presentation-only and can be
 reattached through `forge back` when persistent sessions are enabled.
 
 To see the original verbose output for one invocation, run
