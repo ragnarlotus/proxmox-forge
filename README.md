@@ -14,6 +14,7 @@ The [feature checklist](FEATURE_CHECKLIST.md) tracks implemented capabilities, a
 - **Preflight and verification:** disk/memory checks, backup/restore safety validation, optional temporary CPU/RAM increases for LXC updates, service and functional health checks, reboot-needed detection and LXC `fstrim`.
 - **Results and diagnostics:** per-target and per-run logs, configurable retention, elapsed times, actual APT upgrade counts, detected application versions, actionable errors, and `forge status` / `forge history` (including JSON output).
 - **Console experience:** compact live progress for interactive manual updates; `FORGE_OUTPUT_MODE=full` restores detailed terminal output without changing the stored logs.
+- **Languages (F246):** English by default, optional Spanish using `LANGUAGE=es` in `forge.conf`, with stable technical records and JSON.
 - **Execution safety:** a single global lock, optional reattachable manual update sessions through `tmux` and `forge back`, and protected self-updates from Git.
 - **Automation and notifications:** optional explicitly authorized systemd scheduling (disabled until installed/enabled) and configurable final root-mail notifications through the existing Proxmox mail routing.
 - **Tests:** automated unit/integration regression tests in `tests/`, executed through GitHub Actions, alongside selected real-host acceptance checks.
@@ -36,6 +37,7 @@ proxmox-forge/
 │   ├── cli/                    # CLI help and documentation
 │   ├── config/                 # Configuration and preflight policy
 │   ├── host/                   # Host update
+│   ├── i18n/                   # English/Spanish presentation catalogues
 │   ├── logging/                # Complete output capture and retained logs
 │   ├── lxc/                    # Guest updates and lifecycle
 │   ├── runtime/                # Locking and persistent sessions
@@ -90,6 +92,7 @@ For commands and output modes, see the [CLI reference](lib/cli/README.md).
 | --- | --- |
 | [CLI](lib/cli/README.md) | Commands, interactive progress, results and self-update |
 | [Configuration](lib/config/README.md) | Defaults, local overrides, validation and options |
+| [Languages](lib/i18n/README.md) | English/Spanish presentation, translation catalogues and technical output |
 | [Backup and recovery](lib/backup/README.md) | Host backup/restore and the **LXC recovery policy** |
 | [Runtime and safety](lib/runtime/README.md) | Global lock and **persistent manual updates (F131)** |
 | [Host update](lib/host/README.md) | Local Proxmox host update and reboot notices |
