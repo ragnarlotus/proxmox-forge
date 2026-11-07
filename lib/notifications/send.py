@@ -38,7 +38,7 @@ def notify(lines, mode, policy):
     # Fixed headers eliminate newline/header injection from guest data.
     message = (
         "To: root\n"
-        f"Subject: [Proxmox Forge] [{mode.upper()}] {status} - update results\n"
+        f"Subject: {table.tr('email.subject', mode=mode.upper(), status=status)}\n"
         "MIME-Version: 1.0\n"
         "Content-Type: text/plain; charset=UTF-8\n"
         "Content-Transfer-Encoding: 8bit\n"

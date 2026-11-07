@@ -295,6 +295,7 @@ class RunLoggingTests(unittest.TestCase):
             "lib/config/load.sh", "lib/config/validate.sh",
             "lib/runtime/require-context.sh", "lib/runtime/persistent.sh",
             "lib/runtime/persistent-worker.sh", "lib/logging/init.sh",
+            "lib/i18n/translate.py", "lib/i18n/en.json", "lib/i18n/es.json",
             "lib/logging/write.sh",
         ]
         for part in parts:

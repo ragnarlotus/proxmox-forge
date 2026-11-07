@@ -51,6 +51,8 @@ Only manual host/LXC/bulk updates use this mode. Read-only CLI commands,
 sessions. No automatic resume occurs after a host reboot.
 
 The compact interactive progress view also works through `forge back`.
+The worker loads validated `LANGUAGE=en|es` from the host-local configuration;
+reconnecting does not change the selected language.
 Set `FORGE_OUTPUT_MODE=full` when launching a manual update to retain the
 detailed terminal stream in its tmux session; both views preserve the same
 complete run logs and authoritative exit status.

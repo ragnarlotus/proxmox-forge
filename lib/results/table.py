@@ -10,6 +10,10 @@ import textwrap
 import unicodedata
 from collections import Counter
 from urllib.parse import unquote
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "i18n"))
+from translate import tr  # noqa: E402
 
 FIELDS = (
     "type", "vmid", "name", "selected", "attempted", "status", "reason",
@@ -17,7 +21,10 @@ FIELDS = (
     "failed_stage", "recovery", "result_detail",
 )
 STATUSES = ("OK", "ERROR", "SKIPPED", "NOT_RUN")
-HEADERS = ("VMID", "Name", "APT", "Software version", "Changelog", "Result")
+def headers():
+    return tuple(tr("table.header." + key) for key in (
+        "vmid", "name", "apt", "version", "changelog", "result"
+    ))
 COLORS = {"OK": "\033[32m", "ERROR": "\033[31m",
           "SKIPPED": "\033[33m", "NOT_RUN": "\033[33m"}
 
@@ -145,8 +152,8 @@ def emit_failures(rows, width, enabled):
     affected = [row for row in rows if row["status"] in ("ERROR", "NOT_RUN")]
     if not affected:
         return
-    print(f"\nFailed and blocked targets ({len(affected)}):")
-    prefix = "    Detail: "
+    print("\n" + tr("table.failed", count=len(affected)))
+    prefix = tr("table.detail")
     for row in affected:
         name = clean(row["name"])
         status = row["status"]
@@ -200,7 +207,15 @@ def emit_compact_table(rows, values, width, enabled):
         print(" | ".join(str(value).ljust(sizes[i])
                          for i, value in enumerate(cells)).rstrip())
 
-    output(HEADERS)
+    # Localized headers may be longer than the minimum compact column widths.
+    header_columns = [
+        textwrap.wrap(label, width=sizes[i], break_long_words=True,
+                      break_on_hyphens=False) or [""]
+        for i, label in enumerate(headers())
+    ]
+    for index in range(max(map(len, header_columns))):
+        output([column[index] if index < len(column) else ""
+                for column in header_columns])
     print("-+-".join("-" * size for size in sizes))
     for row, cells in zip(rows, cells_by_row):
         # All cell content is preserved, even on narrow terminals; URLs are
@@ -217,25 +232,25 @@ def emit_compact_table(rows, values, width, enabled):
                 physical[5] = colored(physical[5], row["status"], enabled)
             output(physical)
     if urls:
-        print("\nChangelog links:")
+        print("\n" + tr("table.changelog_links"))
         for url in urls:
-            print(f"  {references[url]} Changelog: {url}")
+            print(f"  {references[url]} {tr('table.changelog')}: {url}")
 
 
 def emit(rows, width, enabled):
-    print("\nForge final results")
+    print("\n" + tr("table.title"))
     values = [fields(row) for row in rows]
     # Full 6-column grid only where URL and diagnostics remain readable.
     full = width >= 166
     if full:
         caps = (6, 24, 5, 29, 58, min(70, max(32, width - 130)))
         sizes = [
-            min(cap, max(len(HEADERS[i]), *(len(v[i]) for v in values)))
+            min(cap, max(len(headers()[i]), *(len(v[i]) for v in values)))
             for i, cap in enumerate(caps)
         ]
         def output(cells):
             print(" | ".join(cell.ljust(sizes[i]) for i, cell in enumerate(cells)).rstrip())
-        output(HEADERS)
+        output(headers())
         print("-+-".join("-" * size for size in sizes))
         for row, cells in zip(rows, values):
             parts = [wrap(value, sizes[i]) for i, value in enumerate(cells)]
@@ -248,7 +263,7 @@ def emit(rows, width, enabled):
         emit_compact_table(rows, values, width, enabled)
     counts, selected, attempted, status = summarize(rows)
     print(
-        "Totals: targets={total} selected={selected} attempted={attempted} "
+        tr("table.total") + " targets={total} selected={selected} attempted={attempted} "
         "OK={ok} ERROR={error} SKIPPED={skipped} NOT_RUN={not_run}".format(
             total=len(rows), selected=selected, attempted=attempted,
             ok=counts["OK"], error=counts["ERROR"], skipped=counts["SKIPPED"],
@@ -266,8 +281,8 @@ def emit(rows, width, enabled):
             not_run=counts["NOT_RUN"],
         )
     )
-    note = " (no targets selected)" if selected == 0 else ""
-    print(f"Overall result: {status}{note}")
+    note = tr("table.no_targets") if selected == 0 else ""
+    print(tr("table.overall", status=status, note=note))
     emit_failures(rows, width, enabled)
 
 
@@ -282,8 +297,18 @@ def main():
     if run_log:
         try:
             with open(run_log, "a", encoding="utf-8") as logfile:
-                with redirect_stdout(logfile):
-                    emit(rows, width, False)
+                # Archived run logs keep canonical English presentation,
+                # regardless of the active interactive language.
+                previous_language = os.environ.get("FORGE_LANGUAGE")
+                try:
+                    os.environ["FORGE_LANGUAGE"] = "en"
+                    with redirect_stdout(logfile):
+                        emit(rows, width, False)
+                finally:
+                    if previous_language is None:
+                        os.environ.pop("FORGE_LANGUAGE", None)
+                    else:
+                        os.environ["FORGE_LANGUAGE"] = previous_language
         except OSError as exc:
             print(f"WARNING: could not write Forge run summary: {exc}", file=sys.stderr)
     emit(rows, width, enabled)

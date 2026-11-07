@@ -67,6 +67,14 @@ without end events report unknown duration rather than estimating it from
 wall-clock timestamps. Stage durations need not sum to total target duration
 because preflight and other work can occur between captured stages.
 
+## Language selection (F246)
+
+Forge displays its own help, progress, final result headings and readable
+status/history in English by default. Set `LANGUAGE=es` in the local
+`forge.conf` for Spanish. The user-facing presentation does not translate
+technical status identifiers, machine-readable output, command names or
+external tool diagnostics. See [Languages](../i18n/README.md).
+
 ## Interactive update progress
 
 Interactive manual host, single-LXC and bulk updates now show a compact live dashboard:

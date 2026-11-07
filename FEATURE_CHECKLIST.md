@@ -289,6 +289,10 @@ These notes document current intent only; they do not mark capabilities implemen
 
 ---
 
+## Y. Localization and presentation
+
+- [x] **F246 — English/Spanish CLI internationalization (2026-11-07).** Introduce a validated `LANGUAGE=en|es` setting (English by default) with complete, versioned, UTF-8 English and Spanish message catalogues. Apply it to Forge-owned human-facing CLI help, compact interactive progress, run duration, readable status/history output, final-results headings and failure summaries, interactive self-update questions, and email subject/body presentation. Carry the validated setting into update subprocesses and F131 persistent tmux sessions; scheduled updates use the same local configuration. Use stable named placeholders and fall back to English for missing translations, without depending on OS locale or trying to translate external APT/Proxmox/application output. Preserve all structured event types and field names, stable status codes, run/target logs, archived canonical English tables, `result_target`/`result_global` records and JSON response structure. Do not change updates, backup/recovery, target selection, error codes, locks or CLI command syntax. Tests must cover en/es/default, invalid language rejection, dictionary parity, terminal/TTY/plain presentation, log/JSON compatibility, persisted modes and existing test-suite regression. German, French and Portuguese are future translation candidates, not included in this first release.
+
 # Product capability model
 
 Forge is organised conceptually around five major capabilities:

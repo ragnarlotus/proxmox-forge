@@ -10,6 +10,7 @@ set -u
 bash "$FORGE_RUNTIME_GUARD" || exit 1
 
 CONFIG_REQUIRED_KEYS=(
+  LANGUAGE
   UPDATE_HOST
   CHECK_FORGE_UPDATES_BEFORE_UPDATE
   PERSISTENT_UPDATE_SESSION
@@ -190,6 +191,11 @@ config_validate() {
   for key in "${CONFIG_BOOLEAN_KEYS[@]}"; do
     config_validate_boolean "$key" || return 1
   done
+
+  case "${CONFIG[LANGUAGE]}" in
+    en|es) ;;
+    *) config_validate_fail "LANGUAGE must be en or es (got '${CONFIG[LANGUAGE]}')"; return 1 ;;
+  esac
 
   for key in NOTIFY_MANUAL NOTIFY_SCHEDULED; do
     case "${CONFIG[$key]}" in

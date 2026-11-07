@@ -193,6 +193,15 @@ CHECK_FORGE_UPDATES_BEFORE_UPDATE=true
 
 
 # -----------------------------------------------------------------------------
+# Presentation language (F246)
+# -----------------------------------------------------------------------------
+
+# Human-facing CLI, progress, history and notifications; no effect on raw
+# technical logs or machine-readable record/JSON field names.
+# Supported: en (default), es. Additional translations can be added later.
+LANGUAGE=en
+
+# -----------------------------------------------------------------------------
 # Logging
 # -----------------------------------------------------------------------------
 

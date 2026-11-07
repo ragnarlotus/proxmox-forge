@@ -19,7 +19,8 @@ def run_presenter(text, mode="bulk", target="all"):
     return subprocess.run(
         ["python3", "-u", str(PRESENTER), mode, target],
         input=text, capture_output=True, text=True, check=False,
-        env={**os.environ, "FORGE_RUN_ID": "20261106T185000-100"},
+        env={**os.environ, "FORGE_RUN_ID": "20261106T185000-100",
+             "FORGE_LANGUAGE": "es"},
     )
 
 
@@ -97,7 +98,8 @@ class CompactProgressTests(unittest.TestCase):
             p = subprocess.Popen(
                 ["python3", "-u", str(PRESENTER), "bulk", "all"],
                 stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE,
-                env={**os.environ, "TERM": "xterm-256color"},
+                env={**os.environ, "TERM": "xterm-256color",
+                     "FORGE_LANGUAGE": "es"},
             )
             os.close(slave)
             slave = -1
@@ -133,6 +135,7 @@ class CompactProgressTests(unittest.TestCase):
                 "lib/config/load.sh", "lib/config/validate.sh",
                 "lib/runtime/require-context.sh", "lib/runtime/persistent.sh",
                 "lib/runtime/persistent-worker.sh", "lib/logging/init.sh",
+                "lib/i18n/translate.py", "lib/i18n/en.json", "lib/i18n/es.json",
                 "lib/logging/write.sh", "lib/ui/progress.py",
             )
             for part in parts:

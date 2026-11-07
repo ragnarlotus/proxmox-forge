@@ -47,6 +47,13 @@ F228 reads only retained general logs through `forge status [--json]` and `forge
 
 Forge records structured events with ISO timestamps, event names, fields, exit codes and durations where available. After the APT OS stage (or before an application-only update), it captures read-only F022 `held_upgrade_pending` records (package, installed and candidate versions), a pending count, and a warning **only when a newer candidate is blocked by an explicit hold**. Holds with no newer candidates are silent. Query failures are visible warnings, not a clean zero-hold result. Host `ERROR` events are mirrored to `error.log`.
 
+## Human-readable language versus technical records
+
+The validated `LANGUAGE=en|es` option selects Forge-owned presentation
+labels. Complete technical logs, event fields, status codes, and JSON remain
+language-independent. The archived F225 table in the run log uses English;
+only the terminal/email rendering is translated. See [Languages](../i18n/README.md).
+
 ## Compact interactive presentation
 
 Manual updates attached to a terminal display only their progress, active
