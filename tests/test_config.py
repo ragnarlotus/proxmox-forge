@@ -33,6 +33,7 @@ printf 'MIN_MEM_AVAILABLE_MB=%s\n' "${CONFIG[MIN_MEM_AVAILABLE_MB]}"
 printf 'LXC_UPDATE_TEMP_CORES=%s\n' "${CONFIG[LXC_UPDATE_TEMP_CORES]}"
 printf 'LXC_UPDATE_TEMP_MEMORY_MB=%s\n' "${CONFIG[LXC_UPDATE_TEMP_MEMORY_MB]}"
 printf 'LOG_KEEP=%s\n' "${CONFIG[LOG_KEEP]}"
+printf 'LANGUAGE=%s\n' "${CONFIG[LANGUAGE]}"
 printf 'HOST_BACKUP_EXTRA_PATHS=%s\n' "${CONFIG[HOST_BACKUP_EXTRA_PATHS]}"
 """
 
@@ -72,6 +73,13 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn(error, result.stderr)
 
+    def test_language_validation_and_local_override(self):
+        result = self.load("LANGUAGE=es\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("LANGUAGE=es\n", result.stdout)
+        for value in ("", "ES", "fr", "de", "auto", "../es", "en_US"):
+            self.assert_invalid(f"LANGUAGE={value}\n", "LANGUAGE must be en or es")
+
     def test_defaults_without_local_file(self):
         result = self.load()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -84,6 +92,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertIn("MIN_ROOT_FREE_MB=1024\n", result.stdout)
         self.assertIn("MIN_MEM_AVAILABLE_MB=128\n", result.stdout)
         self.assertIn("LOG_KEEP=8\n", result.stdout)
+        self.assertIn("LANGUAGE=en\n", result.stdout)
         self.assertIn("HEALTH_SCRIPTS_DIR=/opt/proxmox-forge/health.d\n", result.stdout)
 
     def test_local_overrides_defaults(self):
