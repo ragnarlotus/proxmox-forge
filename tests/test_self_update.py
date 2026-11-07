@@ -49,6 +49,8 @@ class ForgeSelfUpdateTests(unittest.TestCase):
             "lib/runtime/persistent.sh", "lib/runtime/persistent-worker.sh",
             "lib/config/get.sh", "lib/config/load.sh",
             "lib/config/validate.sh", "lib/cli/help.sh",
+            "lib/i18n/help.py", "lib/i18n/translate.py",
+            "lib/i18n/en.json", "lib/i18n/es.json",
         ):
             output = self.checkout / path
             output.parent.mkdir(parents=True, exist_ok=True)
