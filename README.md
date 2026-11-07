@@ -9,7 +9,7 @@ The [feature checklist](FEATURE_CHECKLIST.md) tracks implemented capabilities, a
 ## Current capabilities
 
 - **Host and LXC updates:** APT-based operating-system updates, Community Scripts application updaters (`/usr/bin/update`), optional per-LXC custom scripts and `apt-get autoremove`.
-- **Selection and lifecycle:** running LXCs in automatic runs; explicit updates of stopped LXCs with temporary startup and restoration of their original state; exclusions and scheduled allowlists.
+- **Selection and lifecycle:** running LXCs in automatic runs; one or several explicit VMIDs/hostnames in a single command (including stopped LXCs with temporary startup and original-state restoration); exclusions and scheduled allowlists.
 - **Backup and recovery:** Proxmox-job-based `vzdump` recovery archives for guests, optional automatic restore after eligible LXC failures, and Forge-created host configuration backups. Host rollback is not supported.
 - **Preflight and verification:** disk/memory checks, backup/restore safety validation, optional temporary CPU/RAM increases for LXC updates, service and functional health checks, reboot-needed detection and LXC `fstrim`.
 - **Results and diagnostics:** per-target and per-run logs, configurable retention, elapsed times, actual APT upgrade counts, detected application versions, actionable errors, and `forge status` / `forge history` (including JSON output).
