@@ -160,7 +160,7 @@ if [[ "$mode" == selected ]]; then
       result_policy[$id]=eligible
       result_status[$id]=NOT_RUN
       result_reason[$id]=not_started
-    else
+    elif [[ "${result_policy[$id]}" == eligible ]]; then
       result_policy[$id]=not_selected
       result_status[$id]=SKIPPED
       result_reason[$id]=not_selected
@@ -389,6 +389,8 @@ fi
 
 succeeded=0
 failed=0
+lxc_selection_mode=scope
+[[ "$mode" == selected ]] && lxc_selection_mode=explicit
 if [[ "${update_running_lxc}" == true ]]; then
   failed_targets=()
 
@@ -402,7 +404,7 @@ if [[ "${update_running_lxc}" == true ]]; then
     FORGE_RESULTS_AGGREGATE=bulk FORGE_APT_RESULT_FILE="${apt_result_dir:+$apt_result_dir/lxc-$vmid}" \
       FORGE_APP_RESULT_FILE="${apt_result_dir:+$apt_result_dir/app-$vmid}" \
       FORGE_RESULT_DETAIL_FILE="${apt_result_dir:+$apt_result_dir/result-lxc-$vmid}" \
-      bash "$lxc_update_script" "$vmid" "$([[ "$mode" == selected ]] && printf explicit || printf scope)"
+      bash "$lxc_update_script" "$vmid" "$lxc_selection_mode"
     target_result=$?
     if [[ -n "$apt_result_dir" && -f "$apt_result_dir/lxc-$vmid" ]]; then
       apt_value="$(< "$apt_result_dir/lxc-$vmid")"
