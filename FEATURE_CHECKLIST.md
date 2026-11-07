@@ -246,7 +246,6 @@ The proposals below were identified from Ultimate Updater and Proxmox VE Communi
 
 - [ ] **F242 — Independent recoverability verification.** Optionally validate that a retained backup is actually restorable using isolated, non-production tests and recorded evidence. This is beyond F082's successful archive-creation check; never overwrite or restore a live production guest merely to test its backup.
 - [ ] **F243 — Staged/canary updates.** Allow an explicitly selected trial target or group before continuing compatible targets, gated by real functional health results; preserve per-target backups, failure isolation and the original error state.
-- [ ] **F244 — Declared service dependency ordering.** Consider explicit cross-target dependencies for sequential maintenance, with cycle/conflict detection and health-based gating. Never auto-start excluded/stopped guests or silently expand the selected update scope.
 
 > **Roadmap cleanup (2026-10-16; documented 2026-10-18):** F227, F230 and F245 were rejected, not implemented or postponed. Their original proposals and rejection reasons are retained in the historical decision register below. Historical IDs are not reused; all remaining candidates are unapproved.
 
@@ -263,12 +262,13 @@ These notes document current intent only; they do not mark capabilities implemen
 - **F231 — Under consideration:** Proxmox tags may be read automatically but must never silently change target selection; selecting a tag-based scope or policy must be explicitly authorised. No concrete selection policy has been approved.
 - **F232 — Low current priority:** additional package managers are interesting, but existing running LXC workloads use APT.
 - **F243 — Low current priority:** staged/canary gates require meaningful functional verification; existing serial failure isolation is not a canary policy.
-- **F244 — Important, deferred:** do not infer an update dependency order automatically or equate boot/shutdown ordering with the correct update order. The desired use of Proxmox startup-order data needs further clarification; **no new F244 design was agreed**.
 - **VMs, external targets, clusters and Web UI:** expand only after the primary single-host Proxmox/LXC backend is dependable; a Web UI must reuse that backend.
 
 ## X. Rejected proposals — historical decision register
 
 **Rejected is not the same as postponed or implemented.** These entries preserve the idea and the reason it was rejected so that a future contributor can challenge the rationale with new evidence. They are outside the active backlog; IDs remain reserved. The original historical wording is retained or summarised without reinstating incompatible scope.
+
+- ~~**F244 — Declared service dependency ordering.**~~ **REJECTED (2026-11-07).** Proposed explicit inter-LXC update dependencies, ordering and health-based gating. **Reason:** for the current Proxmox/LXC scope, service downtime occurs during maintenance regardless of order, while Forge already isolates guest failures, attempts same-run backup recovery when enabled and available, and checks guest/systemd health plus optional functional checks. Additional cross-target dependency rules would add configuration, complexity and possible unnecessary blocking without a demonstrated operational benefit. Do not infer ordering from Proxmox startup/shutdown priorities. Reconsider only if a concrete dependency-related failure case is identified.
 
 - ~~**F235 — Explicit controlled reboot action.**~~ **REJECTED (2026-10-25).** Proposed a separately requested Forge host/LXC reboot command while keeping reboot-after-update manual. **Reason:** Proxmox already provides host and LXC reboot operations (including `pct reboot`), while implemented F094 already reports whether a reboot is required. Wrapping existing Proxmox commands in `forge host reboot` or `forge lxc reboot` would duplicate functionality, add maintenance and disruption risk, and provide no new operational value. Reconsider only if a concrete orchestration requirement arises that Proxmox does not already cover.
 
