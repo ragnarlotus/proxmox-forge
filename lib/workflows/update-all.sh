@@ -329,7 +329,7 @@ lxc_targets="${#vmids[@]}"
 host_failure_code=0
 lxc_started=false
 update_host=false
-if [[ "$mode" != lxc && "$update_host_enabled" == true ]]; then
+if [[ "$mode" != lxc && "$mode" != selected && "$update_host_enabled" == true ]]; then
   update_host=true
 fi
 
