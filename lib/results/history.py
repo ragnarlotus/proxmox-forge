@@ -336,7 +336,7 @@ def main():
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif result is None:
-        print("No retained Forge update executions found.")
+        print(tr("history.no_runs"))
     elif isinstance(result, list):
         show_history(result)
     else:
