@@ -126,7 +126,7 @@ elif kind == "lxc":
         Path(os.environ["FORGE_APT_RESULT_FILE"]).write_text(
             str(counts.get(args[0], 0)) + "\n"
         )
-    if len(args) != 2 or args[1] != "scope":
+    if len(args) != 2 or args[1] not in ("scope", "explicit"):
         sys.exit("unexpected LXC invocation")
     code = int(json.loads(os.environ.get("FORGE_TEST_LXC_CODES", "{}")).get(args[0], 0))
     print(f"update={'success' if code == 0 else 'failed'} vmid={args[0]}")
