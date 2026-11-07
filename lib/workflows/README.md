@@ -29,6 +29,8 @@ update LXCs serially
 aggregate final result
 ```
 
+F247 also reuses this coordinator for `forge lxc update TARGET TARGET...`: it freezes the explicitly named VMIDs in user-supplied order, skips automatic running-LXC selection and host updates, preserves one final inventory/summary and the existing per-guest failure isolation. Explicitly chosen stopped LXCs are permitted and pass their resource requirements after temporary startup; running selected LXCs are all checked before any mutation. Recovery conflicts for the complete explicit scope remain blocking.
+
 Host backup/requirements/OS failures never turn into success and do not cancel
 otherwise eligible LXC updates. A failed host still makes the combined command
 exit nonzero (preserving its original failure code); the authoritative result
