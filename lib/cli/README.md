@@ -12,7 +12,7 @@ forge lxc update TARGET [TARGET...]
 forge lxc update all
 forge update all
 forge update scheduled
-forge update self-update [BRANCH]
+forge self-update [BRANCH]
 forge help
 ```
 
@@ -128,7 +128,7 @@ In either bulk command, any failed LXC is recorded as failed regardless of its e
 
 Target inspection, host requirements and LXC requirements are internal workflows, not public CLI commands.
 
-## `forge update self-update [BRANCH]`
+## `forge self-update [BRANCH]`
 
 Updates Forge from the configured Git remote using a guarded fast-forward.
 The default branch is `main`; an explicitly supplied branch must contain

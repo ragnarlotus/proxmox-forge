@@ -127,7 +127,7 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         self.assertEqual(check.returncode, 0, check.stderr)
         self.assertIn("self_update=available branch=main", check.stdout)
         self.assertEqual(self.git("rev-parse", "HEAD"), original)
-        updated = self.run_cli("update", "self-update")
+        updated = self.run_cli("self-update")
         self.assertEqual(updated.returncode, 0, updated.stderr)
         self.assertIn("self_update=success branch=main", updated.stdout)
         self.assertEqual(self.git("rev-parse", "HEAD"),
@@ -141,7 +141,7 @@ class ForgeSelfUpdateTests(unittest.TestCase):
     def test_explicit_branch_changes_only_with_ancestry(self):
         initial = self.git("rev-parse", "HEAD")
         self.push_update("experimental")
-        res = self.run_cli("update", "self-update", "experimental")
+        res = self.run_cli("self-update", "experimental")
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(self.git("branch", "--show-current"), "experimental")
         self.assertEqual(self.git("rev-parse", "HEAD"),
@@ -177,7 +177,7 @@ class ForgeSelfUpdateTests(unittest.TestCase):
         checked = self.run_helper("check")
         self.assertEqual(checked.returncode, 0, checked.stderr)
         self.assertIn("self_update=available", checked.stdout)
-        updated = self.run_cli("update", "self-update")
+        updated = self.run_cli("self-update")
         self.assertEqual(updated.returncode, 0, updated.stderr)
         self.assertNotEqual(self.git("rev-parse", "HEAD"), original)
         self.assertEqual(self.git("rev-parse", "HEAD"),
@@ -253,14 +253,23 @@ class ForgeSelfUpdateTests(unittest.TestCase):
     def test_explicit_command_is_independent_of_invalid_forge_config(self):
         (self.checkout / "forge.conf").write_text("INVALID_CONFIG=yes\n")
         self.push_update()
-        result = self.run_cli("update", "self-update")
+        result = self.run_cli("self-update")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("self_update=success", result.stdout)
 
     def test_no_version_check_when_flag_disabled(self):
         result = self.run_cli("help")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("update self-update [BRANCH]", result.stdout)
+        self.assertIn("self-update [BRANCH]", result.stdout)
+
+    def test_obsolete_nested_command_and_extra_args_are_rejected(self):
+        old = self.run_cli("update", "self-update")
+        self.assertNotEqual(old.returncode, 0)
+        self.assertIn("usage: forge update all|scheduled", old.stderr)
+
+        extra = self.run_cli("self-update", "main", "unexpected")
+        self.assertNotEqual(extra.returncode, 0)
+        self.assertIn("usage: forge self-update [BRANCH]", extra.stderr)
 
     def test_accept_default_prompt_reexecutes_under_same_lock(self):
         self.push_update()

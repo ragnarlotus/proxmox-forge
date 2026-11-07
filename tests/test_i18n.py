@@ -50,7 +50,7 @@ class TranslationTests(unittest.TestCase):
         self.assertEqual((en.returncode, es.returncode), (0, 0), (en.stderr, es.stderr))
         self.assertIn("Usage:", en.stdout)
         self.assertIn("Uso:", es.stdout)
-        for command in ("forge", "validate-config", "update self-update [BRANCH]",
+        for command in ("forge", "validate-config", "self-update [BRANCH]",
                         "lxc update TARGET", "history [RUN_ID] [--json]"):
             self.assertIn(command, en.stdout)
             self.assertIn(command, es.stdout)

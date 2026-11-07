@@ -14,7 +14,7 @@ COMMANDS = (
     ("lxc update all", "lxc_all"),
     ("update all", "all"),
     ("update scheduled", "scheduled"),
-    ("update self-update [BRANCH]", "self"),
+    ("self-update [BRANCH]", "self"),
     ("back", "back"),
     ("help", "help"),
 )

@@ -77,7 +77,7 @@ The launcher resolves this symlink to the real checkout before loading internal 
 ## Updating Forge itself
 
 ```bash
-forge update self-update
+forge self-update
 ```
 
 By default this fast-forwards the installed checkout to `main`. An optional branch argument is accepted only if the requested branch safely contains the installed revision. Tracked local changes, unexpected remotes and divergent history block the operation; Git-ignored local configuration and scripts remain untouched unless an incoming tracked path conflicts.
