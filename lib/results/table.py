@@ -207,7 +207,15 @@ def emit_compact_table(rows, values, width, enabled):
         print(" | ".join(str(value).ljust(sizes[i])
                          for i, value in enumerate(cells)).rstrip())
 
-    output(headers())
+    # Localized headers may be longer than the minimum compact column widths.
+    header_columns = [
+        textwrap.wrap(label, width=sizes[i], break_long_words=True,
+                      break_on_hyphens=False) or [""]
+        for i, label in enumerate(headers())
+    ]
+    for index in range(max(map(len, header_columns))):
+        output([column[index] if index < len(column) else ""
+                for column in header_columns])
     print("-+-".join("-" * size for size in sizes))
     for row, cells in zip(rows, cells_by_row):
         # All cell content is preserved, even on narrow terminals; URLs are
