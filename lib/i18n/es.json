@@ -95,5 +95,6 @@
   "cli.prompt.invalid": "Responde y, n o c.",
   "cli.run_duration": "Duración de Forge: {duration}",
   "cli.config_ok": "Configuración de Forge correcta: valores={defaults} ajustes={overrides}",
-  "cli.no_overrides": "ninguno"
+  "cli.no_overrides": "ninguno",
+  "email.subject": "[Proxmox Forge] [{mode}] {status} - resultados de actualización"
 }
