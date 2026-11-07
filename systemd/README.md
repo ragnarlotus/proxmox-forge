@@ -1,5 +1,9 @@
 # Optional Forge scheduled updates (F121)
 
+Scheduled update messages and optional root-mail notifications use the same
+validated `LANGUAGE=en|es` setting from `forge.conf`. Scheduled technical logs
+and machine-readable result fields remain language-independent.
+
 The systemd units are templates shipped **disabled** in the Git repository.
 Updating the checkout does not copy or activate them. There is no scheduled
 run unless an administrator explicitly installs/enables the timer **and**
