@@ -51,6 +51,7 @@ Forge performs updates rather than checking what is available in advance. Reposi
 - [x] **F040** No interactive prompts during update execution.
 - [x] **F041** Execute each mutating operation exactly once.
 - [x] **F042** Deterministic terminal output capture during updates.
+- [x] **F248 — Stage-aware compact LXC progress.** Progress uses 14 fixed per-LXC milestones; each successfully completed, failed or deliberately skipped stage contributes once to the target's share of the selected run. Stage completion is emitted from the existing stage-capture owner, and skipped stages produce a minimal structured stdout signal alongside their existing log event. The Proxmox host contributes as one target when finished. The percent measures completed work, not elapsed time or ETA; a final target outcome always completes that target even after failure/rollback. Recovery-only actions do not inflate the planned stage total. The F225 final results table remains visible after the compact dashboard (PR #71 dependency). Automated tests cover stage signals, skip counting, duplicate suppression and progress percentages.
 
 ## E. Operating systems and package managers
 

@@ -16,11 +16,16 @@ from urllib.parse import unquote
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "i18n"))
 from translate import tr  # noqa: E402
 
-STAGES = frozenset((
-    "requirements", "backup", "snapshot", "resource_apply", "os_update",
-    "held_packages", "application_update", "custom_scripts",
-    "resource_restore", "health", "fstrim", "recovery",
-    "lifecycle_start", "lifecycle_stop", "startup", "shutdown",
+# Every LXC uses this fixed set of milestones. An omitted stage counts as
+# completed; recovery-only activities are additional, not planned milestones.
+LXC_PROGRESS_STAGES = frozenset((
+    "lifecycle_start", "requirements", "backup", "snapshot",
+    "resource_apply", "os_update", "held_packages", "application_update",
+    "custom_scripts", "resource_restore", "health", "fstrim",
+    "reboot_check", "lifecycle_stop",
+))
+STAGES = LXC_PROGRESS_STAGES | frozenset((
+    "recovery", "lifecycle_readiness", "startup", "shutdown",
 ))
 
 CONTROL = re.compile(r"\x1b(?:\][^\x07]*(?:\x07|\x1b\\\\)|\[[0-?]*[ -/]*[@-~]|[@-_])")
@@ -70,6 +75,7 @@ class Progress:
         self.total = 1 if mode != "bulk" else None
         self.started = {}
         self.completed = {}
+        self.stage_done = {}
         self.names = {"HOST": tr("progress.host")}
         self.current = None
         self.stage = tr("progress.preflight")
@@ -159,6 +165,17 @@ class Progress:
             self.stage = (tr(f"progress.stage.{stage}") if stage in STAGES
                           else safe_text(stage.replace("_", " ").capitalize(), 55))
             changed = True
+        elif line.startswith(("stage=completed ", "stage=skipped ", "stage=failed ")):
+            stage = fields(line).get("name")
+            key = self.current
+            if (key is not None and key != "HOST" and
+                    key not in self.completed and stage in LXC_PROGRESS_STAGES):
+                # A stage counts once regardless of its outcome or duplicate
+                # messages. Unknown/recovery/host stages cannot inflate totals.
+                stages = self.stage_done.setdefault(key, set())
+                if stage not in stages:
+                    stages.add(stage)
+                    changed = True
         elif line.startswith("custom_script=start "):
             name = fields(line).get("script", "")
             self.stage = tr("progress.running_script", script=safe_text(os.path.basename(name), 45))
@@ -224,7 +241,17 @@ class Progress:
         width = max(48, cols - 1)
         finished = len(self.completed)
         total = self.total or 0
-        percent = int(finished * 100 / total) if total else 0
+        # Completed targets contribute one full unit; an active LXC contributes
+        # its distinct completed/skipped/failed stage count as a fraction.
+        # The host remains a full unit only upon completion.
+        progress_units = finished + sum(
+            len(stages) / len(LXC_PROGRESS_STAGES)
+            for key, stages in self.stage_done.items()
+            if key not in self.completed and key != "HOST"
+        )
+        percent = min(100, int(progress_units * 100 / total)) if total else 0
+        if finished < total:
+            percent = min(99, percent)
         bar_width = max(10, min(26, width - 48))
         filled = int(bar_width * percent / 100)
         bar = "█" * filled + "░" * (bar_width - filled)

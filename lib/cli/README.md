@@ -78,8 +78,12 @@ external tool diagnostics. See [Languages](../i18n/README.md).
 ## Interactive update progress
 
 Interactive manual host, single-LXC and bulk updates show a compact live dashboard:
-completed targets, progress percentage, current stage, elapsed time and relevant
-warnings/errors. After the dashboard finishes, the original six-column
+completed targets, a stage-based progress percentage, current stage, elapsed time
+and relevant warnings/errors. Each LXC contributes 14 fixed stage milestones:
+executed and explicitly skipped stages count as completed work exactly once;
+recovery-only stages are excluded from the planned total. The percent reflects
+completed work, not remaining time. Host updates contribute as one target upon
+completion. After the dashboard finishes, the original six-column
 final-results table is displayed, including application version changes, warnings,
 changelog links and the failure/blocked-target digest. All authoritative result
 records, full stage output, the same final table and exact exit statuses remain

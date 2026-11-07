@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Compact console UI: synthetic progress, warnings, and real CLI exit codes."""
 
+import contextlib
+import importlib.util
+import io
 import os
 import pty
 import select
@@ -163,6 +166,56 @@ class CompactProgressTests(unittest.TestCase):
             if slave >= 0:
                 os.close(slave)
             os.close(master)
+
+    def test_stage_progress_counts_skips_and_duplicate_events_once(self):
+        spec = importlib.util.spec_from_file_location("forge_progress_test", PRESENTER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        def percentage(progress):
+            text = progress.rows()[0][1]
+            match = __import__("re").search(r"([0-9]+)%", text)
+            self.assertIsNotNone(match, text)
+            return int(match.group(1))
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            progress = module.Progress("bulk", "selected")
+            progress.parse(b"update_all=start mode=selected update_host=false lxc_targets=2")
+            progress.parse(b"update_all_target=start vmid=100")
+            self.assertEqual(percentage(progress), 0)
+
+            progress.parse(b"stage=skipped name=lifecycle_start reason=already_running")
+            self.assertEqual(percentage(progress), 3)  # 1/14 of 1/2
+            progress.parse(b"stage=skipped name=lifecycle_start reason=already_running")
+            self.assertEqual(percentage(progress), 3)
+            progress.parse(b"stage=completed name=backup")
+            self.assertEqual(percentage(progress), 7)  # 2/28
+            progress.parse(b"stage=completed name=recovery")
+            self.assertEqual(percentage(progress), 7)  # not a planned stage
+            progress.parse(b"stage=completed name=unknown_phase")
+            self.assertEqual(percentage(progress), 7)
+
+            progress.parse(b"update_all_target=success vmid=100 exit_code=0")
+            self.assertEqual(percentage(progress), 50)
+            progress.parse(b"update_all_target=start vmid=111")
+            progress.parse(b"stage=failed name=held_packages exit_code=1")
+            self.assertEqual(percentage(progress), 53)
+            progress.parse(b"update_all_target=failed vmid=111 exit_code=1")
+            self.assertEqual(percentage(progress), 100)
+            self.assertEqual(len(progress.completed), 2)
+
+    def test_single_lxc_stage_progress_reaches_99_then_100(self):
+        spec = importlib.util.spec_from_file_location("forge_progress_test", PRESENTER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with contextlib.redirect_stdout(io.StringIO()):
+            progress = module.Progress("lxc", "101")
+            progress.parse(b"type=lxc vmid=101 name=pihole state=running template=false")
+            for stage in module.LXC_PROGRESS_STAGES:
+                progress.parse(f"stage=completed name={stage}".encode())
+            self.assertIn("99%", progress.rows()[0][1])
+            progress.parse(b"update=success vmid=101 final_state=running")
+            self.assertIn("100%", progress.rows()[0][1])
 
     def test_terminal_draws_live_dashboard_in_place(self):
         master, slave = pty.openpty()
