@@ -467,20 +467,44 @@ main() {
           bash "$LXC_LIST_TARGETS_SCRIPT" "${CONFIG[UPDATE_RUNNING_LXC]}" "${CONFIG[EXCLUDE]}"
           ;;
         update)
-          [[ $# -eq 3 ]] || fail "usage: forge lxc update TARGET|all"
+          [[ $# -ge 3 ]] || fail "usage: forge lxc update TARGET [TARGET...]|all"
           if [[ "$3" == all ]]; then
+            [[ $# -eq 3 ]] || fail "'all' cannot be combined with explicit LXC targets"
             run_update_all lxc
-          else
+          elif [[ $# -eq 3 ]]; then
             [[ -r "$LXC_UPDATE_SCRIPT" ]] || fail "LXC update workflow is not readable: $LXC_UPDATE_SCRIPT"
             ensure_lxc_environment
             target_record="$(bash "$LXC_GET_TARGET_SCRIPT" "$3")" || fail "could not resolve LXC target"
             [[ "$target_record" =~ (^|[[:space:]])vmid=([0-9]+) ]] || fail "invalid target record"
             check_lxc_conflicts "${BASH_REMATCH[2]}"
             run_with_progress lxc "$3" bash "$LXC_UPDATE_SCRIPT" "$3"
+          else
+            # F247: resolve the entire explicit set before any mutation. Keep
+            # single-target and automatic 'all' semantics unchanged.
+            [[ -r "$UPDATE_ALL_SCRIPT" ]] || fail "update coordinator is not readable: $UPDATE_ALL_SCRIPT"
+            ensure_lxc_environment
+            local target vmid
+            local -a selected_ids=()
+            local -A seen_ids=()
+            for target in "${@:3}"; do
+              [[ "$target" != all ]] || fail "'all' cannot be combined with explicit LXC targets"
+              target_record="$(bash "$LXC_GET_TARGET_SCRIPT" "$target")" ||
+                fail "could not resolve LXC target '$target'; no updates started"
+              [[ "$target_record" =~ (^|[[:space:]])vmid=([0-9]+) ]] ||
+                fail "invalid target record for '$target'"
+              vmid="${BASH_REMATCH[2]}"
+              [[ "$target_record" =~ (^|[[:space:]])template=false($|[[:space:]]) ]] ||
+                fail "LXC $vmid is a template and cannot be updated"
+              [[ -z "${seen_ids[$vmid]+x}" ]] ||
+                fail "LXC $vmid was selected more than once; no updates started"
+              seen_ids[$vmid]=true
+              selected_ids+=("$vmid")
+            done
+            run_with_progress bulk selected bash "$UPDATE_ALL_SCRIPT" selected "${selected_ids[@]}"
           fi
           ;;
         *)
-          fail "usage: forge lxc list-targets | forge lxc update TARGET|all"
+          fail "usage: forge lxc list-targets | forge lxc update TARGET [TARGET...]|all"
           ;;
       esac
       ;;
