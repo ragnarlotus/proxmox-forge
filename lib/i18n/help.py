@@ -10,7 +10,7 @@ COMMANDS = (
     ("history [RUN_ID] [--json]", "history"),
     ("host update", "host"),
     ("lxc list-targets", "list"),
-    ("lxc update TARGET", "lxc"),
+    ("lxc update TARGET [TARGET...]", "lxc"),
     ("lxc update all", "lxc_all"),
     ("update all", "all"),
     ("update scheduled", "scheduled"),
