@@ -77,12 +77,14 @@ external tool diagnostics. See [Languages](../i18n/README.md).
 
 ## Interactive update progress
 
-Interactive manual host, single-LXC and bulk updates now show a compact live dashboard:
+Interactive manual host, single-LXC and bulk updates show a compact live dashboard:
 completed targets, progress percentage, current stage, elapsed time and relevant
-warnings/errors. The existing result records, full stage output, final
-six-column table and exact exit statuses remain in the retained run/target
-logs. The dashboard is presentation-only, and can be reattached through
-`forge back` when persistent sessions are enabled.
+warnings/errors. After the dashboard finishes, the original six-column
+final-results table is displayed, including application version changes, warnings,
+changelog links and the failure/blocked-target digest. All authoritative result
+records, full stage output, the same final table and exact exit statuses remain
+in the retained run/target logs. The dashboard is presentation-only and can be
+reattached through `forge back` when persistent sessions are enabled.
 
 To see the original verbose output for one invocation, run
 `FORGE_OUTPUT_MODE=full forge update all` (or another manual update command).

@@ -44,6 +44,12 @@ def safe_text(value, limit=240):
     return value[:limit]
 
 
+def table_text(value):
+    """Preserve table column spacing while stripping terminal controls."""
+    value = CONTROL.sub("", value)
+    return "".join(c if c.isprintable() else " " for c in value)
+
+
 def duration_text(seconds):
     seconds = max(0, int(seconds))
     minutes, seconds = divmod(seconds, 60)
@@ -69,6 +75,9 @@ class Progress:
         self.stage = tr("progress.preflight")
         self.notices = []
         self.global_status = None
+        # Preserve the workflow's own F225 table and failure digest verbatim
+        # (apart from terminal controls); display them after the live dashboard.
+        self.final_table_lines = None
         self.rendered_lines = 0
         self.last_output = 0
         self.last_snapshot = None
@@ -105,7 +114,12 @@ class Progress:
             self.stage = tr("progress.next")
 
     def parse(self, raw):
-        line = safe_text(raw.decode("utf-8", "replace"), 2000)
+        raw_line = raw.decode("utf-8", "replace")
+        line = safe_text(raw_line, 2000)
+        if self.final_table_lines is not None:
+            self.final_table_lines.append(table_text(raw_line))
+        elif line == tr("table.title"):
+            self.final_table_lines = [table_text(raw_line)]
         if not line:
             return
         changed = False
@@ -292,6 +306,10 @@ class Progress:
             sys.stdout.write("\n")
         if self.run_id:
             sys.stdout.write(tr("progress.details", run_id=safe_text(self.run_id, 80)) + "\n")
+        if self.final_table_lines is not None:
+            # Original spacing, links, version deltas and actionable failures:
+            # no second table renderer, backup, update or log write is needed.
+            sys.stdout.write("\n" + "\n".join(self.final_table_lines) + "\n")
         sys.stdout.flush()
 
 
@@ -309,7 +327,11 @@ def main():
         if not chunk:
             break
         for byte in chunk:
-            if byte in (10, 13):
+            if byte == 10:
+                # Blank lines matter inside the final result table.
+                dashboard.parse(bytes(pending))
+                pending.clear()
+            elif byte == 13:
                 if pending:
                     dashboard.parse(bytes(pending))
                     pending.clear()
