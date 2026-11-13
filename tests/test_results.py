@@ -484,6 +484,21 @@ class ResultAggregationTests(unittest.TestCase):
             ["100", "111"],
         )
 
+    def test_bulk_source_url_is_preserved_without_github_domain(self):
+        result, _ = self.invoke(
+            "lxc",
+            FORGE_TEST_LXC_APP=json.dumps({
+                "100": ["1.0", "1.1", "https://pi-hole.net/"],
+                "111": ["2.0", "2.1", "http://example.org/app"],
+            }),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = {row["vmid"]: row for row in self.inventory(result)}
+        self.assertEqual(rows["100"]["app_repository"], "https://pi-hole.net/")
+        self.assertEqual(rows["111"]["app_repository"], "http://example.org/app")
+        self.assertIn("Changelog: https://pi-hole.net/", result.stdout)
+        self.assertIn("Changelog: http://example.org/app", result.stdout)
+
     def test_f223_malformed_bulk_repo_does_not_discard_valid_versions(self):
         result, calls = self.invoke(
             FORGE_TEST_LXC_APP=json.dumps({
