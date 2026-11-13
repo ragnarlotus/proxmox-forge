@@ -53,6 +53,8 @@ forge_app_repository() {
     immich)         printf '%s\n' 'https://github.com/immich-app/immich' ;;
     audiobookshelf) printf '%s\n' 'https://github.com/advplyr/audiobookshelf' ;;
     whisparr)       printf '%s\n' 'https://github.com/Whisparr/Whisparr' ;;
+    snowshare)      printf '%s\n' 'https://github.com/TuroYT/snowshare' ;;
+    trek)           printf '%s\n' 'https://github.com/liketrek/TREK' ;;
     *)              printf '%s\n' '-' ;;
   esac
 }

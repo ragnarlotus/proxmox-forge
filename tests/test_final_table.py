@@ -104,6 +104,60 @@ class ConsoleTableTests(unittest.TestCase):
         self.assert_compact_row(r.stdout, "102", "unknown", "—", "—")
         self.assertIn("Changelog: https://github.com/pi-hole/pi-hole", r.stdout)
         self.assertEqual(r.stdout.count("Changelog: https://github.com/pi-hole/pi-hole"), 1)
+        self.assertEqual(r.stdout.count("[1]"), 2)  # Updated row + footnote only.
+
+    def test_changelog_requires_success_and_verified_application_change(self):
+        # Repository metadata remains available even where a link must not be
+        # shown. APT-only upgrades are not application version changes.
+        rows = [
+            record(vmid="100", name="apt-only", apt="7", before="1.0",
+                   after="1.0", url="https://github.com/caddyserver/caddy"),
+            record(vmid="101", name="unchanged", before="1.0", after="1.0",
+                   url="https://github.com/advplyr/audiobookshelf"),
+            record(vmid="102", name="failed", status="ERROR", reason="update_failed",
+                   exit_code="1", recovery="success", before="1.0", after="2.0",
+                   url="https://github.com/pi-hole/pi-hole"),
+            record(vmid="103", name="skipped", status="SKIPPED", reason="stopped",
+                   selected=False, attempted=False, before="1.0", after="2.0",
+                   url="https://github.com/dani-garcia/vaultwarden"),
+            record(vmid="104", name="not-run", status="NOT_RUN", reason="preflight_blocked",
+                   attempted=False, before="1.0", after="2.0",
+                   url="https://github.com/docmost/docmost"),
+            record(vmid="105", name="unverified", before="-", after="-",
+                   url="https://github.com/immich-app/immich"),
+            record(vmid="106", name="unknown-repo", before="1.0", after="2.0", url="-"),
+            record(vmid="111", name="snowshare", before="1.5.8", after="1.5.10",
+                   url="https://github.com/TuroYT/snowshare"),
+            record(vmid="115", name="trek", before="5.1.0", after="5.1.4",
+                   url="https://github.com/liketrek/TREK"),
+            record(vmid="119", name="same-repo", before="1.0", after="1.1",
+                   url="https://github.com/TuroYT/snowshare"),
+        ]
+        for width in (110, 205):
+            with self.subTest(width=width):
+                result = self.render(rows, width=width)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for absent in (
+                    "https://github.com/caddyserver/caddy",
+                    "https://github.com/advplyr/audiobookshelf",
+                    "https://github.com/pi-hole/pi-hole",
+                    "https://github.com/dani-garcia/vaultwarden",
+                    "https://github.com/docmost/docmost",
+                    "https://github.com/immich-app/immich",
+                ):
+                    self.assertNotIn(absent, result.stdout)
+                self.assertEqual(result.stdout.count("https://github.com/TuroYT/snowshare"),
+                                 1 if width == 110 else 2)
+                self.assertEqual(result.stdout.count("https://github.com/liketrek/TREK"), 1)
+                self.assertIn("1.5.8 → 1.5.10", result.stdout)
+                self.assertIn("5.1.0 → 5.1.4", result.stdout)
+                self.assertIn("Totals: targets=10 ", result.stdout)
+                if width == 110:
+                    self.assertIn("Changelog links:", result.stdout)
+                    self.assertEqual(result.stdout.count("[1]"), 3)
+                    self.assertEqual(result.stdout.count("[2]"), 2)
+                else:
+                    self.assertNotIn("Changelog links:", result.stdout)
 
     def test_unknown_app_does_not_invent_a_repository_or_zero_apt(self):
         r = self.render([record(apt="-", before="-", after="-", url="-")])
@@ -138,8 +192,10 @@ class ConsoleTableTests(unittest.TestCase):
         message = "ERROR: " + "cannot resolve dependency " * 12
         r = self.render([
             record(name="long-container-name-requiring-overflow",
-                   url=link, detail=message,
-                   status="ERROR", reason="update_failed", exit_code="2"),
+                   before="1.0", after="2.0", url=link),
+            record(vmid="102", name="failed-long-message",
+                   url="-", detail=message, status="ERROR",
+                   reason="update_failed", exit_code="2"),
         ], width=205)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(HEADER[0:4], r.stdout)
@@ -150,7 +206,8 @@ class ConsoleTableTests(unittest.TestCase):
 
     def test_narrow_terminal_keeps_full_url_and_result_readable(self):
         link = "https://github.com/" + "very-long-organization-name/" + "long-project-name"
-        r = self.render([record(url=link, detail="ERROR: " + "failure " * 25)],
+        r = self.render([record(url=link, before="1.0", after="1.1",
+                                detail="ERROR: " + "failure " * 25)],
                         width=72)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("Changelog: " + link, r.stdout)
@@ -195,9 +252,10 @@ class ConsoleTableTests(unittest.TestCase):
     def test_compact_url_references_are_unique_and_keep_full_clickable_links(self):
         url = "https://github.com/" + "very-long-organization/" * 3 + "repository"
         records = [
-            record(vmid="100", url=url),
-            record(vmid="101", url=url),
-            record(vmid="102", url="https://github.com/pi-hole/pi-hole"),
+            record(vmid="100", url=url, before="1.0", after="2.0"),
+            record(vmid="101", url=url, before="1.0", after="1.1"),
+            record(vmid="102", before="1.0", after="2.0",
+                   url="https://github.com/pi-hole/pi-hole"),
         ]
         r = self.render(records, width=100)
         self.assertEqual(r.returncode, 0, r.stderr)
