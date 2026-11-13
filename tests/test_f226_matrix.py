@@ -295,7 +295,7 @@ class FinalResultsMatrixTests(unittest.TestCase):
             FORGE_TEST_LXC_APP=json.dumps({
                 "100": ["1.0+debian-2", "1.0+debian-2", repository],
                 "111": ["2.0", "2.8", repository],
-                "115": ["-", "-", "https://invalid.example/repository"],
+                "115": ["-", "-", "javascript:alert(1)"],
             }),
             FORGE_TEST_LXC_DETAIL=json.dumps({
                 "100": [quote(warning, safe=""), "-", "-"],
