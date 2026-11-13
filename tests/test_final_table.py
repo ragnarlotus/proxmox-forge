@@ -159,6 +159,43 @@ class ConsoleTableTests(unittest.TestCase):
                 else:
                     self.assertNotIn("Changelog links:", result.stdout)
 
+    def test_changelog_column_blank_without_change_dash_only_if_no_url(self):
+        rows = [
+            record(vmid="100", name="unchanged", before="1.0", after="1.0",
+                   url="https://example.org/unchanged"),
+            record(vmid="101", name="unknown", before="-", after="-", url="-"),
+            record(vmid="102", name="missing-url", before="1.0", after="2.0", url="-"),
+            record(vmid="103", name="from-source", before="1.0", after="2.0",
+                   url="https://example.org/releases"),
+            record(vmid="104", name="failed", status="ERROR", reason="update_failed",
+                   exit_code="3", before="1.0", after="2.0",
+                   url="https://example.org/failed"),
+        ]
+        for width in (110, 205):
+            with self.subTest(width=width):
+                r = self.render(rows, width=width)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                # Check the actual text of the Changelog column on first
+                # physical line, not just whether the legend is absent.
+                body = r.stdout.split("Forge final results", 1)[1]
+                actual = {}
+                for line in body.splitlines():
+                    parts = [cell.strip() for cell in line.split("|")]
+                    if len(parts) == 6 and parts[0] in ("100", "101", "102", "103", "104"):
+                        actual[parts[0]] = parts[4]
+                self.assertEqual(actual["100"], "")
+                self.assertEqual(actual["101"], "")
+                self.assertEqual(actual["102"], "-")
+                self.assertEqual(actual["104"], "")
+                self.assertEqual(actual["103"], "[1]" if width == 110
+                                 else "https://example.org/releases")
+                self.assertNotIn("https://example.org/unchanged", r.stdout)
+                self.assertNotIn("https://example.org/failed", r.stdout)
+                if width == 110:
+                    self.assertIn("Changelog: https://example.org/releases", r.stdout)
+                else:
+                    self.assertNotIn("Changelog links:", r.stdout)
+
     def test_unknown_app_does_not_invent_a_repository_or_zero_apt(self):
         r = self.render([record(apt="-", before="-", after="-", url="-")])
         self.assert_compact_row(r.stdout, "101", "pihole", "—", "—")
