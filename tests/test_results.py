@@ -115,7 +115,7 @@ elif kind == "lxc":
         details = json.loads(os.environ.get("FORGE_TEST_LXC_DETAIL", "{}"))
         detail, stage, recovery = details.get(args[0], ["OK", "-", "-"])
         Path(os.environ["FORGE_RESULT_DETAIL_FILE"]).write_text(
-            f"{detail}\t{stage}\t{recovery}\n"
+            f"{detail}\t{stage}\t{recovery}\t-\n"
         )
     if os.environ.get("FORGE_APP_RESULT_FILE"):
         versions = json.loads(os.environ.get("FORGE_TEST_LXC_APP", "{}"))
@@ -396,6 +396,34 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertEqual(
             [c["args"][0] for c in calls if c["kind"] == "lxc"], ["100", "111"],
         )
+
+    def test_bulk_lxc_four_field_handoff_reports_health_and_backup_failures(self):
+        # Reproduces the actual record.sh format: detail, stage, recovery,
+        # host_platform="-". The old three-field reader swallowed the last
+        # column into recovery and silently displayed "ERROR: unknown".
+        result, _ = self.invoke(
+            "lxc",
+            FORGE_TEST_LXC_CODES=json.dumps({"100": 1, "111": 1}),
+            FORGE_TEST_LXC_DETAIL=json.dumps({
+                "100": [
+                    "ERROR%3A%20health%20%28exit%201%29%3A%20logrotate.service%20failed%3B%20recovery%20succeeded",
+                    "health", "success",
+                ],
+                "111": [
+                    "ERROR%3A%20backup%20%28exit%201%29%3A%20multiple%20new%20volumes%3B%20recovery%20unavailable%20%28no%20artifact%29",
+                    "backup", "unavailable",
+                ],
+            }),
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        rows = {row["vmid"]: row for row in self.inventory(result)}
+        self.assertEqual((rows["100"]["failed_stage"], rows["100"]["recovery"]),
+                         ("health", "success"))
+        self.assertEqual((rows["111"]["failed_stage"], rows["111"]["recovery"]),
+                         ("backup", "unavailable"))
+        self.assertIn("ERROR: health (exit 1): logrotate.service failed", result.stdout)
+        self.assertIn("ERROR: backup (exit 1): multiple new volumes", result.stdout)
+        self.assertNotIn("ERROR: unknown", result.stdout)
 
     def test_f224_preflight_not_run_includes_known_blocking_guest(self):
         result, calls = self.invoke(

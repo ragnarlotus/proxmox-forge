@@ -425,10 +425,13 @@ if [[ "${update_running_lxc}" == true ]]; then
     fi
 
     if [[ -n "$apt_result_dir" && -f "$apt_result_dir/result-lxc-$vmid" ]]; then
-      IFS=$'\t' read -r detail stage recovery < "$apt_result_dir/result-lxc-$vmid"
+      # The result publisher always writes four tab-delimited fields.
+      # LXC records have no host platform, so the fourth field must be "-".
+      IFS=$'\t' read -r detail stage recovery platform < "$apt_result_dir/result-lxc-$vmid"
       if [[ "$detail" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ && \
             ( "$stage" == "-" || "$stage" =~ ^[a-z][a-z0-9_-]*$ ) && \
-            ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) ]]; then
+            ( "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ) && \
+            "$platform" == "-" ]]; then
         result_detail[$vmid]="$detail"
         result_failed_stage[$vmid]="$stage"
         result_recovery[$vmid]="$recovery"

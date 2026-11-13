@@ -195,7 +195,7 @@ forge_result_text() {
 }
 
 # Nested bulk updates write a private handoff, never a second result_target.
-# The three columns contain no whitespace: encoded text, stage, recovery.
+# Four tab-separated fields: encoded detail, stage, recovery, host platform.
 forge_result_publish() {
   [[ $# -ge 12 && $# -le 17 ]] || return 2
   local stage="${13:--}" error="${14:-}" recovery="${15:--}" warning="${16:-}" detail host_platform="-"
