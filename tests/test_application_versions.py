@@ -142,7 +142,7 @@ class ApplicationVersionTests(unittest.TestCase):
                 self.assertEqual(result.stdout, "")
 
     def test_f223_official_app_repositories_are_whitelisted(self):
-        # All seven upstream project repositories were independently verified.
+        # Upstream project repositories were independently verified.
         expected = {
             "pihole": "https://github.com/pi-hole/pi-hole",
             "caddy": "https://github.com/caddyserver/caddy",
@@ -151,6 +151,8 @@ class ApplicationVersionTests(unittest.TestCase):
             "immich": "https://github.com/immich-app/immich",
             "audiobookshelf": "https://github.com/advplyr/audiobookshelf",
             "whisparr": "https://github.com/Whisparr/Whisparr",
+            "snowshare": "https://github.com/TuroYT/snowshare",
+            "trek": "https://github.com/liketrek/TREK",
             "plex": "-",  # Proprietary: no verified official source repo.
             "unsupported-app": "-",
             "": "-",
