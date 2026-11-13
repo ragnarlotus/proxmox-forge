@@ -86,9 +86,12 @@ completed work, not remaining time. Host updates contribute as one target upon
 completion. After the dashboard finishes, the original six-column
 final-results table is displayed, including application version changes, warnings,
 changelog links and the failure/blocked-target digest. A changelog link appears
-only for a successfully updated LXC with a verified application version change
-and a known official repository; APT-only upgrades, failures and unchanged or
-unknown application versions do not generate links. Totals are separated from
+only for a successfully updated LXC with a verified application version change.
+Forge reads the official Community Scripts ct/<slug>.sh metadata at that point,
+preferring Github: over Source:; the metadata script is never executed. A changed
+application without a usable metadata URL displays "-", while unchanged, failed
+and unknown-version applications leave the changelog cell blank. APT-only
+upgrades do not generate changelog links. Totals are separated from
 the table/links by a blank line; the machine-readable `result_global` record
 remains available to the dashboard and run logs but is hidden in the compact
 table. All authoritative result records, full stage output, the same final
