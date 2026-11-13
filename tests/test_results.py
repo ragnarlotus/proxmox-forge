@@ -502,7 +502,7 @@ class ResultAggregationTests(unittest.TestCase):
     def test_f223_malformed_bulk_repo_does_not_discard_valid_versions(self):
         result, calls = self.invoke(
             FORGE_TEST_LXC_APP=json.dumps({
-                "100": ["1.0", "2.0", "https://malicious.example/hello"],
+                "100": ["1.0", "2.0", "javascript:alert(1)"],
                 "111": ["-", "-", "-"],
                 "115": ["-", "-", "-"],
             }),
