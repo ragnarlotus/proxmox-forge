@@ -72,6 +72,23 @@ class ApplicationVersionTests(unittest.TestCase):
             '    sys.exit(91)\n', encoding="utf-8",
         )
         pct.chmod(0o755)
+        curl = self.bin / "curl"
+        curl.write_text(
+            '#!/usr/bin/env python3\n'
+            'import os,sys\n'
+            'from pathlib import Path\n'
+            'slug=os.environ.get("APP_TEST_CURL_SLUG", "pihole")\n'
+            'url="https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/"+slug+".sh"\n'
+            'if not sys.argv[1:] or sys.argv[-1]!=url: sys.exit(92)\n'
+            'if os.environ.get("APP_TEST_CURL_CALLS"):\n'
+            '    with Path(os.environ["APP_TEST_CURL_CALLS"]).open("a") as log:\n'
+            '        log.write(" ".join(sys.argv[1:])+"\\n")\n'
+            'if os.environ.get("APP_TEST_CURL_FAIL") or "APP_TEST_METADATA" not in os.environ:\n'
+            '    sys.exit(22)\n'
+            'print(os.environ["APP_TEST_METADATA"])\n',
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
         self.env = {**os.environ, "PATH": f"{self.bin}:{os.environ['PATH']}"}
 
     def run_bash(self, body, **extra):
@@ -141,48 +158,126 @@ class ApplicationVersionTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(result.stdout, "")
 
-    def test_f223_official_app_repositories_are_whitelisted(self):
-        # Upstream project repositories were independently verified.
-        expected = {
-            "pihole": "https://github.com/pi-hole/pi-hole",
-            "caddy": "https://github.com/caddyserver/caddy",
-            "vaultwarden": "https://github.com/dani-garcia/vaultwarden",
-            "docmost": "https://github.com/docmost/docmost",
-            "immich": "https://github.com/immich-app/immich",
-            "audiobookshelf": "https://github.com/advplyr/audiobookshelf",
-            "whisparr": "https://github.com/Whisparr/Whisparr",
-            "snowshare": "https://github.com/TuroYT/snowshare",
-            "trek": "https://github.com/liketrek/TREK",
-            "plex": "-",  # Proprietary: no verified official source repo.
-            "unsupported-app": "-",
-            "": "-",
-        }
-        for slug, url in expected.items():
-            with self.subTest(slug=slug):
-                result = self.run_bash(f'forge_app_repository "{slug}"')
+    def test_application_urls_come_from_community_scripts_metadata(self):
+        cases = [
+            ("caddy",
+             "# Source: https://caddyserver.com/ | Github: https://github.com/caddyserver/caddy",
+             "https://github.com/caddyserver/caddy"),
+            ("immich",
+             "# Source: https://immich.app | Github: https://github.com/immich-app/immich",
+             "https://github.com/immich-app/immich"),
+            ("snowshare",
+             "# Source: https://github.com/TuroYT/snowshare",
+             "https://github.com/TuroYT/snowshare"),
+            ("trek",
+             "# Source: https://github.com/liketrek/TREK",
+             "https://github.com/liketrek/TREK"),
+            ("pihole",
+             "# Source: https://pi-hole.net/",
+             "https://pi-hole.net/"),
+            ("audiobookshelf",
+             "# Source: https://www.audiobookshelf.org/",
+             "https://www.audiobookshelf.org/"),
+            ("example",
+             "# Source: http://example.net/project | Github: https://github.com/org/project",
+             "https://github.com/org/project"),
+            ("example",
+             "# Source: http://example.net/project",
+             "http://example.net/project"),
+            ("example",
+             "# Github: https://github.com/org/project\n# Source: https://example.net",
+             "https://github.com/org/project"),
+            ("example",
+             "# Source: https://example.org",
+             "https://example.org"),
+            ("example", "# License: MIT\n# Author: someone", "-"),
+            ("example", "# Source: not-a-url | Github: bad-data", "-"),
+            ("example",
+             "# Source: https://fallback.example | Github: javascript:alert(1)",
+             "https://fallback.example"),
+            ("example",
+             "# Source: https://fallback.example | Github: https://evil.example/a\\tb",
+             "https://fallback.example"),
+        ]
+        calls = self.base / "curl-calls"
+        for slug, metadata, expected in cases:
+            with self.subTest(slug=slug, metadata=metadata):
+                result = self.run_bash(
+                    f'forge_app_repository "{slug}"',
+                    APP_TEST_CURL_SLUG=slug,
+                    APP_TEST_METADATA=(
+                        '#!/usr/bin/env bash\n'
+                        'source <(echo "this must never execute")\n'
+                        '# Copyright\n' + metadata
+                    ),
+                    APP_TEST_CURL_CALLS=str(calls),
+                )
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout.strip(), url)
-                self.assertNotIn("community-scripts/ProxmoxVE", url)
+                self.assertEqual(result.stdout.strip(), expected)
+        self.assertEqual(len(calls.read_text().splitlines()), len(cases))
+        self.assertTrue(all("--proto" in line and "raw.githubusercontent.com" in line
+                            for line in calls.read_text().splitlines()))
 
-    def test_f223_repo_does_not_depend_on_detectable_installed_version(self):
-        result = self.run_bash(
+    def test_remote_metadata_failure_and_unsafe_slug_fail_closed(self):
+        failed = self.run_bash("forge_app_repository pihole",
+                               APP_TEST_CURL_FAIL="true")
+        self.assertEqual(failed.returncode, 0, failed.stderr)
+        self.assertEqual(failed.stdout.strip(), "-")
+        calls = self.base / "invalid-calls"
+        unsafe = self.run_bash(
+            'forge_app_repository "pihole;touch /tmp/unwanted"',
+            APP_TEST_CURL_CALLS=str(calls),
+        )
+        self.assertEqual(unsafe.returncode, 0, unsafe.stderr)
+        self.assertEqual(unsafe.stdout.strip(), "-")
+        self.assertFalse(calls.exists())
+
+    def test_repository_is_fetched_only_after_confirmed_successful_change(self):
+        calls = self.base / "only-on-change"
+        base = dict(
+            APP_TEST_LAUNCHER=generated_launcher("pihole"),
+            APP_TEST_CURL_SLUG="pihole",
+            APP_TEST_METADATA="# Source: https://pi-hole.net/",
+            APP_TEST_CURL_CALLS=str(calls),
+        )
+        unchanged = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; forge_app_finalize 101 '
+            '"" true; printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_REPOSITORY"',
+            APP_TEST_OUTPUT="Core version is v6.4.3", **base,
+        )
+        self.assertEqual(unchanged.stdout.strip(), "v6.4.3|-")
+        self.assertFalse(calls.exists())
+
+        before_only = self.run_bash(
             'forge_app_begin 101 /usr/bin/update; '
             'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_REPOSITORY"',
-            APP_TEST_LAUNCHER=generated_launcher("whisparr"),
-            APP_TEST_OUTPUT="unavailable",
+            APP_TEST_OUTPUT="Core version is v6.4.3", **base,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            result.stdout.strip(), "-|https://github.com/Whisparr/Whisparr"
-        )
+        self.assertEqual(before_only.stdout.strip(), "v6.4.3|-")
+        self.assertFalse(calls.exists())
 
-        result = self.run_bash(
-            'forge_app_begin 101 none; '
-            'printf "%s|%s\n" "$FORGE_APP_BEFORE" "$FORGE_APP_REPOSITORY"',
-            APP_TEST_LAUNCHER=generated_launcher("whisparr"),
+        changed = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; '
+            'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
+            'forge_app_finalize 101 "" true; '
+            'printf "%s|%s\n" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY"',
+            APP_TEST_OUTPUT="Core version is v6.4.3",
+            APP_TEST_AFTER="Core version is v6.5.0", **base,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "-|-")
+        self.assertEqual(changed.returncode, 0, changed.stderr)
+        self.assertEqual(changed.stdout.strip(), "v6.5.0|https://pi-hole.net/")
+        self.assertEqual(len(calls.read_text().splitlines()), 1)
+
+        failed = self.run_bash(
+            'forge_app_begin 101 /usr/bin/update; '
+            'APP_TEST_OUTPUT="$APP_TEST_AFTER"; export APP_TEST_OUTPUT; '
+            'forge_app_finalize 101; '
+            'printf "%s|%s\n" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY"',
+            APP_TEST_OUTPUT="Core version is v6.4.3",
+            APP_TEST_AFTER="Core version is v6.5.0", **base,
+        )
+        self.assertEqual(failed.stdout.strip(), "v6.5.0|-")
+        self.assertEqual(len(calls.read_text().splitlines()), 1)
 
     def test_supported_app_probes(self):
         for slug, output, expected in [
@@ -357,7 +452,7 @@ class ApplicationVersionTests(unittest.TestCase):
         self.assertEqual(handoff.read_text(encoding="utf-8"), "1.0\t2.0\t-\n")
         self.assertEqual(r.stdout, "")
 
-    def test_f223_bulk_handoff_contains_known_repo_even_for_noop(self):
+    def test_bulk_handoff_omits_repository_for_noop(self):
         handoff = self.base / "repo-record"
         result = self.run_bash(
             'forge_app_begin 101 /usr/bin/update; forge_app_finalize 101',
@@ -369,7 +464,7 @@ class ApplicationVersionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             handoff.read_text(encoding="utf-8"),
-            "v6.4.3\tv6.4.3\thttps://github.com/pi-hole/pi-hole\n",
+            "v6.4.3\tv6.4.3\t-\n",
         )
         self.assertEqual(result.stdout, "")
 
