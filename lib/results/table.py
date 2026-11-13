@@ -84,11 +84,19 @@ def fields(row):
     detail = clean(unquote(row["result_detail"], encoding="utf-8", errors="replace"))
     if row["type"] == "host" and row.get("host_platform", "-") != "-":
         app = clean(unquote(row["host_platform"], encoding="utf-8", errors="replace"))
+    # A changelog is relevant only to a verified application version change
+    # that survived a successful update. APT upgrades, failed/restored guests
+    # and unchanged or unknown app versions do not qualify.
+    app_updated = (
+        row["type"] == "lxc" and row["status"] == "OK"
+        and before != "-" and after != "-" and before != after
+    )
+    repository = row["app_repository"]
     return (
         row["vmid"], clean(row["name"]),
         "—" if row["apt_upgraded"] == "-" else row["apt_upgraded"],
         clean(app),
-        "—" if row["app_repository"] == "-" else clean(row["app_repository"]),
+        clean(repository) if app_updated and repository != "-" else "—",
         detail,
     )
 
