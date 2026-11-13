@@ -419,7 +419,7 @@ if [[ "${update_running_lxc}" == true ]]; then
           result_app_after[$vmid]="$app_after"
         fi
       fi
-      if [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+      if forge_result_app_url_valid "$app_repository"; then
         result_app_repository[$vmid]="$app_repository"
       fi
     fi

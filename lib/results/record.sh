@@ -1,6 +1,12 @@
 #!/bin/bash
 # Description: Print one structured final-results record for a host or LXC.
 # Source this helper from update orchestration; F225 will use these same facts.
+# Source and Github metadata URLs must be safe single-token HTTP(S) links.
+forge_result_app_url_valid() {
+  local pattern='^https?://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(/[A-Za-z0-9._~/%+?=&#:@,;!-]*)?$'
+  [[ "$1" == "-" || "$1" =~ $pattern ]]
+}
+
 forge_result_print() {
   [[ $# -ge 7 && $# -le 16 ]] || return 2
   local type="$1" vmid="$2" name="$3" selected="$4" attempted="$5" status="$6" reason="$7" exit_code="${8:-}" apt_upgraded="${9:--}" app_before="${10:--}" app_after="${11:--}" app_repository="${12:--}" result_detail="${13:-}" failed_stage="${14:--}" recovery="${15:--}" host_platform="${16:--}"
@@ -20,7 +26,7 @@ forge_result_print() {
   [[ "$apt_upgraded" == "-" || "$apt_upgraded" =~ ^[0-9]+$ ]] || return 2
   [[ "$app_before" == "-" || "$app_before" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 2
   [[ "$app_after" == "-" || "$app_after" =~ ^v?[0-9][A-Za-z0-9._+~:-]*$ ]] || return 2
-  [[ "$app_repository" == "-" || "$app_repository" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || return 2
+  forge_result_app_url_valid "$app_repository" || return 2
   [[ "$failed_stage" == "-" || "$failed_stage" =~ ^[a-z][a-z0-9_-]*$ ]] || return 2
   [[ "$recovery" == "-" || "$recovery" == success || "$recovery" == disabled || "$recovery" == unavailable || "$recovery" =~ ^failed:[0-9]+$ ]] || return 2
   [[ "$host_platform" =~ ^([A-Za-z0-9_.~-]|%[0-9A-F]{2})+$ ]] || return 2

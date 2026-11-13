@@ -42,21 +42,57 @@ forge_app_detect_slug() {
   printf '%s\n' "$matches"
 }
 
-# Verified official application source repositories (not Community Scripts).
-# Unknown/closed-source or unverified repositories remain unavailable.
+# Retrieve application URLs from the official Community Scripts definition,
+# never from a hardcoded slug-to-repository mapping. Do not execute downloaded
+# shell code: parse only metadata comments near the beginning of the script.
+# This is called only for a verified successful application version change.
+forge_app_valid_url() {
+  local pattern='^https?://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(/[A-Za-z0-9._~/%+?=&#:@,;!-]*)?$'
+  [[ "$1" =~ $pattern ]]
+}
+
 forge_app_repository() {
-  case "$1" in
-    pihole)         printf '%s\n' 'https://github.com/pi-hole/pi-hole' ;;
-    caddy)          printf '%s\n' 'https://github.com/caddyserver/caddy' ;;
-    vaultwarden)    printf '%s\n' 'https://github.com/dani-garcia/vaultwarden' ;;
-    docmost)        printf '%s\n' 'https://github.com/docmost/docmost' ;;
-    immich)         printf '%s\n' 'https://github.com/immich-app/immich' ;;
-    audiobookshelf) printf '%s\n' 'https://github.com/advplyr/audiobookshelf' ;;
-    whisparr)       printf '%s\n' 'https://github.com/Whisparr/Whisparr' ;;
-    snowshare)      printf '%s\n' 'https://github.com/TuroYT/snowshare' ;;
-    trek)           printf '%s\n' 'https://github.com/liketrek/TREK' ;;
-    *)              printf '%s\n' '-' ;;
-  esac
+  local slug="$1" script line source_url="" github_url="" url
+  local source_pattern='^#[[:space:]]*Source:[[:space:]]*(https?://[^[:space:]|]+)'
+  local github_pattern='(^|[[:space:]|])Github:[[:space:]]*(https?://[^[:space:]|]+)'
+  local line_count=0
+
+  if [[ ! "$slug" =~ ^[a-z0-9_-]+$ ]] || ! command -v curl >/dev/null 2>&1; then
+    printf '%s\n' '-'
+    return 0
+  fi
+
+  script="$(curl --fail --silent --show-error --location \
+    --connect-timeout 3 --max-time 8 --max-filesize 1048576 \
+    --proto '=https' --proto-redir '=https' \
+    "https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/${slug}.sh" \
+    2>/dev/null)" || {
+    printf '%s\n' '-'
+    return 0
+  }
+
+  while IFS= read -r line; do
+    ((line_count += 1))
+    (( line_count <= 40 )) || break
+    [[ "$line" == \#* ]] || continue
+
+    if [[ -z "$source_url" && "$line" =~ $source_pattern ]]; then
+      source_url="${BASH_REMATCH[1]}"
+    fi
+    if [[ -z "$github_url" && "$line" =~ $github_pattern ]]; then
+      github_url="${BASH_REMATCH[2]}"
+    fi
+  done <<<"$script"
+
+  # Explicit Github wins when valid. If absent or malformed, use Source.
+  # If neither yields a safe HTTP(S) URL, keep the missing-value marker.
+  url="-"
+  if forge_app_valid_url "$github_url"; then
+    url="$github_url"
+  elif forge_app_valid_url "$source_url"; then
+    url="$source_url"
+  fi
+  printf '%s\n' "$url"
 }
 
 forge_app_probe() {
@@ -175,7 +211,6 @@ forge_app_begin() {
   FORGE_APP_FINISHED=false
   slug="$(forge_app_detect_slug "$vmid" "$updater")" || return 0
   FORGE_APP_SLUG="$slug"
-  FORGE_APP_REPOSITORY="$(forge_app_repository "$slug")"
   version="$(forge_app_probe "$vmid" "$slug")" ||
     version="$(forge_app_marker_version "$vmid" "$slug")" || return 0
   FORGE_APP_BEFORE="$version"
@@ -211,6 +246,12 @@ forge_app_finalize() {
   if [[ "$FORGE_APP_BEFORE" == "-" || "$FORGE_APP_AFTER" == "-" ]]; then
     FORGE_APP_BEFORE="-"
     FORGE_APP_AFTER="-"
+  fi
+  # No network request for no-op/unknown/failed or recovered updates.
+  if [[ "$allow_log_fallback" == true && -n "$FORGE_APP_SLUG" &&
+        "$FORGE_APP_BEFORE" != "-" && "$FORGE_APP_AFTER" != "-" &&
+        "$FORGE_APP_BEFORE" != "$FORGE_APP_AFTER" ]]; then
+    FORGE_APP_REPOSITORY="$(forge_app_repository "$FORGE_APP_SLUG")"
   fi
   if [[ "${FORGE_RESULTS_AGGREGATE:-}" == bulk && -n "${FORGE_APP_RESULT_FILE:-}" ]]; then
     printf '%s\t%s\t%s\n' "$FORGE_APP_BEFORE" "$FORGE_APP_AFTER" "$FORGE_APP_REPOSITORY" > "$FORGE_APP_RESULT_FILE" ||
