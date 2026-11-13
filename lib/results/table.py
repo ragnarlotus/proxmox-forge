@@ -96,7 +96,7 @@ def fields(row):
         row["vmid"], clean(row["name"]),
         "—" if row["apt_upgraded"] == "-" else row["apt_upgraded"],
         clean(app),
-        clean(repository) if app_updated and repository != "-" else "—",
+        clean(repository) if app_updated and repository != "-" else "-" if app_updated else "",
         detail,
     )
 
@@ -203,10 +203,10 @@ def compact_widths(values, width):
 
 def emit_compact_table(rows, values, width, enabled):
     """Keep a genuine six-column grid and full clickable source URLs."""
-    urls = list(dict.fromkeys(c[4] for c in values if c[4] != "—"))
+    urls = list(dict.fromkeys(c[4] for c in values if c[4].startswith(("https://", "http://"))))
     references = {url: f"[{i}]" for i, url in enumerate(urls, 1)}
     cells_by_row = [
-        (c[0], c[1], c[2], c[3], references.get(c[4], "—"), c[5])
+        (c[0], c[1], c[2], c[3], references.get(c[4], c[4]), c[5])
         for c in values
     ]
     sizes = compact_widths(cells_by_row, width)
