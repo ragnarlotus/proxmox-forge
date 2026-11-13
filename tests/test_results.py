@@ -341,7 +341,7 @@ class ResultAggregationTests(unittest.TestCase):
         self.assertRegex(result.stdout, r"(?m)^100\s+\|\s+guest100\s+\|\s+4\s+\|\s+v1\.0 → v1\.2\s+\|")
         self.assertRegex(result.stdout, r"(?m)^111\s+\|\s+guest111\s+\|\s+0\s+\|\s+v2\.0\s+\|")
         self.assertIn("Changelog: https://github.com/pi-hole/pi-hole", result.stdout)
-        self.assertIn("Changelog: https://github.com/docmost/docmost", result.stdout)
+        self.assertNotIn("Changelog: https://github.com/docmost/docmost", result.stdout)
         self.assertIn("ERROR: application_update (exit 42); recovery succeeded", result.stdout)
         self.assertIn("Totals: targets=4 selected=4 attempted=4 "
                       "OK=3 ERROR=1 SKIPPED=0 NOT_RUN=0", result.stdout)
