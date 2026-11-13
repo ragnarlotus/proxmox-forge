@@ -71,7 +71,7 @@ For each selected LXC, Forge reads enabled Proxmox backup jobs and requires exac
 The important guarantees are:
 
 - `vzdump` runs synchronously and its exit status is authoritative;
-- the exact newly created recovery volume is identified by comparing backup volumes before and after `vzdump`;
+- the exact newly created recovery volume is identified from `vzdump`'s reported archive path and validated against `pvesm path` for the new volumes; this remains unambiguous if another backup job creates an archive while Forge awaits Proxmox's global backup lock. Backends that do not expose a local archive path must still yield exactly one new volume, or Forge stops safely;
 - backup creation is limited to creating and identifying the recovery artifact; guest health is validated later by the update workflow;
 - the exact recovery artifact is retained for possible same-run rollback;
 - Forge does not implement a separate LXC backup-retention system; applicable Proxmox job options remain authoritative.

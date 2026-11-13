@@ -197,8 +197,15 @@ done
 before_backups="$(list_backup_volumes "$storage")" || \
   fail "could not list existing backups for LXC $vmid on storage $storage"
 
-"${command[@]}"
-create_result=$?
+# Capture the live vzdump stream while retaining its reported archive path.
+# The global Proxmox lock can delay this command while other jobs create
+# backups, so a before/after inventory diff is not sufficient.
+vzdump_output="$(mktemp)" || fail "cannot create temporary vzdump output capture"
+trap 'rm -f -- "$vzdump_output"' EXIT
+"${command[@]}" 2>&1 | tee "$vzdump_output"
+capture_results=("${PIPESTATUS[@]}")
+create_result="${capture_results[0]}"
+(( capture_results[1] == 0 )) || fail "could not capture vzdump output for recovery identification"
 
 if (( create_result != 0 )); then
   printf 'ERROR: Proxmox vzdump backup failed for LXC %s (exit code: %s)\n' \
@@ -220,10 +227,34 @@ while IFS= read -r volume; do
   [[ -n "${existing[$volume]+x}" ]] || new_backups+=("$volume")
 done <<<"$after_backups"
 
-if (( ${#new_backups[@]} != 1 )); then
+# File-based vzdump backups report the actual archive path. Match it to
+# a newly listed pvesm volume rather than picking the newest volume, since a
+# scheduled job may have completed while this vzdump waited for the lock.
+mapfile -t created_paths < <(
+  LC_ALL=C sed -nE "s/^INFO: creating vzdump archive '(.+)'$/\\1/p" "$vzdump_output"
+)
+if (( ${#created_paths[@]} > 1 )); then
+  fail "vzdump reported multiple created archives; recovery volume is ambiguous"
+fi
+
+backup_volume=""
+if (( ${#created_paths[@]} == 1 )); then
+  matches=()
+  for volume in "${new_backups[@]}"; do
+    volume_path="$(pvesm path "$volume")" ||
+      fail "could not resolve created backup volume $volume"
+    [[ "$volume_path" == "${created_paths[0]}" ]] && matches+=("$volume")
+  done
+  if (( ${#matches[@]} != 1 )); then
+    fail "vzdump archive does not uniquely match a newly listed backup (new volumes: ${#new_backups[@]}, matches: ${#matches[@]})"
+  fi
+  backup_volume="${matches[0]}"
+elif (( ${#new_backups[@]} == 1 )); then
+  # Non-file backup providers may not report a local archive path.
+  backup_volume="${new_backups[0]}"
+else
   fail "backup task succeeded but the exact created recovery volume could not be identified (new volumes: ${#new_backups[@]})"
 fi
 
-backup_volume="${new_backups[0]}"
 printf 'backup=success vmid=%s storage=%s volume=%s\n' \
   "$vmid" "$storage" "$backup_volume"
