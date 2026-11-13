@@ -324,8 +324,9 @@ class FinalResultsMatrixTests(unittest.TestCase):
         )
         self.assertRegex(table, r"(?m)^100\s+\|\s+guest100\s+\|\s+0\s+\|\s+1\.0\+debian-2\s+\|")
         self.assertRegex(table, r"(?m)^111\s+\|\s+guest111\s+\|\s+7\s+\|\s+2\.0 → 2\.8\s+\|")
-        # Full official URLs are printed once each in the compact link legend.
-        self.assertEqual(table.count("Changelog: " + repository), 1)
+        # An unchanged app and a failed update retain repository metadata,
+        # but neither should display an application changelog.
+        self.assertNotIn("Changelog: " + repository, table)
         self.assertIn(message, table)
         self.assertIn("recovery succeeded", table)
         self.assertIn("recovery failed (exit 77)", table)
