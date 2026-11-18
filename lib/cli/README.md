@@ -80,10 +80,12 @@ external tool diagnostics. See [Languages](../i18n/README.md).
 Interactive manual host, single-LXC and bulk updates show a compact live dashboard:
 completed targets, a stage-based progress percentage, current stage, elapsed time
 and relevant warnings/errors. Each LXC contributes 14 fixed stage milestones:
-executed and explicitly skipped stages count as completed work exactly once;
-recovery-only stages are excluded from the planned total. The percent reflects
-completed work, not remaining time. Host updates contribute as one target upon
-completion. After the dashboard finishes, the original six-column
+executed and explicitly skipped stages count as completed work exactly once.
+The host contributes five milestones: requirements, backup, os_update,
+held_packages and health. Each target contributes its completed stage fraction,
+counting failed stages once; recovery-only activities are excluded. The percent
+reflects completed work, not remaining time. The host and each LXC count as
+one full target upon completion. After the dashboard finishes, the original six-column
 final-results table is displayed, including application version changes, warnings,
 changelog links and the failure/blocked-target digest. A changelog link appears
 only for a successfully updated LXC with a verified application version change.
