@@ -95,6 +95,26 @@ class CompactProgressTests(unittest.TestCase):
                         "package manager failed", "resultado FAILED"):
             self.assertIn(message, result.stdout)
 
+    def test_dashboard_displays_four_latest_warnings(self):
+        spec = importlib.util.spec_from_file_location("forge_progress_warnings", PRESENTER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            progress = module.Progress("bulk", "all")
+            for index in range(1, 6):
+                progress.notice(f"WARNING: test warning {index}")
+            lines, _ = progress.rows()
+
+        self.assertEqual(len(progress.notices), 5)
+        warnings = [line.strip() for line in lines if "test warning" in line]
+        self.assertEqual(warnings, [
+            "! WARNING: test warning 2",
+            "! WARNING: test warning 3",
+            "! WARNING: test warning 4",
+            "! WARNING: test warning 5",
+        ])
+
     def test_final_table_survives_compact_mode_without_losing_columns(self):
         table = (
             "Resultados finales de Forge\n"
