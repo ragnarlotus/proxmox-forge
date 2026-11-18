@@ -24,7 +24,12 @@ LXC_PROGRESS_STAGES = frozenset((
     "custom_scripts", "resource_restore", "health", "fstrim",
     "reboot_check", "lifecycle_stop",
 ))
-STAGES = LXC_PROGRESS_STAGES | frozenset((
+# The host workflow emits these five planned stage outcomes. Treat the host
+# as one target whose progress advances as those stages finish.
+HOST_PROGRESS_STAGES = frozenset((
+    "requirements", "backup", "os_update", "held_packages", "health",
+))
+STAGES = LXC_PROGRESS_STAGES | HOST_PROGRESS_STAGES | frozenset((
     "recovery", "lifecycle_readiness", "startup", "shutdown",
 ))
 
@@ -171,10 +176,13 @@ class Progress:
         elif line.startswith(("stage=completed ", "stage=skipped ", "stage=failed ")):
             stage = fields(line).get("name")
             key = self.current
-            if (key is not None and key != "HOST" and
-                    key not in self.completed and stage in LXC_PROGRESS_STAGES):
-                # A stage counts once regardless of its outcome or duplicate
-                # messages. Unknown/recovery/host stages cannot inflate totals.
+            planned_stages = (HOST_PROGRESS_STAGES if key == "HOST"
+                              else LXC_PROGRESS_STAGES)
+            if (key is not None and key not in self.completed
+                    and stage in planned_stages):
+                # Each target counts its own planned stages once, including
+                # skipped/failed outcomes; duplicate and unrelated events are
+                # excluded from the percentage.
                 stages = self.stage_done.setdefault(key, set())
                 if stage not in stages:
                     stages.add(stage)
@@ -244,13 +252,14 @@ class Progress:
         width = max(48, cols - 1)
         finished = len(self.completed)
         total = self.total or 0
-        # Completed targets contribute one full unit; an active LXC contributes
-        # its distinct completed/skipped/failed stage count as a fraction.
-        # The host remains a full unit only upon completion.
+        # Each completed target contributes one full unit. While active, hosts
+        # and LXCs contribute the fraction of their own planned stages already
+        # completed, skipped or failed.
         progress_units = finished + sum(
-            len(stages) / len(LXC_PROGRESS_STAGES)
+            len(stages) / len(HOST_PROGRESS_STAGES if key == "HOST"
+                              else LXC_PROGRESS_STAGES)
             for key, stages in self.stage_done.items()
-            if key not in self.completed and key != "HOST"
+            if key not in self.completed
         )
         percent = min(100, int(progress_units * 100 / total)) if total else 0
         if finished < total:

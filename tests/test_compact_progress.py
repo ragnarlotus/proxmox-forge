@@ -213,6 +213,112 @@ class CompactProgressTests(unittest.TestCase):
             self.assertEqual(percentage(progress), 100)
             self.assertEqual(len(progress.completed), 2)
 
+    def test_host_only_progress_advances_on_five_planned_stages(self):
+        spec = importlib.util.spec_from_file_location("forge_progress_host", PRESENTER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        def percentage(progress):
+            match = __import__("re").search(r"([0-9]+)%", progress.rows()[0][1])
+            self.assertIsNotNone(match)
+            return int(match.group(1))
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            progress = module.Progress("host", "HOST")
+            self.assertEqual(percentage(progress), 0)
+            self.assertEqual(len(module.HOST_PROGRESS_STAGES), 5)
+
+            progress.parse(b"stage=completed name=requirements")
+            self.assertEqual(percentage(progress), 20)
+            progress.parse(b"stage=completed name=requirements")
+            self.assertEqual(percentage(progress), 20)  # No double counting
+            progress.parse(b"stage=skipped name=backup reason=disabled")
+            self.assertEqual(percentage(progress), 40)
+            progress.parse(b"stage=completed name=os_update")
+            self.assertEqual(percentage(progress), 60)
+            progress.parse(b"stage=completed name=recovery")
+            progress.parse(b"stage=completed name=reboot_check")
+            progress.parse(b"stage=completed name=lifecycle_start")
+            self.assertEqual(percentage(progress), 60)  # Only host stages
+            progress.parse(b"stage=completed name=held_packages")
+            self.assertEqual(percentage(progress), 80)
+            progress.parse(b"stage=skipped name=health reason=disabled")
+            self.assertEqual(percentage(progress), 99)
+            progress.parse(b"update=success type=host")
+            self.assertEqual(percentage(progress), 100)
+            self.assertEqual(progress.stage_done["HOST"], module.HOST_PROGRESS_STAGES)
+
+    def test_bulk_host_stage_progress_is_one_fractional_target(self):
+        spec = importlib.util.spec_from_file_location("forge_progress_bulk_host", PRESENTER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        def percentage(progress):
+            match = __import__("re").search(r"([0-9]+)%", progress.rows()[0][1])
+            self.assertIsNotNone(match)
+            return int(match.group(1))
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            progress = module.Progress("bulk", "all")
+            progress.parse(b"update_all=start mode=all update_host=true lxc_targets=14")
+            progress.parse(b"update_all_stage=start stage=host")
+            self.assertEqual(progress.total, 15)
+            self.assertEqual(percentage(progress), 0)
+
+            for stage, expected in [
+                ("requirements", 1),
+                ("backup", 2),
+                ("os_update", 4),
+                ("held_packages", 5),
+                ("health", 6),
+            ]:
+                progress.parse(f"stage=completed name={stage}".encode())
+                self.assertEqual(percentage(progress), expected)
+
+            progress.parse(b"stage=completed name=health")
+            self.assertEqual(percentage(progress), 6)
+            progress.parse(b"update_all_stage=success stage=host exit_code=0")
+            self.assertEqual(percentage(progress), 6)
+            self.assertEqual(len(progress.completed), 1)
+
+            progress.parse(b"update_all_target=start vmid=100")
+            progress.parse(b"stage=completed name=requirements")
+            self.assertEqual(percentage(progress), 7)
+            progress.parse(b"stage=completed name=backup")
+            self.assertEqual(percentage(progress), 7)  # 2/14 of one LXC
+            self.assertEqual(len(progress.stage_done["HOST"]), 5)
+            self.assertEqual(len(progress.stage_done["100"]), 2)
+
+    def test_failed_host_stage_contributes_then_counts_once_on_completion(self):
+        spec = importlib.util.spec_from_file_location("forge_progress_failed_host", PRESENTER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        def percentage(progress):
+            match = __import__("re").search(r"([0-9]+)%", progress.rows()[0][1])
+            self.assertIsNotNone(match)
+            return int(match.group(1))
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            progress = module.Progress("bulk", "all")
+            progress.parse(b"update_all=start mode=all update_host=true lxc_targets=1")
+            progress.parse(b"update_all_stage=start stage=host")
+            progress.parse(b"stage=completed name=requirements")
+            self.assertEqual(percentage(progress), 10)
+            progress.parse(b"stage=failed name=backup exit_code=42")
+            self.assertEqual(percentage(progress), 20)
+            progress.parse(b"stage=failed name=backup exit_code=42")
+            self.assertEqual(percentage(progress), 20)
+            progress.parse(b"update_all_stage=failed stage=host exit_code=42 continuing_with_lxc=true")
+            self.assertEqual(percentage(progress), 50)
+            progress.parse(b"stage=completed name=health")
+            self.assertEqual(percentage(progress), 50)  # Finished host cannot grow
+            progress.parse(b"update_all_target=start vmid=101")
+            progress.parse(b"stage=skipped name=backup reason=disabled")
+            self.assertEqual(percentage(progress), 53)
+            progress.parse(b"update_all_target=success vmid=101 exit_code=0")
+            self.assertEqual(percentage(progress), 100)
+
     def test_single_lxc_stage_progress_reaches_99_then_100(self):
         spec = importlib.util.spec_from_file_location("forge_progress_test", PRESENTER)
         module = importlib.util.module_from_spec(spec)
