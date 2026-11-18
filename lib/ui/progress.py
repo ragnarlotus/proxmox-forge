@@ -297,7 +297,7 @@ class Progress:
             lines += ["", self.stage]
         if self.notices:
             lines += ["", tr("progress.warnings")]
-            lines.extend("  ! " + m[:max(10, width - 5)] for m in self.notices[-2:])
+            lines.extend("  ! " + m[:max(10, width - 5)] for m in self.notices[-4:])
         return lines, width
 
     def render(self, force=False):
