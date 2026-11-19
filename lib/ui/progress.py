@@ -332,7 +332,7 @@ class Progress:
             plain_length = len(CONTROL.sub("", row))
             if plain_length > width:
                 row = row[:width - 1] + "…"
-            sys.stdout.write("\x1b[2K" + row + "\n")
+            sys.stdout.write("\x1b[2K" + row + "\r\n")
         sys.stdout.flush()
         self.rendered_lines = len(lines)
         self.last_output = now

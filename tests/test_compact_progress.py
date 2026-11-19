@@ -10,6 +10,7 @@ import select
 import shutil
 import subprocess
 import tempfile
+import termios
 import time
 import unittest
 from pathlib import Path
@@ -351,6 +352,38 @@ class CompactProgressTests(unittest.TestCase):
             self.assertIn("99%", progress.rows()[0][1])
             progress.parse(b"update=success vmid=101 final_state=running")
             self.assertIn("100%", progress.rows()[0][1])
+
+    def test_dashboard_resets_cursor_column_without_terminal_onlcr(self):
+        master, slave = pty.openpty()
+        try:
+            # tmux/terminal settings must not be required to translate LF
+            # into CRLF: every dashboard row must start at column zero.
+            settings = termios.tcgetattr(slave)
+            settings[1] &= ~termios.ONLCR
+            termios.tcsetattr(slave, termios.TCSANOW, settings)
+            process = subprocess.Popen(
+                ["python3", "-u", str(PRESENTER), "bulk", "all"],
+                stdin=subprocess.PIPE, stdout=slave, stderr=subprocess.PIPE,
+                env={**os.environ, "TERM": "xterm-256color",
+                     "FORGE_LANGUAGE": "en"},
+            )
+            os.close(slave)
+            slave = -1
+            process.stdin.write(
+                b"update_all=start mode=all update_host=true lxc_targets=1\n"
+                b"update_all_stage=start stage=host\n"
+                b"stage=start name=os_update\n"
+            )
+            process.stdin.close()
+            self.assertEqual(process.wait(timeout=10), 0,
+                             process.stderr.read().decode())
+            output = read_pty(master)
+            self.assertIn("Proxmox host", output)
+            self.assertIn("\r\n\x1b[2K", output)
+        finally:
+            if slave >= 0:
+                os.close(slave)
+            os.close(master)
 
     def test_terminal_draws_live_dashboard_in_place(self):
         master, slave = pty.openpty()
