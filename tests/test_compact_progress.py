@@ -370,16 +370,16 @@ class CompactProgressTests(unittest.TestCase):
             os.close(slave)
             slave = -1
             process.stdin.write(
-                b"update_all=start mode=all update_host=true lxc_targets=1\\n"
-                b"update_all_stage=start stage=host\\n"
-                b"stage=start name=os_update\\n"
+                b"update_all=start mode=all update_host=true lxc_targets=1\n"
+                b"update_all_stage=start stage=host\n"
+                b"stage=start name=os_update\n"
             )
             process.stdin.close()
             self.assertEqual(process.wait(timeout=10), 0,
                              process.stderr.read().decode())
             output = read_pty(master)
             self.assertIn("Proxmox host", output)
-            self.assertIn("\\r\\n\\x1b[2K", output)
+            self.assertIn("\r\n\x1b[2K", output)
         finally:
             if slave >= 0:
                 os.close(slave)
